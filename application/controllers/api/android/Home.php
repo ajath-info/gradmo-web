@@ -89,11 +89,11 @@ class Home extends CI_Controller {
         }
         echo json_encode($arr);
     }
-    function login(){
+    /*function login(){
         $data = $_REQUEST;
-    //   / print_r($data);
-    //   die;
-        if(isset($data['username']) && isset($data['password']) && isset($data['versionCode'])  && isset($data['token'])){
+    	//print_r($data);die();
+        //if(isset($data['username']) && isset($data['password']) && isset($data['versionCode'])  && isset($data['token'])){
+        if(isset($data['username']) && isset($data['password'])){
             $uname = trim($data['username']);
             $pass = md5(trim($data['password']));
             $version= trim($data['versionCode']);
@@ -155,7 +155,121 @@ class Home extends CI_Controller {
             ); 
         }
         echo json_encode($arr);
-    }
+    }*/
+    public function login()
+	{
+	    $data = $this->input->post(); // safer than $_REQUEST
+
+	    if (!empty($data['username']) && !empty($data['password'])) {
+
+	        $uname   = trim($data['username']);
+	        $password = trim($data['password']);
+	        $version = isset($data['versionCode']) ? trim($data['versionCode']) : '';
+	        $token   = isset($data['token']) ? trim($data['token']) : '';
+
+	        $enroll_id = strtoupper($uname);
+
+	        // Build condition
+	        if (filter_var($enroll_id, FILTER_VALIDATE_EMAIL)) {
+	            $stud_cond = ['email' => $enroll_id];
+	        } else {
+	            $stud_cond = ['enrollment_id' => $enroll_id];
+	        }
+
+	        // Fetch student
+	        $studentDetails = $this->db_model->select_data('*', 'students', $stud_cond, 1);
+
+	        if (!empty($studentDetails)) {
+
+	            $student = $studentDetails[0];
+
+	            // Password verify (RECOMMENDED: use password_hash instead of md5)
+	            if ($student['password'] !== md5($password)) {
+	                echo json_encode([
+	                    'status' => 'false',
+	                    'msg' => 'Invalid password'
+	                ]);
+	                return;
+	            }
+
+	            if ($student['status'] != '1') {
+	                echo json_encode([
+	                    'status' => 'false',
+	                    'msg' => $this->lang->line('ltr_contact_to_admin_msg')
+	                ]);
+	                return;
+	            }
+
+	            // Fetch batch
+	            $batch_details = $this->db_model->select_data(
+	                'id,batch_name,batch_type',
+	                'batches',
+	                ['status' => 1, 'id' => $student['batch_id']],
+	                1
+	            );
+
+	            // Fee details
+	            $fee_details = $this->db_model->select_data(
+	                '*',
+	                'student_payment_history',
+	                [
+	                    'student_id' => $student['id'],
+	                    'batch_id'   => $student['batch_id']
+	                ],
+	                1
+	            );
+
+	            // Prepare response
+	            $studentData = [
+	                'studentId'     => $student['id'],
+	                'userEmail'     => $student['email'],
+	                'fullName'      => $student['name'],
+	                'enrollmentId'  => $student['enrollment_id'],
+	                'image'         => base_url('uploads/students/') . $student['image'],
+	                'mobile'        => $student['contact_no'],
+	                'versionCode'   => $student['app_version'],
+	                'batchId'       => $student['batch_id'],
+	                'batchName'     => !empty($batch_details) ? $batch_details[0]['batch_name'] : '',
+	                'adminId'       => $student['admin_id'],
+	                'paymentType'   => $this->general_settings('payment_type'),
+	                'admissionDate' => date('d-m-Y', strtotime($student['admission_date'])),
+	                'languageName'  => $this->general_settings('language_name'),
+	                'transactionId' => !empty($fee_details[0]['transaction_id']) ? $fee_details[0]['transaction_id'] : '',
+	                'amount'        => !empty($fee_details[0]['amount']) ? $fee_details[0]['amount'] : ''
+	            ];
+
+	            // Update login status
+	            $this->db_model->update_data_limit(
+	                'students',
+	                [
+	                    'login_status' => 1,
+	                    'app_version'  => $version,
+	                    'token'        => $token
+	                ],
+	                ['id' => $student['id']],
+	                1
+	            );
+
+	            echo json_encode([
+	                'studentData' => $studentData,
+	                'status' => 'true',
+	                'msg' => $this->lang->line('ltr_welcome') . ' ' . $student['name']
+	            ]);
+
+	        } else {
+	            echo json_encode([
+	                'status' => 'false',
+	                'msg' => $this->lang->line('ltr_invalid_c')
+	            ]);
+	        }
+
+	    } else {
+	        echo json_encode([
+	            'status' => 'false',
+	            'msg' => $this->lang->line('ltr_missing_parameters_msg')
+	        ]);
+	    }
+	}
 	function logout(){
         $data = $_REQUEST;
         if(isset($data['student_id'])){
@@ -175,7 +289,7 @@ class Home extends CI_Controller {
        	echo json_encode($arr);
     }
 	
-	function student_registration(){
+	/*function student_registration(){
             $data = $_REQUEST;
 			$this->db_model->insert_data('temp_data',array('temp'=>json_encode($data)));
 			if(!empty($data['name']) && !empty($data['email']) && !empty($data['mobile'])){
@@ -294,6 +408,173 @@ class Home extends CI_Controller {
 				); 
 			}
 			echo json_encode($arr);
+		}*/
+		public function student_registration()
+		{
+		    $data = $this->input->post(); // secure input
+
+		    // Debug log (optional)
+		    $this->db_model->insert_data('temp_data', ['temp' => json_encode($data)]);
+
+		    // Validation
+		    if (empty($data['name']) || empty($data['email']) || empty($data['mobile'])) {
+		        echo json_encode([
+		            'status' => 'false',
+		            'msg' => $this->lang->line('ltr_missing_parameters_msg')
+		        ]);
+		        return;
+		    }
+
+		    $name     = trim($data['name']);
+		    $email    = trim($data['email']);
+		    $mobile   = trim($data['mobile']);
+		    $batch_id = !empty($data['batch_id']) ? (int)$data['batch_id'] : 0;
+
+		    // Check existing user
+		    $prevRecd = $this->db_model->select_data(
+		        'id',
+		        'students',
+		        ['email' => $email, 'contact_no' => $mobile]
+		    );
+
+		    if (!empty($prevRecd)) {
+		        echo json_encode([
+		            'status' => 'false',
+		            'msg' => $this->lang->line('ltr_email_already_msg')
+		        ]);
+		        return;
+		    }
+
+		    // Start transaction
+		    $this->db->trans_start();
+
+		    // Get batch details
+		    $batch = $this->db_model->select_data('*', 'batches', ['id' => $batch_id], 1);
+		    $admin_id = !empty($batch) ? $batch[0]['admin_id'] : 0;
+
+		    // Generate enrollment & password
+		    $prefix = $this->common->enrollWord;
+		    $lastrecord = $this->db_model->select_data(
+		        'id',
+		        'students',
+		        ['admin_id' => $admin_id],
+		        1,
+		        ['id', 'desc']
+		    );
+
+		    $last_id = !empty($lastrecord) ? $lastrecord[0]['id'] : 0;
+
+		    $plainPassword = $prefix . $admin_id . $last_id . rand(1000, 9999);
+		    $enrolid       = $prefix . $admin_id . $last_id . rand(10, 99);
+		    
+		    $hashedPassword = md5($plainPassword);
+
+		    // Insert student
+		    $studentDataInsert = [
+		        'admin_id'        => $admin_id,
+		        'name'            => $name,
+		        'email'           => $email,
+		        'batch_id'        => $batch_id,
+		        'added_by'        => 'student',
+		        'status'          => 1,
+		        'enrollment_id'   => $enrolid,
+		        'password'        => $hashedPassword,
+		        'admission_date'  => date('Y-m-d'),
+		        'image'           => 'student_img.png',
+		        'contact_no'      => $mobile,
+		        'login_status'    => 1,
+		        'last_login_app'  => date("Y-m-d H:i:s"),
+		        'app_version'     => !empty($data['versionCode']) ? trim($data['versionCode']) : '',
+		        'token'           => !empty($data['token']) ? trim($data['token']) : ''
+		    ];
+
+		    $studentDataInsert = $this->security->xss_clean($studentDataInsert);
+
+		    $student_id = $this->db_model->insert_data('students', $studentDataInsert);
+
+		    if (!$student_id) {
+		        $this->db->trans_rollback();
+		        echo json_encode(['status' => 'false', 'msg' => 'Registration failed']);
+		        return;
+		    }
+
+		    // Payment handling
+		    $transactionId = '';
+		    $amount = '';
+
+		    if (!empty($batch) && $batch[0]['batch_type'] == 2) {
+		        $transactionId = !empty($data['transaction_id']) ? $data['transaction_id'] : '';
+		        $amount        = !empty($data['amount']) ? $data['amount'] : '';
+
+		        $paymentData = [
+		            'student_id'     => $student_id,
+		            'batch_id'       => $batch_id,
+		            'transaction_id' => $transactionId,
+		            'amount'         => $amount,
+		            'admin_id'       => $admin_id
+		        ];
+
+		        $paymentData = $this->security->xss_clean($paymentData);
+		        $this->db_model->insert_data('student_payment_history', $paymentData);
+
+		        $this->db_model->update_data_limit(
+		            'students',
+		            ['payment_status' => 1],
+		            ['id' => $student_id],
+		            1
+		        );
+		    } else {
+		        $transactionId = 'free';
+		    }
+
+		    // Assign batch
+		    if ($batch_id > 0) {
+		        $this->db_model->insert_data('sudent_batchs', [
+		            'student_id' => $student_id,
+		            'batch_id'   => $batch_id,
+		            'added_by'   => 'student',
+		            'admin_id'   => $admin_id
+		        ]);
+		    }
+
+		    // Commit transaction
+		    $this->db->trans_complete();
+
+		    // Prepare response
+		    $response = [
+		        'studentId'     => $student_id,
+		        'userEmail'     => $email,
+		        'fullName'      => $name,
+		        'enrollmentId'  => $enrolid,
+		        'mobile'        => $mobile,
+		        'image'         => base_url('uploads/students/student_img.png'),
+		        'batchId'       => $batch_id,
+		        'batchName'     => !empty($batch) ? $batch[0]['batch_name'] : '',
+		        'adminId'       => $admin_id,
+		        'admissionDate' => date('d-m-Y'),
+		        'transactionId' => $transactionId,
+		        'amount'        => $amount,
+		        'paymentType'   => $this->general_settings('payment_type'),
+		        'languageName'  => $this->general_settings('language_name'),
+		        'password'      => $plainPassword // only if needed
+		    ];
+
+		    // Send email
+		    $title = $this->db_model->select_data('site_title', 'site_details', '', 1)[0]['site_title'];
+		    $subject = $title . ' - ' . $this->lang->line('ltr_credentials');
+
+		    $message = "Hello {$name},<br><br>
+		                Your account has been created successfully.<br><br>
+		                Enrollment ID: {$enrolid}<br>
+		                Password: {$plainPassword}";
+
+		    $this->SendMail($email, $subject, $message);
+
+		    echo json_encode([
+		        'status' => 'true',
+		        'msg' => $this->lang->line('ltr_account_created'),
+		        'studentData' => $response
+		    ]);
 		}
 		function checkLanguage(){
 		  
