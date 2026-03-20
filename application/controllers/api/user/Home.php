@@ -3,7 +3,8 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 class Home extends CI_Controller {
     function __construct()
     {
-        error_reporting(0);
+        //error_reporting(0);
+        ini_set('display_errors', 1);
         parent::__construct();
         $timezoneDB = $this->db_model->select_data('timezone','site_details',array('id'=>1));
         if(isset($timezoneDB[0]['timezone']) && !empty($timezoneDB[0]['timezone'])){
@@ -89,187 +90,126 @@ class Home extends CI_Controller {
         }
         echo json_encode($arr);
     }
-    /*function login(){
-        $data = $_REQUEST;
-    	//print_r($data);die();
-        //if(isset($data['username']) && isset($data['password']) && isset($data['versionCode'])  && isset($data['token'])){
-        if(isset($data['username']) && isset($data['password'])){
-            $uname = trim($data['username']);
-            $pass = md5(trim($data['password']));
-            $version= trim($data['versionCode']);
-            $token= trim($data['token']);
-            $enroll_id = strtoupper($uname);
-           
-            if(!filter_var($enroll_id, FILTER_VALIDATE_EMAIL)){
-                    $stud_cond = array('enrollment_id'=>$enroll_id,'password'=>$pass);
-                }else{      
-                    $stud_cond = array('email'=>$enroll_id,'password'=>$pass);
-                }
-            $studentDetails = $this->db_model->select_data('*','students use index (id)',$stud_cond,1);
-           
-            if(!empty($studentDetails)){
-                if($studentDetails[0]['status'] == '1'){
-                    $batch_details = $this->db_model->select_data('id,batch_name,batch_type','batches use index (id)',array('status'=>1,'id'=>$studentDetails[0]['batch_id']),1);
-                    // if(!empty($batch_details)){
-                        $studentData = array(
-                            'studentId' => $studentDetails[0]['id'], 
-                            'userEmail' => $studentDetails[0]['email'],
-                            'fullName' => $studentDetails[0]['name'],
-                            'enrollmentId' => $studentDetails[0]['enrollment_id'],
-                            'image' => base_url('uploads/students/').$studentDetails[0]['image'],
-                            'mobile' => $studentDetails[0]['contact_no'],
-                            'versionCode' => $studentDetails[0]['app_version'],
-                            'batchId' => $studentDetails[0]['batch_id'],
-                            'batchName'=>$batch_details[0]['batch_name'],
-                            'adminId' => $studentDetails[0]['admin_id'],
-							'paymentType' => $this->general_settings('payment_type'),
-                            'admissionDate' => date('d-m-Y',strtotime($studentDetails[0]['admission_date'])),
-							'languageName'=>$this->general_settings('language_name')
-                        );
-						
-						$fee_details = $this->db_model->select_data('*','student_payment_history',array('student_id'=>$studentDetails[0]['id'],'batch_id'=>$studentDetails[0]['batch_id']));
-					
-						    $studentData['transactionId'] = !empty($fee_details[0]['transaction_id'])?$fee_details[0]['transaction_id']:'';
-					
-        				$studentData['amount'] = !empty($fee_details[0]['amount'])?$fee_details[0]['amount']:'';
-                        //update app version and login status                  
-                        $this->db_model->update_data_limit('students use index (id)',array('login_status'=>1,'app_version'=>$version,'token'=>$token),array('id'=>$studentDetails[0]['id']),1);
-                        $arr = array(
-                                'studentData' => $studentData,
-                                'status' => 'true',
-                                'msg' => $this->lang->line('ltr_welcome').' '.$studentDetails[0]['name']
-                            );
-                    // }else{
-                    //     $arr = array('status' => 'false', 'msg'=>$this->lang->line('ltr_batch_in_msg'));
-                    // }
-                }else{
-                    $arr = array('status' => 'false', 'msg'=>$this->lang->line('ltr_contact_to_admin_msg'));
-                }
-            }else{
-                $arr = array('status' => 'false', 'msg'=> $this->lang->line('ltr_invalid_c'));
-            }
-        }else{
-            $arr = array(
-                'status'=>'false',
-                'msg'=>$this->lang->line('ltr_missing_parameters_msg')
-            ); 
-        }
-        echo json_encode($arr);
-    }*/
-    public function login()
+
+    public function multi_user_login()
 	{
-	    $data = $this->input->post();
-	    if (!empty($data['username']) && !empty($data['password'])) {
-	        $uname    = trim($data['username']);
-	        $password = trim($data['password']);
-	        $version  = isset($data['versionCode']) ? trim($data['versionCode']) : '';
-	        $token    = isset($data['token']) ? trim($data['token']) : '';
-	        $enroll_id = strtoupper($uname);
-	        // Check email or enrollment ID
-	        if (filter_var($enroll_id, FILTER_VALIDATE_EMAIL)) {
-	            $stud_cond = ['email' => $enroll_id];
-	        } else {
-	            $stud_cond = ['enrollment_id' => $enroll_id];
-	        }
-	        // Fetch student
-	        $studentDetails = $this->db_model->select_data('*', 'students', $stud_cond, 1);
+	    // Get JSON input
+	    $data = json_decode(file_get_contents("php://input"), true);
+	    if (empty($data)) {
+	        $data = $this->input->post();
+	    }
 
-	        if (!empty($studentDetails)) {
-
-	            $student = $studentDetails[0];
-
-	            // Password check (MD5 + future support for password_hash)
-	            if ($student['password'] !== md5($password)) {
-	                echo json_encode([
-	                    'status' => 'false',
-	                    'msg' => 'Invalid password'
-	                ]);
-	                return;
-	            }
-
-	            // Status check
-	            if ($student['status'] != '1') {
-	                echo json_encode([
-	                    'status' => 'false',
-	                    'msg' => $this->lang->line('ltr_contact_to_admin_msg')
-	                ]);
-	                return;
-	            }
-
-	            // Batch details
-	            $batch_details = $this->db_model->select_data(
-	                'id,batch_name,batch_type',
-	                'batches',
-	                ['status' => 1, 'id' => $student['batch_id']],
-	                1
-	            );
-
-	            // Payment details
-	            $fee_details = $this->db_model->select_data(
-	                '*',
-	                'student_payment_history',
-	                [
-	                    'student_id' => $student['id'],
-	                    'batch_id'   => $student['batch_id']
-	                ],
-	                1
-	            );
-
-	            // UPDATED RESPONSE (Added location fields)
-	            $studentData = [
-	                'studentId'     => $student['id'],
-	                'userEmail'     => $student['email'],
-	                'fullName'      => $student['name'],
-	                'enrollmentId'  => $student['enrollment_id'],
-	                'image'         => base_url('uploads/students/') . $student['image'],
-	                'mobile'        => $student['contact_no'],
-	                'versionCode'   => $version,
-	                'batchId'       => $student['batch_id'],
-	                'batchName'     => !empty($batch_details) ? $batch_details[0]['batch_name'] : '',
-	                'adminId'       => $student['admin_id'],
-	                'paymentType'   => $this->general_settings('payment_type'),
-	                'admissionDate' => date('d-m-Y', strtotime($student['admission_date'])),
-	                'languageName'  => $this->general_settings('language_name'),
-	                'transactionId' => !empty($fee_details[0]['transaction_id']) ? $fee_details[0]['transaction_id'] : '',
-	                'amount'        => !empty($fee_details[0]['amount']) ? $fee_details[0]['amount'] : '',
-	                'country'       => $student['country'],
-	                'state'         => $student['state'],
-	                'city'          => $student['city'],
-	                'pincode'       => $student['pincode']
-	            ];
-
-	            // Update login info
-	            $this->db_model->update_data_limit(
-	                'students',
-	                [
-	                    'login_status' => 1,
-	                    'app_version'  => $version,
-	                    'token'        => $token
-	                ],
-	                ['id' => $student['id']],
-	                1
-	            );
-
-	            echo json_encode([
-	                'studentData' => $studentData,
-	                'status' => 'true',
-	                'msg' => $this->lang->line('ltr_welcome') . ' ' . $student['name']
-	            ]);
-
-	        } else {
-	            echo json_encode([
-	                'status' => 'false',
-	                'msg' => $this->lang->line('ltr_invalid_c')
-	            ]);
-	        }
-
-	    } else {
+	    // ==============================
+	    // 			 VALIDATION
+	    // ==============================
+	    if (
+	        empty($data['username']) ||
+	        empty($data['password']) ||
+	        empty($data['user_type'])
+	    ) {
 	        echo json_encode([
 	            'status' => 'false',
-	            'msg' => $this->lang->line('ltr_missing_parameters_msg')
+	            'msg' => 'Email, password & user_type required'
 	        ]);
+	        return;
 	    }
+
+	    $email     = trim($data['username']);
+	    $password  = trim($data['password']);
+	    $user_type = strtolower(trim($data['user_type']));
+
+	    $device_token = $data['device_token'] ?? '';
+
+	    // ==============================
+	    // 			 STUDENT LOGIN
+	    // ==============================
+	    if ($user_type == 'student') {
+
+	        $student = $this->db_model->select_data('*', 'students', ['email' => $email], 1);
+
+	        if (empty($student)) {
+	            echo json_encode(['status' => 'false', 'msg' => 'Student not found']);
+	            return;
+	        }
+
+	        $student = $student[0];
+
+	        // VERIFY PASSWORD
+	        if (!password_verify($password, $student['password'])) {
+	            echo json_encode(['status' => 'false', 'msg' => 'Invalid password']);
+	            return;
+	        }
+
+	        // UPDATE LOGIN STATUS
+	        $this->db_model->update_data_limit('students', [
+	            'login_status' => 1,
+	            'last_login_app' => date("Y-m-d H:i:s"),
+	            'token' => $device_token
+	        ], ['id' => $student['id']], 1);
+
+	        $response = [
+	            'userType'     => 'student',
+	            'studentId'    => $student['id'],
+	            'name'         => $student['name'],
+	            'email'        => $student['email'],
+	            'mobile'       => $student['contact_no'],
+	            'enrollmentId' => $student['enrollment_id'],
+	            'image'        => base_url('uploads/students/') . $student['image'],
+	            'batchId'      => $student['batch_id'],
+	            'adminId'      => $student['admin_id']
+	        ];
+	    }
+
+	    // ==============================
+	    // 	 TEACHER / INSTITUTE LOGIN
+	    // ==============================
+	    else {
+
+	        $user = $this->db_model->select_data('*', 'users', [
+	            'email' => $email,
+	            'user_type' => $user_type
+	        ], 1);
+
+	        if (empty($user)) {
+	            echo json_encode(['status' => 'false', 'msg' => 'User not found']);
+	            return;
+	        }
+
+	        $user = $user[0];
+
+	        // VERIFY PASSWORD
+	        if (!password_verify($password, $user['password'])) {
+	            echo json_encode(['status' => 'false', 'msg' => 'Invalid password']);
+	            return;
+	        }
+
+	        // UPDATE LOGIN STATUS
+	        $this->db_model->update_data_limit('users', [
+	            'device_token' => $device_token,
+	            'updated_at'   => date("Y-m-d H:i:s")
+	        ], ['id' => $user['id']], 1);
+
+	        $response = [
+	            'userType' => $user['user_type'],
+	            'userId'   => $user['id'],
+	            'name'     => $user['name'],
+	            'email'    => $user['email'],
+	            'mobile'   => $user['mobile'],
+	            'image'    => base_url('uploads/users/') . $user['image'],
+	            'role'     => $user['role']
+	        ];
+	    }
+
+	    // ==============================
+	    // SUCCESS RESPONSE
+	    // ==============================
+	    echo json_encode([
+	        'status' => 'true',
+	        'msg' => 'Login successful',
+	        'data' => $response
+	    ]);
 	}
+   
 	function logout(){
         $data = $_REQUEST;
         if(isset($data['student_id'])){
@@ -289,313 +229,279 @@ class Home extends CI_Controller {
        	echo json_encode($arr);
     }
 	
-	/*function student_registration(){
-            $data = $_REQUEST;
-			$this->db_model->insert_data('temp_data',array('temp'=>json_encode($data)));
-			if(!empty($data['name']) && !empty($data['email']) && !empty($data['mobile'])){
-			    
-					$admin_ids =$this->db_model->select_data('id','users use index (id)',array('role'=>1),1)[0]['id'];
-					
-					$prevRecd = $this->db_model->select_data('id,admin_id','students',array('email'=>$data['email'], 'contact_no'=>$data['mobile']));
-						$adm_id =$this->db_model->select_data('*','batches use index (id)',array('id'=>$data['batch_id']),1);
-					if(empty($prevRecd)){
-						$siteData = array();
-						$siteData['word_for_enroll'] = $this->common->enrollWord;
-						if(!empty($adm_id)){
-						    $admin_id = $adm_id[0]['admin_id'];
-						}else{
-						     $admin_id = 0;
-						}
-						$data_arr['admin_id'] =$admin_id;      
-						$data_arr['login_status'] = 0;
-						$lastrecord = $this->db_model->select_data('id','students use index (id)',array('admin_id'=>$admin_id),1,array('id','desc'));             
-						if(!empty($lastrecord)){
-							$last_id = $lastrecord[0]['id'];
-						}else{
-							$last_id = 0;
-						}
-						
-						$password = $siteData['word_for_enroll'].$admin_id.$last_id.rand(1000,5000);
-						$enrolid = $siteData['word_for_enroll'].$admin_id.$last_id.rand(10,100);
-						$data_arr['name'] = $data['name'];
-						$data_arr['email'] = $data['email'];
-						$data_arr['batch_id'] = $data['batch_id'];
-						$data_arr['added_by'] = 'student';
-						$data_arr['status'] = 1;
-						$data_arr['enrollment_id'] = $enrolid;
-						$data_arr['password'] = md5($password);
-						$data_arr['admission_date'] = date('Y-m-d');
-						$data_arr['image']='student_img.png';
-						$data_arr['contact_no']=$this->input->post('mobile',TRUE);
-						//update app version and login status
-						$data_arr['login_status']= 1;
-						$data_arr['last_login_app']= date("Y-m-d H:i:s");
-						$data_arr['app_version']= !empty($data['versionCode'])? trim($data['versionCode']):'';
-						$data_arr['token']= !empty($data['token'])? trim($data['token']):'';
-					
-						$data_arr = $this->security->xss_clean($data_arr);
-				// 	die(); 
-						$ins = $this->db_model->insert_data('students',$data_arr);
-						if($ins){
-							
-							$studentData =$this->db_model->select_data('id as studentId,email as userEmail,name as fullName,enrollment_id as enrollmentId,contact_no as mobile,app_version as versionCode, batch_id as batchId,admin_id as adminId,admission_date as admissionDate, image, token','students use index (id)',array('id'=>$ins),1);
-							$studentData[0]['batchName']='';
-							$studentData[0]['image']= base_url('uploads/students/').$studentData[0]['image'];
-							$studentData[0]['password'] = $password;
-							$studentData[0]['paymentType'] = $this->general_settings('payment_type');
-							$studentData[0]['languageName'] = $this->general_settings('language_name');
-							
-							 //check batch type
-							$batch_type =$this->db_model->select_data('*','batches use index (id)',array('id'=>$data['batch_id']),1);
-        				    if(!empty($batch_type)){
-            				    $admin_ids = $batch_type[0]['admin_id'];
-        				    }else{
-        				            $admin_ids = 0;
-        				    }
-        				    if($batch_type[0]['batch_type']==2){
-        				        $studentData[0]['batchName']= $batch_type[0]['batch_name'];
-    							$data_pay=array(
-    							          'student_id'=>$ins,
-    								      'batch_id'=>$data['batch_id'],
-    									  'transaction_id'=> !empty($data['transaction_id'])?$data['transaction_id']:'',
-										  'amount'=> !empty($data['amount'])?$data['amount']:'',
-										  'admin_id'=>$admin_ids,
-								        );
-    							$data_pay = $this->security->xss_clean($data_pay);
-    							$insf = $this->db_model->insert_data('student_payment_history',$data_pay);
-            					$studentData[0]['transactionId'] = !empty($data['transaction_id'])?$data['transaction_id']:'';
-            					
-            				    $studentData[0]['amount'] = !empty($data['amount'])?$data['amount']:'';
-        				    	$this->db_model->update_data_limit('students use index (id)',array('payment_status'=>1),array('id'=>$ins),1);
-            				}else{
-            				    $studentData[0]['batchName']= $batch_type[0]['batch_name'];
-        				    	$studentData[0]['transactionId'] = 'free';
-        				    	$studentData[0]['amount'] = !empty($amount)?$amount:'';
-        				}
-        				    
-						$arr = array('status'=>'true', 'msg' =>$this->lang->line('ltr_account_created'),'studentData'=>$studentData[0]);
-				    	//batch asin
-							if(!empty($data['batch_id']) && $data['batch_id']>0){
-						    $data_batch= array(
-						                 'student_id'=>$ins,
-						                 'batch_id'=>$data['batch_id'],
-						                 'added_by'=>'student',
-						                 'admin_id'=>$admin_ids,
-	        					                 );
-					 	   $this->db_model->insert_data('sudent_batchs',$data_batch);
-						}
-					    // send email 
-					    $title = $this->db_model->select_data('site_title','site_details','',1,array('id','desc'))[0]['site_title'];
-                        $subj = $title.'- '.$this->lang->line('ltr_credentials');
-                        $em_msg = $this->lang->line('ltr_hey').' '.ucwords($data['name']).', '.$this->lang->line('ltr_congratulation').' <br/><br/>'.$this->lang->line('ltr_successfully_enrolled').'<br/><br/>'.$this->lang->line('ltr_login_details').'<br/><br/> '.$this->lang->line('ltr_enrolment_id').' : '.$enrolid.'<br/><br/>'.$this->lang->line('ltr_password').' : '.$password.'';
-                        $this->SendMail($data['email'], $subj, $em_msg);
-                              
-						}
-					}else{
-				
-                	$arr = array(
-					'status'=>'false',
-					'msg'=>$this->lang->line('ltr_email_already_msg')
-				);           
-                          
-					}
-				
+	public function multi_user_registration()
+	{
+	    // Get JSON input
+	    $data = json_decode(file_get_contents("php://input"), true);
+	    if (empty($data)) {
+	        $data = $this->input->post();
+	    }
+
+	    // Debug log (optional)
+	    $this->db_model->insert_data('temp_data', ['temp' => json_encode($data)]);
+
+	    // ==============================
+	    // 		 VALIDATION
+	    // ==============================
+	    if (
+	        empty($data['name']) ||
+	        empty($data['email']) ||
+	        empty($data['mobile']) ||
+	        empty($data['user_type']) ||
+	        empty($data['password'])
+	    ) {
+	        echo json_encode([
+	            'status' => 'false',
+	            'msg' => 'Missing required parameters'
+	        ]);
+	        return;
+	    }
+
+	    $user_type = strtolower(trim($data['user_type']));
+
+	    if (!in_array($user_type, ['student', 'teacher', 'institute'])) {
+	        echo json_encode([
+	            'status' => 'false',
+	            'msg' => 'Invalid user type'
+	        ]);
+	        return;
+	    }
+
+	    // ==============================
+	    // 		 COMMON DATA
+	    // ==============================
+	    $name        = trim($data['name']);
+	    $email       = trim($data['email']);
+	    $mobile      = trim($data['mobile']);
+	    $password    = trim($data['password']);
+	    $batch_id    = !empty($data['batch_id']) ? (int)$data['batch_id'] : 0;
+
+	    $country     = $data['country'] ?? '';
+	    $state       = $data['state'] ?? '';
+	    $city        = $data['city'] ?? '';
+	    $pincode     = $data['pincode'] ?? '';
+
+	    $device_id   = $data['device_id'] ?? '';
+	    $device_token= $data['device_token'] ?? '';
+	    $device_type = $data['device_type'] ?? '';
+
+	    // Secure password
+	    $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+
+	    $this->db->trans_start();
+
+	    $isNewUser = false;
+	    $insert_id = 0;
+
+	    // =====================================================
+	    // 		 STUDENT TABLE (CHECK ONLY STUDENTS TABLE)
+	    // =====================================================
+	    if ($user_type == 'student') {
+
+	        if (empty($batch_id)) {
+	            echo json_encode([
+	                'status' => 'false',
+	                'msg' => 'Batch ID required for student'
+	            ]);
+	            return;
+	        }
+
+	        $existingStudent = $this->db_model->select_data('*', 'students', ['email' => $email], 1);
+
+	        if (!empty($existingStudent)) {
+
+	            // UPDATE STUDENT
+	            $student = $existingStudent[0];
+	            $insert_id = $student['id'];
+
+	            $updateData = [
+	                'name'           => $name,
+	                'contact_no'     => $mobile,
+	                'country'        => $country,
+	                'state'          => $state,
+	                'city'           => $city,
+	                'pincode'        => $pincode,
+	                'login_status'   => 1,
+	                'last_login_app' => date("Y-m-d H:i:s"),
+	                'token'          => $device_token,
+	                'password'       => $hashedPassword
+	            ];
+
+	            $this->db_model->update_data_limit(
+	                'students',
+	                $this->security->xss_clean($updateData),
+	                ['id' => $insert_id],
+	                1
+	            );
+
+	        } else {
+
+	            // INSERT STUDENT (even if exists in users table)
+	            $isNewUser = true;
+
+	            $batch = $this->db_model->select_data('*', 'batches', ['id' => $batch_id], 1);
+	            $admin_id = !empty($batch) ? $batch[0]['admin_id'] : 0;
+
+	            $enrolid = "ENR" . $admin_id . rand(100, 999);
+
+	            $studentData = [
+	                'admin_id'        => $admin_id,
+	                'name'            => $name,
+	                'email'           => $email,
+	                'batch_id'        => $batch_id,
+	                'added_by'        => 'student',
+	                'status'          => 1,
+	                'enrollment_id'   => $enrolid,
+	                'password'        => $hashedPassword,
+	                'admission_date'  => date('Y-m-d'),
+	                'image'           => 'student_img.png',
+	                'contact_no'      => $mobile,
+	                'login_status'    => 1,
+	                'last_login_app'  => date("Y-m-d H:i:s"),
+	                'country'         => $country,
+	                'state'           => $state,
+	                'city'            => $city,
+	                'pincode'         => $pincode
+	            ];
+
+	            $insert_id = $this->db_model->insert_data(
+	                'students',
+	                $this->security->xss_clean($studentData)
+	            );
+	        }
+
+	        $student = $this->db_model->select_data('*', 'students', ['id' => $insert_id], 1)[0];
+
+	        $response = [
+	            'userType'     => 'student',
+	            'studentId'    => $student['id'],
+	            'name'         => $student['name'],
+	            'email'        => $student['email'],
+	            'mobile'       => $student['contact_no'],
+	            'enrollmentId' => $student['enrollment_id'],
+	            'image'        => base_url('uploads/students/') . $student['image'],
+	            'batchId'      => $student['batch_id'],
+	            'adminId'      => $student['admin_id'],
+	            'country'      => $student['country'],
+	            'state'        => $student['state'],
+	            'city'         => $student['city'],
+	            'pincode'      => $student['pincode']
+	        ];
+	    }
+
+	    // =====================================================
+	    // 		 USERS TABLE (CHECK ONLY USERS TABLE)
+	    // =====================================================
+	    else {
+
+	        $role = ($user_type == 'teacher') ? 3 : 4;
+
+	        $existingUser = $this->db_model->select_data('*', 'users', ['email' => $email], 1);
+
+	        if (!empty($existingUser)) {
+
+	            // UPDATE USER (user_type NOT changed)
+	            $user = $existingUser[0];
+	            $insert_id = $user['id'];
+
+	            $updateData = [
+	                'name'         => $name,
+	                'mobile'       => $mobile,
+	                'role'         => $role,
+	                'device_id'    => $device_id,
+	                'device_token' => $device_token,
+	                'device_type'  => $device_type,
+	                'country'      => $country,
+	                'state'        => $state,
+	                'city'         => $city,
+	                'pincode'      => $pincode,
+	                'password'     => $hashedPassword,
+	                'updated_at'   => date('Y-m-d H:i:s')
+	            ];
+
+	            $this->db_model->update_data_limit(
+	                'users',
+	                $this->security->xss_clean($updateData),
+	                ['id' => $insert_id],
+	                1
+	            );
+
+	        } else {
+
+	            // INSERT USER (even if exists in students table)
+	            $isNewUser = true;
+
+	            $userData = [
+	                'name'         => $name,
+	                'email'        => $email,
+	                'mobile'       => $mobile,
+	                'user_type'    => $user_type,
+	                'role'         => $role,
+	                'password'     => $hashedPassword,
+	                'status'       => 1,
+	                'image'        => 'default.png',
+	                'device_id'    => $device_id,
+	                'device_token' => $device_token,
+	                'device_type'  => $device_type,
+	                'country'      => $country,
+	                'state'        => $state,
+	                'city'         => $city,
+	                'pincode'      => $pincode,
+	                'created_at'   => date('Y-m-d H:i:s')
+	            ];
+
+	            $insert_id = $this->db_model->insert_data(
+	                'users',
+	                $this->security->xss_clean($userData)
+	            );
+	        }
+
+	        $user = $this->db_model->select_data('*', 'users', ['id' => $insert_id], 1)[0];
+
+	        $response = [
+	            'userType' => $user['user_type'],
+	            'userId'   => $user['id'],
+	            'name'     => $user['name'],
+	            'email'    => $user['email'],
+	            'mobile'   => $user['mobile'],
+	            'image'    => base_url('uploads/users/') . $user['image'],
+	            'role'     => $user['role'],
+	            'country'  => $user['country'],
+	            'state'    => $user['state'],
+	            'city'     => $user['city'],
+	            'pincode'  => $user['pincode']
+	        ];
+	    }
+
+	    // ==============================
+	    // 		 FINAL RESPONSE
+	    // ==============================
+	    if (!$insert_id) {
+	        $this->db->trans_rollback();
+	        echo json_encode(['status' => 'false', 'msg' => 'Operation failed']);
+	        return;
+	    }
+
+	    $this->db->trans_complete();
+
+	    echo json_encode([
+	        'status' => 'true',
+	        'msg' => $isNewUser ? 'Registered successfully' : 'Profile updated successfully',
+	        'data' => $response
+	    ]);
+	}
+
+	function checkLanguage(){
+		  
+		$language =$this->general_settings('language_name');
+		if(!empty($language)){
+				$arr = array('status'=>'true', 'msg' =>$this->lang->line('ltr_fetch_successfully'),'languageName'=>$language);
 				
 			}else{
-				$arr = array(
-					'status'=>'false',
-					'msg'=>$this->lang->line('ltr_missing_parameters_msg')
-				); 
+				$arr = array('status'=>'false', 'msg' => $this->lang->line('ltr_no_record_msg')); 
 			}
-			echo json_encode($arr);
-		}*/
-		public function student_registration()
-		{
-		    $data = $this->input->post();
-		    $this->db_model->insert_data('temp_data', ['temp' => json_encode($data)]);
-
-		    // Validation
-		    if (empty($data['name']) || empty($data['email']) || empty($data['mobile'])) {
-		        echo json_encode([
-		            'status' => 'false',
-		            'msg' => $this->lang->line('ltr_missing_parameters_msg')
-		        ]);
-		        return;
-		    }
-
-		    $name     = trim($data['name']);
-		    $email    = trim($data['email']);
-		    $mobile   = trim($data['mobile']);
-		    $batch_id = !empty($data['batch_id']) ? (int)$data['batch_id'] : 0;
-		    $country  = !empty($data['country']) ? trim($data['country']) : '';
-		    $state    = !empty($data['state']) ? trim($data['state']) : '';
-		    $city     = !empty($data['city']) ? trim($data['city']) : '';
-		    $pincode  = !empty($data['pincode']) ? trim($data['pincode']) : '';
-
-		    // Check existing user
-		    $prevRecd = $this->db_model->select_data(
-		        'id',
-		        'students',
-		        ['email' => $email, 'contact_no' => $mobile]
-		    );
-
-		    if (!empty($prevRecd)) {
-		        echo json_encode([
-		            'status' => 'false',
-		            'msg' => $this->lang->line('ltr_email_already_msg')
-		        ]);
-		        return;
-		    }
-
-		    $this->db->trans_start();
-
-		    // Get batch
-		    $batch = $this->db_model->select_data('*', 'batches', ['id' => $batch_id], 1);
-		    $admin_id = !empty($batch) ? $batch[0]['admin_id'] : 0;
-
-		    // Generate IDs
-		    $prefix = $this->common->enrollWord;
-
-		    $lastrecord = $this->db_model->select_data(
-		        'id',
-		        'students',
-		        ['admin_id' => $admin_id],
-		        1,
-		        ['id', 'desc']
-		    );
-
-		    $last_id = !empty($lastrecord) ? $lastrecord[0]['id'] : 0;
-
-		    $plainPassword = $prefix . $admin_id . $last_id . rand(1000, 9999);
-		    $enrolid       = $prefix . $admin_id . $last_id . rand(10, 99);
-
-		    $hashedPassword = md5($plainPassword);
-
-		    // INSERT 
-		    $studentDataInsert = [
-		        'admin_id'        => $admin_id,
-		        'name'            => $name,
-		        'email'           => $email,
-		        'batch_id'        => $batch_id,
-		        'added_by'        => 'student',
-		        'status'          => 1,
-		        'enrollment_id'   => $enrolid,
-		        'password'        => $hashedPassword,
-		        'admission_date'  => date('Y-m-d'),
-		        'image'           => 'student_img.png',
-		        'contact_no'      => $mobile,
-		        'login_status'    => 1,
-		        'last_login_app'  => date("Y-m-d H:i:s"),
-		        'app_version'     => !empty($data['versionCode']) ? trim($data['versionCode']) : '',
-		        'token'           => !empty($data['token']) ? trim($data['token']) : '',
-		        'country'         => $country,
-		        'state'           => $state,
-		        'city'            => $city,
-		        'pincode'         => $pincode
-		    ];
-
-		    $studentDataInsert = $this->security->xss_clean($studentDataInsert);
-
-		    $student_id = $this->db_model->insert_data('students', $studentDataInsert);
-
-		    if (!$student_id) {
-		        $this->db->trans_rollback();
-		        echo json_encode(['status' => 'false', 'msg' => 'Registration failed']);
-		        return;
-		    }
-
-		    // Payment
-		    $transactionId = '';
-		    $amount = '';
-
-		    if (!empty($batch) && $batch[0]['batch_type'] == 2) {
-		        $transactionId = !empty($data['transaction_id']) ? $data['transaction_id'] : '';
-		        $amount        = !empty($data['amount']) ? $data['amount'] : '';
-
-		        $paymentData = [
-		            'student_id'     => $student_id,
-		            'batch_id'       => $batch_id,
-		            'transaction_id' => $transactionId,
-		            'amount'         => $amount,
-		            'admin_id'       => $admin_id
-		        ];
-
-		        $this->db_model->insert_data('student_payment_history', $this->security->xss_clean($paymentData));
-
-		        $this->db_model->update_data_limit(
-		            'students',
-		            ['payment_status' => 1],
-		            ['id' => $student_id],
-		            1
-		        );
-		    } else {
-		        $transactionId = 'free';
-		    }
-
-		    // Assign batch
-		    if ($batch_id > 0) {
-		        $this->db_model->insert_data('sudent_batchs', [
-		            'student_id' => $student_id,
-		            'batch_id'   => $batch_id,
-		            'added_by'   => 'student',
-		            'admin_id'   => $admin_id
-		        ]);
-		    }
-
-		    $this->db->trans_complete();
-
-		    // Response
-		    $response = [
-		        'studentId'     => $student_id,
-		        'userEmail'     => $email,
-		        'fullName'      => $name,
-		        'enrollmentId'  => $enrolid,
-		        'mobile'        => $mobile,
-		        'image'         => base_url('uploads/students/student_img.png'),
-		        'batchId'       => $batch_id,
-		        'batchName'     => !empty($batch) ? $batch[0]['batch_name'] : '',
-		        'adminId'       => $admin_id,
-		        'admissionDate' => date('d-m-Y'),
-		        'transactionId' => $transactionId,
-		        'amount'        => $amount,
-		        'paymentType'   => $this->general_settings('payment_type'),
-		        'languageName'  => $this->general_settings('language_name'),
-		        'country'       => $country,
-		        'state'         => $state,
-		        'city'          => $city,
-		        'pincode'       => $pincode,
-		        'password'      => $plainPassword
-		    ];
-
-		    // Email
-		    $title = $this->db_model->select_data('site_title', 'site_details', '', 1)[0]['site_title'];
-		    $subject = $title . ' - ' . $this->lang->line('ltr_credentials');
-
-		    $message = "Hello {$name},<br><br>
-		                Your account has been created successfully.<br><br>
-		                Enrollment ID: {$enrolid}<br>
-		                Password: {$plainPassword}";
-
-		    $this->SendMail($email, $subject, $message);
-
-		    echo json_encode([
-		        'status' => 'true',
-		        'msg' => $this->lang->line('ltr_account_created'),
-		        'studentData' => $response
-		    ]);
-		}
-
-		function checkLanguage(){
-		  
-			$language =$this->general_settings('language_name');
-			if(!empty($language)){
-					$arr = array('status'=>'true', 'msg' =>$this->lang->line('ltr_fetch_successfully'),'languageName'=>$language);
-					
-				}else{
-					$arr = array('status'=>'false', 'msg' => $this->lang->line('ltr_no_record_msg')); 
-				}
-			echo json_encode($arr);
-		}
+		echo json_encode($arr);
+	}
 
     function get_batch_fee(){
        
