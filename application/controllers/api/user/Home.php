@@ -3476,4 +3476,141 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
         echo json_encode($arr,JSON_UNESCAPED_SLASHES);
         die;
     }
+
+    // GET OTP
+    public function send_otp() {
+	    // Get JSON input
+	    $data = json_decode(file_get_contents("php://input"), true);
+	    if (empty($data)) {
+	        $data = $this->input->post();
+	    }
+
+	    // Sanitize inputs
+	    $name       = isset($data['name']) ? trim($data['name']) : '';
+	    $email      = isset($data['email']) ? trim($data['email']) : '';
+	    $mobile     = isset($data['mobile']) ? trim($data['mobile']) : '';
+	    $user_type  = isset($data['user_type']) ? strtolower(trim($data['user_type'])) : '';
+
+	    // Validate required fields
+	    if (empty($mobile)) {
+	        echo json_encode([
+	            "status" => false,
+	            "msg" => "Mobile number required"
+	        ]);
+	        return;
+	    }
+
+	    if (empty($user_type)) {
+	        echo json_encode([
+	            "status" => false,
+	            "msg" => "User type required (student/teacher/institute)"
+	        ]);
+	        return;
+	    }
+
+	    // Optional: validate mobile format
+	    if (!preg_match('/^[0-9]{10}$/', $mobile)) {
+	        echo json_encode([
+	            "status" => false,
+	            "msg" => "Invalid mobile number"
+	        ]);
+	        return;
+	    }
+
+	    // Generate OTP
+	    $otp = rand(1000, 9999);
+
+	    // Check if user exists
+	    $user = $this->db_model->get_user_by_mobile($mobile, $user_type);
+
+	    if ($user) {
+	        // Update OTP
+	        $this->db_model->update_otp($mobile, $otp, $user_type);
+	    } else {
+		    if ($user_type === 'student') {
+		        // Insert into students table
+		        $this->db_model->create_user($name, $email, $mobile, $otp);
+		    } else {
+		        // Insert into users table (teacher / institute)
+		        $this->db_model->create_user($name, $email, $mobile, $otp);
+		    }
+		}
+
+	    // TODO: Integrate SMS API here
+
+	    echo json_encode([
+	        "status" => true,
+	        "msg" => "OTP sent successfully",
+	        "data" => [
+	            "mobile" => $mobile,
+	            "user_type" => $user_type
+	        ],
+	        "otp" => $otp // remove in production
+	    ]);
+	}
+
+    // Verify OTP
+    public function verify_otp()
+	{
+	    // Get JSON input
+	    $data = json_decode(file_get_contents("php://input"), true);
+	    if (empty($data)) {
+	        $data = $this->input->post();
+	    }
+
+	    $mobile    = isset($data['mobile']) ? trim($data['mobile']) : '';
+	    $otp       = isset($data['otp']) ? trim($data['otp']) : '';
+	    $user_type = isset($data['user_type']) ? strtolower(trim($data['user_type'])) : '';
+
+	    // Validation
+	    if (empty($mobile) || empty($otp)) {
+	        echo json_encode([
+	            "status" => false,
+	            "msg" => "Mobile & OTP required"
+	        ]);
+	        return;
+	    }
+
+	    if (empty($user_type)) {
+	        echo json_encode([
+	            "status" => false,
+	            "msg" => "User type required"
+	        ]);
+	        return;
+	    }
+
+	    $user = $this->db_model->verify_otp($mobile, $otp, $user_type);
+	    //echo "<pre>";print_r($user);
+	    if ($user) {
+	        $this->db_model->otp_verified($mobile, $otp, $user_type);
+	        echo json_encode([
+	            "status" => true,
+	            "msg" => "Login successful",
+	            "data" => [
+	                "id" => $user->id,
+	                "name" => $user->name,
+	                "email" => $user->email,
+	                "mobile" => $user->mobile,
+	                "address" => $user->address,
+	                "country" => $user->country,
+	                "state" => $user->state,
+	                "city" => $user->city,
+	                "pincode" => $user->pincode,
+	                "device_id" => $user->device_id,
+	                "device_token" => $user->device_token,
+	                "device_type" => $user->device_type,
+	                "school_college_name" => $user->school_college_name,
+	                "grade" => $user->grade,
+	                "user_type" => $user_type
+	            ]
+	        ]);
+
+	    } else {
+
+	        echo json_encode([
+	            "status" => false,
+	            "msg" => "Invalid OTP"
+	        ]);
+	    }
+	}
 }

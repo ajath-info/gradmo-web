@@ -334,5 +334,73 @@ class Db_model extends CI_Model {
 	    $this->db->query("SET sql_mode='NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'");
 	
 	}
+
+	function get_user_by_mobile($mobile, $user_type) {
+	    $table = ($user_type === 'student') ? 'students' : 'users';
+	    return $this->db
+	        ->where('mobile', $mobile)
+	        ->get($table)
+	        ->row();
+	}
+
+    function create_user($name, $email, $mobile, $otp) {
+        return $this->db->insert('students', [
+            'name' => $name,
+            'email' => $email,
+            'mobile' => $mobile,
+            'otp' => $otp
+        ]);
+    }
+
+    function update_otp($mobile, $otp, $user_type) {
+	    $table = ($user_type === 'student') ? 'students' : 'users';
+	    return $this->db
+	        ->where('mobile', $mobile)
+	        ->update($table, ['otp' => $otp]);
+	}
+
+    function verify_otp($mobile, $otp, $user_type) {
+	    $table = ($user_type === 'student') ? 'students' : 'users';
+	    $user = $this->db
+	        ->where('mobile', $mobile)
+	        ->where('otp', $otp)
+	        ->get($table)
+	        ->row();
+	    if ($user) {
+	        $this->db
+	            ->where('mobile', $mobile)
+	            ->update($table, ['is_verified' => 1]);
+	    }
+
+	    return $user;
+	}
+	function otp_verified($mobile, $otp, $user_type)
+	{
+	    // Decide table
+	    $table = ($user_type === 'student') ? 'students' : 'users';
+	    // Build query
+	    $this->db->where('mobile', $mobile);
+	    $this->db->where('otp', $otp);
+	    // Extra safety for users table
+	    if ($user_type !== 'student') {
+	        $this->db->where('user_type', $user_type);
+	    }
+	    $user = $this->db->get($table)->row();
+	    if ($user) {
+	        // Update verification status
+	        $this->db
+	            ->where('mobile', $mobile)
+	            ->update($table, [
+	                'is_verified' => 1,
+	                'otp' => null,
+	                'updated_at' => date('Y-m-d H:i:s')
+	            ]);
+
+	        return $user;
+
+	    } else {
+	        return false;
+	    }
+	}
 	
 }

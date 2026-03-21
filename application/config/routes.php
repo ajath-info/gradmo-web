@@ -248,3 +248,5 @@ $route['class-start/(:any)'] = 'student_profile/JetsiMeeting/$1';
 /* API For Android and IOS */
 $route['api/user/login'] = 'api/user/home/multi_user_login';
 $route['api/user/signup'] = 'api/user/home/multi_user_registration';
+$route['api/user/send-otp'] = 'api/user/home/send_otp';
+$route['api/user/verify-otp'] = 'api/user/home/verify_otp';
