@@ -1,0 +1,53 @@
+# --- Environment & secrets ---
+.env
+.env.*
+!.env.example
+application/config/database.php
+
+# --- CodeIgniter (runtime) ---
+application/cache/*
+!application/cache/index.html
+application/logs/*
+!application/logs/index.html
+
+# --- Composer (project root; third_party libs stay tracked) ---
+/vendor/
+
+# --- Node (e.g. liveclassdemo/CDN) ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- User uploads (recursive; tracked files stay in git) ---
+# Remove if you want new files under uploads/ committed.
+/uploads/**
+
+# --- PHP / tooling ---
+*.log
+.phpunit.result.cache
+.php-cs-fixer.cache
+coverage/
+*.cache
+
+# --- OS ---
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# --- Editors / IDEs ---
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+
+# --- Build / archives ---
+*.zip
+*.tar
+*.tar.gz
+system/cache/

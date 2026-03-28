@@ -287,11 +287,17 @@ $condN = "admin_id = $admin_id AND teacher_id = $teacher_id AND status = 1 AND r
 $notice_count = $this->db_model->countAll('notices use index(id)',$condN);
 $logo = current($this->db_model->select_data('*','users use index (id)',array('id'=>$admin_id)));
     $lastrecord = current($this->db_model->select_data('access','users',array('id' => $this->session->userdata('uid')),1,array('id','desc')));
-    //  print_r($lastrecord);
-    if(isset($lastrecord['access']))
-    $access = json_decode($lastrecord['access']);
-   
-  
+    $access = null;
+    if (is_array($lastrecord) && ! empty($lastrecord['access'])) {
+        $access = json_decode($lastrecord['access']);
+    }
+    if ( ! is_object($access)) {
+        $access = new stdClass();
+    }
+
+if ( ! is_array($cur_arr)) {
+    $cur_arr = array();
+}
 ?>
 <div class="edu_header_sidebar">
     <header class="edu_left_header">
@@ -334,7 +340,7 @@ $logo = current($this->db_model->select_data('*','users use index (id)',array('i
                      </li>
                         <?php if($this->session->userdata['super_admin']==1){ ?>
                             
-                            <li <?php echo in_array("manage-admin",$cur_arr)?'class="active"':'';?>><a href="<?php echo base_url().$profile;?>admin/manage-admin">
+                            <li <?php echo in_array("manage-admin",$cur_arr)?'class="active"':'';?>><a href="<?php echo base_url();?>admin/manage-admin">
                             
                             <svg id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 15.17 14.16"><defs><style>.cls-1{fill:#4d4a81;}</style></defs><title>Search results for Multiple users - Flaticon-2</title><path  d="M3.45,5a1.94,1.94,0,0,0,1.43-.6,2,2,0,0,0,.59-1.43,2,2,0,0,0-.59-1.43A2,2,0,0,0,3.45.92,2,2,0,0,0,2,1.51a2,2,0,0,0-.59,1.43A1.92,1.92,0,0,0,2,4.37,1.93,1.93,0,0,0,3.45,5Z" transform="translate(-0.42 -0.92)"/><path  d="M5.85,8.12A2.91,2.91,0,0,0,8,9a2.91,2.91,0,0,0,2.15-.89A2.92,2.92,0,0,0,11,6a3,3,0,0,0-3-3A3,3,0,0,0,5,6,2.91,2.91,0,0,0,5.85,8.12Z" transform="translate(-0.42 -0.92)"/><path  d="M12.55,5A1.93,1.93,0,0,0,14,4.37a1.92,1.92,0,0,0,.59-1.43A2,2,0,0,0,14,1.51a2,2,0,0,0-2.86,0,2,2,0,0,0-.59,1.43,2,2,0,0,0,.59,1.43A1.94,1.94,0,0,0,12.55,5Z" transform="translate(-0.42 -0.92)"/><path  d="M14.6,5a1.46,1.46,0,0,0-.34.16,6,6,0,0,1-.77.34,2.83,2.83,0,0,1-.94.17,3.22,3.22,0,0,1-1.05-.18,3.28,3.28,0,0,1,0,.52,3.46,3.46,0,0,1-.64,2A2.72,2.72,0,0,1,13,9h1.06a1.83,1.83,0,0,0,1.09-.32,1.05,1.05,0,0,0,.44-.93C15.58,5.9,15.26,5,14.6,5Z" transform="translate(-0.42 -0.92)"/><path  d="M13.42,11.35a5.28,5.28,0,0,0-.21-.85,3.72,3.72,0,0,0-.33-.77,3,3,0,0,0-.49-.64,2.13,2.13,0,0,0-.68-.43,2.5,2.5,0,0,0-.88-.15.82.82,0,0,0-.34.17l-.58.37a3.32,3.32,0,0,1-.84.38,3.45,3.45,0,0,1-2.14,0,3.32,3.32,0,0,1-.84-.38l-.58-.37a.82.82,0,0,0-.34-.17,2.5,2.5,0,0,0-.88.15,2,2,0,0,0-.67.43,2.47,2.47,0,0,0-.49.64,3.29,3.29,0,0,0-.34.77,5.28,5.28,0,0,0-.21.85,5.75,5.75,0,0,0-.11.87q0,.39,0,.81A2,2,0,0,0,3,14.53a2.14,2.14,0,0,0,1.54.55h6.9A2.14,2.14,0,0,0,13,14.53a2,2,0,0,0,.57-1.5q0-.42,0-.81A5.75,5.75,0,0,0,13.42,11.35Z" transform="translate(-0.42 -0.92)"/><path  d="M5.1,8a3.46,3.46,0,0,1-.64-2,3.28,3.28,0,0,1,0-.52,3.22,3.22,0,0,1-1,.18,2.88,2.88,0,0,1-.94-.17,6,6,0,0,1-.77-.34A1.46,1.46,0,0,0,1.4,5c-.66,0-1,.93-1,2.79a1.05,1.05,0,0,0,.44.93A1.83,1.83,0,0,0,2,9H3A2.72,2.72,0,0,1,5.1,8Z" transform="translate(-0.42 -0.92)"/></svg>
                                 <span><?php echo html_escape($this->common->languageTranslator('ltr_manager_admin')); ?></span>
@@ -342,10 +348,9 @@ $logo = current($this->db_model->select_data('*','users use index (id)',array('i
                             </li>
                             
                  <?php  } ?>
-                <?php               
-                    if(isset($access->academics) || $this->session->userdata['super_admin']==1){
-                    if($access->academics == '1' || $this->session->userdata['super_admin']==1){ ?>
-                    <li class="has_sub_menu <?php echo (in_array("batch-manage",$cur_arr) || in_array("notice-manage",$cur_arr) || in_array("subject-manage",$cur_arr) || in_array("question-manage",$cur_arr)||in_array("question-manage",$cur_arr)||in_array("vacancy-manage",$cur_arr)||in_array("live-class",$cur_arr)||in_array("live-class-history",$cur_arr)||in_array("batch-cat-manage",$cur_arr)||in_array("batch-subcat-manage",$cur_arr || in_array("jetsi",$cur_arr)) )?'active':''; ?>">
+                <?php
+                    if (($this->session->userdata['super_admin'] == 1) || (isset($access->academics) && $access->academics == '1')) { ?>
+                    <li class="has_sub_menu <?php echo (in_array("batch-manage",$cur_arr) || in_array("notice-manage",$cur_arr) || in_array("subject-manage",$cur_arr) || in_array("question-manage",$cur_arr)||in_array("question-manage",$cur_arr)||in_array("vacancy-manage",$cur_arr)||in_array("live-class",$cur_arr)||in_array("live-class-history",$cur_arr)||in_array("batch-cat-manage",$cur_arr)||in_array("batch-subcat-manage",$cur_arr)||in_array("jetsi",$cur_arr) )?'active':''; ?>">
                         <a href="javascript:void(0);" class="">
                             <svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
                                  viewBox="0 0 30 30" enable-background="new 0 0 30 30" xml:space="preserve">
@@ -394,8 +399,7 @@ $logo = current($this->db_model->select_data('*','users use index (id)',array('i
                             <li <?php echo (in_array("live-class-history",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/live-class-history"><?php echo html_escape($this->common->languageTranslator('ltr_live_class_history'));?></a></li>
                         </ul>
                     </li>
-                    <?php }} if(isset($access->student_manage) || $this->session->userdata['super_admin']==1){
-                    if($access->student_manage == '1' || $this->session->userdata['super_admin']==1){ ?>
+                    <?php } if (($this->session->userdata['super_admin'] == 1) || (isset($access->student_manage) && $access->student_manage == '1')) { ?>
                     <li class="has_sub_menu <?php echo (in_array("add-student",$cur_arr) || in_array("student-manage",$cur_arr) || in_array("manage-student-leave",$cur_arr))?'active':''; ?>"><a href="javascript:void(0);">
                         <svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
                              viewBox="0 0 30 30" enable-background="new 0 0 30 30" xml:space="preserve">
@@ -442,8 +446,7 @@ $logo = current($this->db_model->select_data('*','users use index (id)',array('i
                             <li <?php echo (in_array("payment-history",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/payment-history"><?php echo html_escape($this->common->languageTranslator('ltr_payment_history'));?></a></li>
                         </ul> 
                     </li>
-                    <?php }}  if(isset($access->teacher_manager) || $this->session->userdata['super_admin']==1){
-                    if($access->teacher_manager == '1' || $this->session->userdata['super_admin']==1){ ?>
+                    <?php } if (($this->session->userdata['super_admin'] == 1) || (isset($access->teacher_manager) && $access->teacher_manager == '1')) { ?>
                     <li class="has_sub_menu <?php echo (in_array("extra-classes",$cur_arr) || in_array("teacher-manage",$cur_arr) || in_array("manage-teacher-leave",$cur_arr))?'active':''; ?>">
                         <a href="javascript:void(0);">
                             <svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
@@ -510,8 +513,7 @@ $logo = current($this->db_model->select_data('*','users use index (id)',array('i
                             <li <?php echo (in_array("manage-teacher-leave",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/manage-teacher-leave"><?php echo html_escape($this->common->languageTranslator('ltr_manage_teacher_leave'));?></a></li>
                         </ul>
                     </li>
-                    <?php }}  if(isset($access->library_manager) || $this->session->userdata['super_admin']==1){
-                    if($access->library_manager == '1' || $this->session->userdata['super_admin']==1){ ?>
+                    <?php } if (($this->session->userdata['super_admin'] == 1) || (isset($access->library_manager) && $access->library_manager == '1')) { ?>
                     <!--library section new-->
                     <li class="has_sub_menu <?php echo (in_array("book-manage",$cur_arr) || in_array("notes-manage",$cur_arr) || in_array("old-paper",$cur_arr))?'active':''; ?>">
                         <a href="javascript:void(0);">
@@ -607,8 +609,7 @@ $logo = current($this->db_model->select_data('*','users use index (id)',array('i
                             <li <?php echo (in_array("old-paper",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/old-paper"><?php echo html_escape($this->common->languageTranslator('ltr_old_papers'));?></a></li>
                         </ul>
                     </li>
-                    <?php }}  if(isset($access->exam) || $this->session->userdata['super_admin']==1){
-                    if($access->exam == '1' || $this->session->userdata['super_admin']==1){ ?>
+                    <?php } if (($this->session->userdata['super_admin'] == 1) || (isset($access->exam) && $access->exam == '1')) { ?>
                     <li class="has_sub_menu <?php echo (in_array("create-paper",$cur_arr) || in_array("exam-manage",$cur_arr) || in_array("mock-result",$cur_arr) || in_array("practice-result",$cur_arr))?'active':''; ?>">
                         <a href="javascript:void(0);" class="">
                             <svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
@@ -700,8 +701,7 @@ $logo = current($this->db_model->select_data('*','users use index (id)',array('i
                         
                         </ul>
                     </li> 
-                    <?php }} if(isset($access->gallary_manage) || $this->session->userdata['super_admin']==1){
-                    if($access->gallary_manage == '1' || $this->session->userdata['super_admin']==1){?>
+                    <?php } if (($this->session->userdata['super_admin'] == 1) || (isset($access->gallary_manage) && $access->gallary_manage == '1')) { ?>
                     <li <?php echo (in_array("gallery-manage",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/gallery-manage">
                         <svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
                              viewBox="0 0 58 58" style="enable-background:new 0 0 58 58;" xml:space="preserve">
@@ -720,8 +720,7 @@ $logo = current($this->db_model->select_data('*','users use index (id)',array('i
                         <span><?php echo html_escape($this->common->languageTranslator('ltr_gallery_manager'));?></span>
                         </a>
                     </li>
-                    <?php }} if(isset($access->video_lecture) || $this->session->userdata['super_admin']==1){
-                    if($access->video_lecture == '1' || $this->session->userdata['super_admin']==1){?>
+                    <?php } if (($this->session->userdata['super_admin'] == 1) || (isset($access->video_lecture) && $access->video_lecture == '1')) { ?>
                     <li <?php echo (in_array("video-manage",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/video-manage">
                         <svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
                              viewBox="0 0 30 30" enable-background="new 0 0 30 30" xml:space="preserve">
@@ -752,14 +751,12 @@ $logo = current($this->db_model->select_data('*','users use index (id)',array('i
                         <span><?php echo html_escape($this->common->languageTranslator('ltr_video_lecture_manager'));?></span>
                          </a>
                      </li>
-                     <?php }} if(isset($access->doubtsask) || $this->session->userdata['super_admin']==1){
-                    if($access->doubtsask == '1' || $this->session->userdata['super_admin']==1){  ?>
+                     <?php } if (($this->session->userdata['super_admin'] == 1) || (isset($access->doubtsask) && $access->doubtsask == '1')) { ?>
                       <li <?php echo in_array("doubts-classes",$cur_arr)?'class="active"':'';?>><a href="<?php echo base_url();?>admin/doubts-classes">
                         <svg id="Capa_1" enable-background="new 0 0 512 512" height="512" viewBox="0 0 512 512" width="512" xmlns="http://www.w3.org/2000/svg"><g><path d="m471.367 146.669h-108.468v-75.335c0-22.404-18.228-40.632-40.633-40.632h-281.633c-22.405 0-40.633 18.228-40.633 40.632v111.686c0 4.143 3.357 7.5 7.5 7.5s7.5-3.357 7.5-7.5v-111.686c0-14.134 11.499-25.632 25.633-25.632h281.634c14.134 0 25.633 11.498 25.633 25.632v198.803c0 14.134-11.498 25.633-25.632 25.633h-162.238c-4.218 0-8.182 1.643-11.16 4.622l-49.7 49.7c-.139.141-.372.37-.854.171-.483-.2-.483-.528-.483-.724v-37.986c0-8.703-7.081-15.783-15.784-15.783h-41.416c-14.134 0-25.633-11.499-25.633-25.633v-57.117c0-4.143-3.357-7.5-7.5-7.5s-7.5 3.357-7.5 7.5v57.117c0 22.405 18.228 40.633 40.633 40.633h41.416c.433 0 .784.352.784.783v37.986c0 6.406 3.824 12.13 9.743 14.581 1.965.815 4.02 1.21 6.056 1.21 4.1-.001 8.118-1.604 11.146-4.631l39.323-39.324v64.729c0 22.404 18.227 40.632 40.632 40.632h90.834c4.143 0 7.5-3.357 7.5-7.5s-3.357-7.5-7.5-7.5h-90.834c-14.134 0-25.632-11.498-25.632-25.632v-75.334h158.167c22.404 0 40.632-18.228 40.632-40.633v-108.468h108.468c14.134 0 25.633 11.499 25.633 25.633v198.803c0 14.134-11.499 25.632-25.633 25.632h-41.416c-8.703 0-15.784 7.08-15.784 15.783v37.986c0 .196 0 .523-.483.725-.48.2-.715-.03-.853-.171l-49.699-49.698c-2.98-2.982-6.944-4.625-11.161-4.625h-41.402c-4.143 0-7.5 3.357-7.5 7.5s3.357 7.5 7.5 7.5h41.402c.205 0 .406.083.553.23l49.7 49.7c3.027 3.026 7.046 4.631 11.146 4.631 2.035-.001 4.092-.396 6.056-1.21 5.919-2.451 9.743-8.175 9.743-14.582v-37.986c0-.432.352-.783.784-.783h41.416c22.405 0 40.633-18.228 40.633-40.632v-198.803c-.003-22.405-18.231-40.633-40.636-40.633z"/><path d="m231.934 352.97c0 13.271 10.796 24.066 24.066 24.066 13.271 0 24.066-10.796 24.066-24.066s-10.795-24.067-24.066-24.067c-13.27 0-24.066 10.796-24.066 24.067zm33.132 0c0 4.999-4.067 9.066-9.066 9.066s-9.066-4.067-9.066-9.066 4.067-9.066 9.066-9.066 9.066 4.067 9.066 9.066z"/><path d="m157.383 253.569c0 13.27 10.797 24.066 24.067 24.066 13.271 0 24.066-10.796 24.066-24.066 0-13.271-10.796-24.066-24.066-24.066s-24.067 10.796-24.067 24.066zm33.134 0c0 4.999-4.067 9.066-9.066 9.066-5 0-9.067-4.067-9.067-9.066s4.067-9.066 9.067-9.066c4.998 0 9.066 4.067 9.066 9.066z"/><path d="m205.517 172.937c21.462-9.945 34.639-32.09 32.994-55.905-1.95-28.296-24.759-51.105-53.052-53.058-15.796-1.094-31.485 4.463-43.033 15.242-11.552 10.781-18.177 26.024-18.177 41.82 0 13.271 10.797 24.066 24.067 24.066s24.066-10.796 24.066-24.066c0-2.578.998-4.871 2.885-6.632 1.854-1.729 4.302-2.58 6.877-2.411 4.306.297 8.05 4.042 8.347 8.352.273 3.948-1.979 7.602-5.604 9.09-16.709 6.861-27.505 23.073-27.505 41.302v16.566c0 13.271 10.796 24.067 24.066 24.067s24.067-10.797 24.067-24.067v-14.366zm-8.041-12.853c-4.228 1.735-6.959 5.917-6.959 10.652v16.566c0 5-4.067 9.067-9.067 9.067-4.999 0-9.066-4.067-9.066-9.067v-16.566c0-12.12 7.145-22.886 18.202-27.427 9.614-3.947 15.59-13.592 14.871-23.998-.806-11.689-10.592-21.477-22.289-22.283-.572-.039-1.141-.059-1.706-.059-6.142 0-11.921 2.263-16.426 6.467-4.935 4.604-7.652 10.855-7.652 17.6 0 4.999-4.067 9.066-9.066 9.066-5 0-9.067-4.067-9.067-9.066 0-11.653 4.889-22.9 13.411-30.855 8.518-7.952 20.078-12.059 31.766-11.242 20.863 1.438 37.682 18.259 39.12 39.125 1.256 18.212-9.222 35.1-26.072 42.02z"/><path d="m429.167 352.97c0-13.271-10.796-24.066-24.066-24.066s-24.066 10.796-24.066 24.066 10.796 24.066 24.066 24.066 24.066-10.796 24.066-24.066zm-33.133 0c0-4.999 4.067-9.066 9.066-9.066s9.066 4.067 9.066 9.066-4.067 9.066-9.066 9.066c-4.998 0-9.066-4.067-9.066-9.066z"/><path d="m330.551 377.036c13.27 0 24.066-10.796 24.066-24.066s-10.796-24.066-24.066-24.066c-13.271 0-24.067 10.796-24.067 24.066s10.796 24.066 24.067 24.066zm0-33.133c4.999 0 9.066 4.067 9.066 9.066s-4.067 9.066-9.066 9.066c-5 0-9.067-4.067-9.067-9.066s4.067-9.066 9.067-9.066z"/></g></svg>
                         <span><?php echo html_escape($this->common->languageTranslator('ltr_doubts_class')); ?></span>
                         </a></li>
-                     <?php }} if(isset($access->enquiry) || $this->session->userdata['super_admin']==1){
-                    if($access->enquiry == '1' || $this->session->userdata['super_admin']==1){  ?>
+                     <?php } if (($this->session->userdata['super_admin'] == 1) || (isset($access->enquiry) && $access->enquiry == '1')) { ?>
                     <li <?php echo (in_array("enquiry",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/enquiry">
                         <svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
                              viewBox="0 0 30 30" enable-background="new 0 0 30 30" xml:space="preserve">
@@ -808,7 +805,7 @@ $logo = current($this->db_model->select_data('*','users use index (id)',array('i
                         <span><?php echo html_escape($this->common->languageTranslator('ltr_enquiry'));?></span>
                         </a>
                      </li>
-                     <?php }} 
+                     <?php }
                      if($_SESSION['super_admin']==1){?>
                     <li <?php echo (in_array("timezone",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/timezone">
                         <svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
