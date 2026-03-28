@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+application/config/database.php
 
 # --- CodeIgniter (runtime) ---
 application/cache/*
@@ -49,3 +50,4 @@ $RECYCLE.BIN/
 *.zip
 *.tar
 *.tar.gz
+system/cache/
