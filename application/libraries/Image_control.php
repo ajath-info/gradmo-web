@@ -1,7 +1,7 @@
 <?php
 defined('BASEPATH') OR exit('No direct script access allowed');
 class image_control{ 
-	function __Construct(){
+	function __construct(){
 		$this->CI = get_instance();
 	}	
 	# function For upload images

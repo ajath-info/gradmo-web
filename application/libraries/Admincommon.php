@@ -2,13 +2,14 @@
 defined('BASEPATH') OR exit('No direct script access allowed');
 
 class Admincommon{ 	
-	function __Construct(){
+	function __construct(){
 		$this->CI = get_instance();
 		$this->CI->load->model('db_model');
 	}
 	    
-	function admin_dashboard($uid,$s_admin,$role){ 
-	    if($s_admin==1 && $role=1){
+	function admin_dashboard($uid,$s_admin,$role){
+		$like1 = '';
+	    if($s_admin==1 && $role==1){
 	        $conds = array('admin_id'=>$uid,'student_id !='=>0);
 	        $condt = array('admin_id'=>$uid,'teacher_id !='=>0);
 	        $cond = array('admin_id'=>$uid,'status'=>'1');
@@ -19,7 +20,7 @@ class Admincommon{
 	        $stotal = array('admin_id'=>$uid,'status'=>'1','batch_id !='=>0);
 	        
 	        $where_in="`sudent_batchs`.`admin_id`=$uid";
-	    }else if($s_admin==0 && $role=1){
+	    }else if($s_admin==0 && $role==1){
 	        $conds = array('admin_id'=>$uid,'student_id !='=>0);
 	        $condt = array('admin_id'=>$uid,'teacher_id !='=>0);
 	        $cond = array('admin_id'=>$uid,'status'=>'1');
@@ -29,7 +30,7 @@ class Admincommon{
 	        $condimp =array('admin_id'=>$uid,'category'=>1);
 	        $stotal = array('status'=>'1','batch_id !='=>0);
 	        $where_in="`sudent_batchs`.`admin_id`=$uid";
-	    }else if($s_admin==0 && $role=3){
+	    }else if($s_admin==0 && $role==3){
 	        $conds = array('admin_id'=>$uid,'student_id !='=>0);
 	        $condt = array('admin_id'=>$uid,'teacher_id !='=>0);
 	        $cond = array('admin_id'=>$uid,'status'=>'1');

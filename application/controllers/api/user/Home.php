@@ -28,6 +28,98 @@ class Home extends CI_Controller {
 	    	$this->lang->load('spanish_lang', 'spanish');
 		}
     }
+
+    private function generate_access_token($user_id, $user_type)
+    {
+        $secret = $this->config->item('encryption_key');
+        if (empty($secret)) {
+            $secret = 'education_api_secret_key';
+        }
+
+        $payload = array(
+            'uid' => (int) $user_id,
+            'ut' => (string) $user_type,
+            'iat' => time(),
+            'exp' => time() + (60 * 60 * 24 * 30)
+        );
+
+        $payload_json = json_encode($payload);
+        $payload_b64 = rtrim(strtr(base64_encode($payload_json), '+/', '-_'), '=');
+        $signature = hash_hmac('sha256', $payload_b64, $secret);
+
+        return $payload_b64.'.'.$signature;
+    }
+
+    private function parse_access_token($token)
+    {
+        $token = trim((string) $token);
+        // Accept raw token, "Bearer <token>" and "Bearer:<token>" formats.
+        if (preg_match('/^Bearer\s*:?\s*(.+)$/i', $token, $matches)) {
+            $token = trim($matches[1]);
+        }
+
+        if (empty($token) || strpos($token, '.') === false) {
+            return false;
+        }
+
+        list($payload_b64, $signature) = explode('.', $token, 2);
+        $secret = $this->config->item('encryption_key');
+        if (empty($secret)) {
+            $secret = 'education_api_secret_key';
+        }
+
+        $expected_signature = hash_hmac('sha256', $payload_b64, $secret);
+        if (!hash_equals($expected_signature, $signature)) {
+            return false;
+        }
+
+        $payload_json = base64_decode(strtr($payload_b64, '-_', '+/'));
+        $payload = json_decode($payload_json, true);
+
+        if (!is_array($payload) || empty($payload['uid']) || empty($payload['ut']) || empty($payload['exp'])) {
+            return false;
+        }
+
+        if ((int) $payload['exp'] < time()) {
+            return false;
+        }
+
+        return $payload;
+    }
+
+    private function get_access_token_from_request()
+    {
+        $auth_header = $this->input->get_request_header('Authorization', true);
+        if (!empty($auth_header) && preg_match('/Bearer\s*:?\s*(.+)/i', $auth_header, $matches)) {
+            return trim($matches[1]);
+        }
+
+        if (!empty($_REQUEST['access_token'])) {
+            return trim(preg_replace('/^Bearer\s*:?\s*/i', '', $_REQUEST['access_token']));
+        }
+
+        if (!empty($_REQUEST['token'])) {
+            return trim(preg_replace('/^Bearer\s*:?\s*/i', '', $_REQUEST['token']));
+        }
+
+        return '';
+    }
+
+    private function authorize_student_request($student_id)
+    {
+        $token = $this->get_access_token_from_request();
+        $payload = $this->parse_access_token($token);
+
+        if ($payload === false || $payload['ut'] !== 'student' || (int) $payload['uid'] !== (int) $student_id) {
+            echo json_encode(array(
+                'status' => 'false',
+                'msg' => 'Unauthorized: invalid or expired access token'
+            ));
+            return false;
+        }
+
+        return true;
+    }
 	function general_settings($key_text=''){
 		$data = $this->db_model->select_data('*','general_settings',array('key_text'=>$key_text),1);
 		return $data[0]['velue_text'];
@@ -98,7 +190,7 @@ class Home extends CI_Controller {
 	    if (empty($data)) {
 	        $data = $this->input->post();
 	    }
-
+ 
 	    // ==============================
 	    // 			 VALIDATION
 	    // ==============================
@@ -118,7 +210,9 @@ class Home extends CI_Controller {
 	    $password  = trim($data['password']);
 	    $user_type = strtolower(trim($data['user_type']));
 
+		$device_id = $data['device_id'] ?? '';
 	    $device_token = $data['device_token'] ?? '';
+		$device_type = $data['device_type'] ?? '';
 
 	    // ==============================
 	    // 			 STUDENT LOGIN
@@ -144,8 +238,20 @@ class Home extends CI_Controller {
 	        $this->db_model->update_data_limit('students', [
 	            'login_status' => 1,
 	            'last_login_app' => date("Y-m-d H:i:s"),
-	            'token' => $device_token
+	            'token' => $device_token,
+				'device_id' => $device_id,
+				'device_token' => $device_token,
+				'device_type' => $device_type,
 	        ], ['id' => $student['id']], 1);
+			
+			if(empty($student['city'])){
+				$profile_completed = 0;
+			}else{
+				$profile_completed = 1;
+			}
+			
+
+            $access_token = $this->generate_access_token($student['id'], 'student');
 
 	        $response = [
 	            'userType'     => 'student',
@@ -155,8 +261,12 @@ class Home extends CI_Controller {
 	            'mobile'       => $student['contact_no'],
 	            'enrollmentId' => $student['enrollment_id'],
 	            'image'        => base_url('uploads/students/') . $student['image'],
-	            'batchId'      => $student['batch_id'],
-	            'adminId'      => $student['admin_id']
+				'device_id' => $device_id,
+				'device_token' => $device_token,
+				'device_type' => $device_type,
+				'is_profile_completed' => $profile_completed,
+                'access_token' => $access_token,
+                'token_type' => 'Bearer'
 	        ];
 	    }
 
@@ -188,6 +298,14 @@ class Home extends CI_Controller {
 	            'device_token' => $device_token,
 	            'updated_at'   => date("Y-m-d H:i:s")
 	        ], ['id' => $user['id']], 1);
+			
+			if(empty($user['city'])){
+				$profile_completed = 0;
+			}else{
+				$profile_completed = 1;
+			}
+
+            $access_token = $this->generate_access_token($user['id'], $user['user_type']);
 
 	        $response = [
 	            'userType' => $user['user_type'],
@@ -196,7 +314,10 @@ class Home extends CI_Controller {
 	            'email'    => $user['email'],
 	            'mobile'   => $user['mobile'],
 	            'image'    => base_url('uploads/users/') . $user['image'],
-	            'role'     => $user['role']
+	            'role'     => $user['role'],
+				'is_profile_completed' => $profile_completed,
+                'access_token' => $access_token,
+                'token_type' => 'Bearer'
 	        ];
 	    }
 
@@ -211,22 +332,42 @@ class Home extends CI_Controller {
 	}
    
 	function logout(){
-        $data = $_REQUEST;
-        if(isset($data['student_id'])){
-            $student_id = $data['student_id'];
-            $ins = $this->db_model->update_data_limit('students use index (id)',array('login_status'=>0),array('id'=>$student_id),1);
-            if($ins){
-                 $arr =	array('status'=>'true','msg'=>$this->lang->line('ltr_logged_out'));
-            }else{
-                 $arr =	array('status'=>'false','msg'=>$this->lang->line('ltr_failed_out'));
-            }
-        }else{
-            $arr = array(
-                'status'=>'false',
-                'msg'=>$this->lang->line('ltr_missing_parameters_msg')
-            ); 
+        $token = $this->get_access_token_from_request();
+        $payload = $this->parse_access_token($token);
+       
+
+        if ($payload === false) {
+            echo json_encode(array(
+                'status' => 'false',
+                'msg' => 'Unauthorized: invalid or expired access token'
+            ));
+            return;
         }
-       	echo json_encode($arr);
+
+        // This logout endpoint currently supports student app sessions.
+        if ($payload['ut'] !== 'student') {
+            echo json_encode(array(
+                'status' => 'false',
+                'msg' => 'Logout is currently available for student users only'
+            ));
+            return;
+        }
+
+        $student_id = (int) $payload['uid'];
+        $ins = $this->db_model->update_data_limit(
+            'students use index (id)',
+            array('login_status' => 0, 'token' => ''),
+            array('id' => $student_id),
+            1
+        );
+
+        if($ins){
+             $arr =	array('status'=>'true','msg'=>$this->lang->line('ltr_logged_out'));
+        }else{
+             $arr =	array('status'=>'false','msg'=>$this->lang->line('ltr_failed_out'));
+        }
+
+        echo json_encode($arr);
     }
 	
 	public function multi_user_registration()
@@ -237,12 +378,6 @@ class Home extends CI_Controller {
 	        $data = $this->input->post();
 	    }
 
-	    // Debug log (optional)
-	    $this->db_model->insert_data('temp_data', ['temp' => json_encode($data)]);
-
-	    // ==============================
-	    // 		 VALIDATION
-	    // ==============================
 	    if (
 	        empty($data['name']) ||
 	        empty($data['email']) ||
@@ -274,17 +409,11 @@ class Home extends CI_Controller {
 	    $email       = trim($data['email']);
 	    $mobile      = trim($data['mobile']);
 	    $password    = trim($data['password']);
-	    $batch_id    = !empty($data['batch_id']) ? (int)$data['batch_id'] : 0;
-
-	    $country     = $data['country'] ?? '';
-	    $state       = $data['state'] ?? '';
-	    $city        = $data['city'] ?? '';
-	    $pincode     = $data['pincode'] ?? '';
-
+	    
 	    $device_id   = $data['device_id'] ?? '';
 	    $device_token= $data['device_token'] ?? '';
 	    $device_type = $data['device_type'] ?? '';
-
+		
 	    // Secure password
 	    $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 
@@ -292,54 +421,47 @@ class Home extends CI_Controller {
 
 	    $isNewUser = false;
 	    $insert_id = 0;
+		
+		// Generate OTP
+	    $otp = rand(1000, 9999);
 
 	    // =====================================================
 	    // 		 STUDENT TABLE (CHECK ONLY STUDENTS TABLE)
 	    // =====================================================
-	    if ($user_type == 'student') {
+				if ($user_type == 'student') {
 
-	        if (empty($batch_id)) {
-	            echo json_encode([
-	                'status' => 'false',
-	                'msg' => 'Batch ID required for student'
-	            ]);
-	            return;
-	        }
+					$existingStudent = $this->db_model->select_data(
+				'*',
+				'students',
+				"(email = '$email' OR mobile = '$mobile')",
+				1
+				);
 
-	        $existingStudent = $this->db_model->select_data('*', 'students', ['email' => $email], 1);
+				if (!empty($existingStudent)) {
 
-	        if (!empty($existingStudent)) {
+				$existing = $existingStudent[0];
+				$existing_email = isset($existing['email']) ? $existing['email'] : '';
+				$existing_mobile = isset($existing['mobile']) ? $existing['mobile'] : '';
 
-	            // UPDATE STUDENT
-	            $student = $existingStudent[0];
-	            $insert_id = $student['id'];
+				if ($existing_email === $email) {
+				$msg = 'Email already exists';
+				} elseif ($existing_mobile === $mobile) {
+				$msg = 'Mobile number already exists';
+				} else {
+				$msg = 'User already exists';
+				}
 
-	            $updateData = [
-	                'name'           => $name,
-	                'contact_no'     => $mobile,
-	                'country'        => $country,
-	                'state'          => $state,
-	                'city'           => $city,
-	                'pincode'        => $pincode,
-	                'login_status'   => 1,
-	                'last_login_app' => date("Y-m-d H:i:s"),
-	                'token'          => $device_token,
-	                'password'       => $hashedPassword
-	            ];
-
-	            $this->db_model->update_data_limit(
-	                'students',
-	                $this->security->xss_clean($updateData),
-	                ['id' => $insert_id],
-	                1
-	            );
-
-	        } else {
+				echo json_encode([
+				'status' => 'false',
+				'msg' => $msg
+				]);
+				return;
+				} else {
 
 	            // INSERT STUDENT (even if exists in users table)
 	            $isNewUser = true;
 
-	            $batch = $this->db_model->select_data('*', 'batches', ['id' => $batch_id], 1);
+	            //$batch = $this->db_model->select_data('*', 'batches', ['id' => $batch_id], 1);
 	            $admin_id = !empty($batch) ? $batch[0]['admin_id'] : 0;
 
 	            $enrolid = "ENR" . $admin_id . rand(100, 999);
@@ -348,7 +470,6 @@ class Home extends CI_Controller {
 	                'admin_id'        => $admin_id,
 	                'name'            => $name,
 	                'email'           => $email,
-	                'batch_id'        => $batch_id,
 	                'added_by'        => 'student',
 	                'status'          => 1,
 	                'enrollment_id'   => $enrolid,
@@ -356,12 +477,14 @@ class Home extends CI_Controller {
 	                'admission_date'  => date('Y-m-d'),
 	                'image'           => 'student_img.png',
 	                'contact_no'      => $mobile,
+					'mobile'      	  => $mobile,
 	                'login_status'    => 1,
 	                'last_login_app'  => date("Y-m-d H:i:s"),
-	                'country'         => $country,
-	                'state'           => $state,
-	                'city'            => $city,
-	                'pincode'         => $pincode
+					'device_id'      => $device_id,
+					'device_token'   => $device_token,
+					'device_type'    => $device_type,
+					'otp'          => $otp,
+	                'otp_created_at' => date("Y-m-d H:i:s"),
 	            ];
 
 	            $insert_id = $this->db_model->insert_data(
@@ -369,7 +492,7 @@ class Home extends CI_Controller {
 	                $this->security->xss_clean($studentData)
 	            );
 	        }
-
+ 
 	        $student = $this->db_model->select_data('*', 'students', ['id' => $insert_id], 1)[0];
 
 	        $response = [
@@ -378,14 +501,9 @@ class Home extends CI_Controller {
 	            'name'         => $student['name'],
 	            'email'        => $student['email'],
 	            'mobile'       => $student['contact_no'],
-	            'enrollmentId' => $student['enrollment_id'],
-	            'image'        => base_url('uploads/students/') . $student['image'],
-	            'batchId'      => $student['batch_id'],
-	            'adminId'      => $student['admin_id'],
-	            'country'      => $student['country'],
-	            'state'        => $student['state'],
-	            'city'         => $student['city'],
-	            'pincode'      => $student['pincode']
+	            'device_id'    => $student['device_id'],
+	            'device_token' => $student['device_token'],
+	            'device_type'  => $student['device_type']
 	        ];
 	    }
 
@@ -400,31 +518,8 @@ class Home extends CI_Controller {
 
 	        if (!empty($existingUser)) {
 
-	            // UPDATE USER (user_type NOT changed)
-	            $user = $existingUser[0];
-	            $insert_id = $user['id'];
-
-	            $updateData = [
-	                'name'         => $name,
-	                'mobile'       => $mobile,
-	                'role'         => $role,
-	                'device_id'    => $device_id,
-	                'device_token' => $device_token,
-	                'device_type'  => $device_type,
-	                'country'      => $country,
-	                'state'        => $state,
-	                'city'         => $city,
-	                'pincode'      => $pincode,
-	                'password'     => $hashedPassword,
-	                'updated_at'   => date('Y-m-d H:i:s')
-	            ];
-
-	            $this->db_model->update_data_limit(
-	                'users',
-	                $this->security->xss_clean($updateData),
-	                ['id' => $insert_id],
-	                1
-	            );
+	        echo json_encode(['status' => 'true', 'msg' => 'User already exist']);
+	        return;
 
 	        } else {
 
@@ -443,11 +538,9 @@ class Home extends CI_Controller {
 	                'device_id'    => $device_id,
 	                'device_token' => $device_token,
 	                'device_type'  => $device_type,
-	                'country'      => $country,
-	                'state'        => $state,
-	                'city'         => $city,
-	                'pincode'      => $pincode,
-	                'created_at'   => date('Y-m-d H:i:s')
+	                'created_at'   => date('Y-m-d H:i:s'),
+					'otp'          => $otp,
+	                'otp_created_at' => date("Y-m-d H:i:s"),
 	            ];
 
 	            $insert_id = $this->db_model->insert_data(
@@ -466,10 +559,9 @@ class Home extends CI_Controller {
 	            'mobile'   => $user['mobile'],
 	            'image'    => base_url('uploads/users/') . $user['image'],
 	            'role'     => $user['role'],
-	            'country'  => $user['country'],
-	            'state'    => $user['state'],
-	            'city'     => $user['city'],
-	            'pincode'  => $user['pincode']
+				'device_id'    => $device_id,
+	            'device_token' => $device_token,
+	            'device_type'  => $device_type
 	        ];
 	    }
 
@@ -485,9 +577,10 @@ class Home extends CI_Controller {
 	    $this->db->trans_complete();
 
 	    echo json_encode([
-	        'status' => 'true',
-	        'msg' => $isNewUser ? 'Registered successfully' : 'Profile updated successfully',
-	        'data' => $response
+	        'status' => "true",
+	        'msg' => $isNewUser ? "OTP sent successfully. Your OTP is $otp" : "OTP sent successfully. Your OTP is $otp",
+	        'data' => $response,
+			"otp" => $otp
 	    ]);
 	}
 
@@ -1029,58 +1122,159 @@ public function otherBatchData($data){
 						
 }
 							/*Other batch functio end*/
-    function profile_update(){
-        $data = $_REQUEST;
-        if(isset($data['name']) && isset($data['password']) && isset($data['student_id'])){
-            $data_arr = [];
-            $path = 'uploads/students/';
-            if($data['name'] != ''){
-                $data_arr['name'] = $data['name'];
-            }
-            $pimage = $this->db_model->select_data('image','students use index (id)',array('id'=>$data['student_id']),1)[0]['image'];         
-            if(isset($_FILES['image']) && !empty($_FILES['image']['name'])){
-                $image = $this->upload_media($_FILES,$path,'image');
-                if(is_array($image)){
-                    $arr = array(
-                        'status'=>'false',
-                        'msg' => $image['msg'],
-                    );
-                }else{
-                    $data_arr['image'] = $image;
-                    $pimage = $image;
-                }
-            }
-            if($data['password'] != ''){
-                $data_arr['password'] = md5($data['password']);
-            }
-            if(!empty($data_arr)){
-                $ins = $this->db_model->update_data_limit('students',$data_arr,array('id'=>$data['student_id']));  
-                if($ins==true){
-                    $arr = array(
-                        'status'=>'true',
-                        'name'=>$data['name'],
-                        'image'=>base_url('uploads/students/').$pimage,
-                        'msg'=>$this->lang->line('ltr_profile_updated_msg')
-                    );
-                }else{
-                    $arr = array(
-                        'status'=>'false'
-                    );
-                }
-            }else{
-                $arr = array(
-                    'status'=>'false',
-                    'msg'=>$this->lang->line('ltr_name_can_msg')
-                ); 
-            } 
-        }else{
-            $arr = array(
-                'status'=>'false',
-                'msg'=>$this->lang->line('ltr_missing_parameters_msg')
-            ); 
-        }
-        echo json_encode($arr);
+    function profile_update()
+{
+    //error_reporting(E_ALL);
+    //ini_set('display_errors', 1);
+
+    $data = $_REQUEST;
+    $token = $this->get_access_token_from_request();
+    $payload = $this->parse_access_token($token);
+
+    if ($payload === false || $payload['ut'] !== 'student') {
+        echo json_encode([
+            'status' => 'false',
+            'msg' => 'Unauthorized: invalid or expired access token'
+        ]);
+        return;
     }
+
+    $student_id = (int) $payload['uid'];
+    if ($student_id > 0) {
+        if ($this->authorize_student_request($student_id) === false) {
+            return;
+        }
+        $data_arr = [];
+
+        $fields = [
+            'name','email','mobile','address','country',
+            'state','city','pincode','school_college_name','grade'
+        ];
+
+        foreach ($fields as $field) {
+            if (isset($data[$field]) && $data[$field] !== '') {
+                $data_arr[$field] = $data[$field];
+            }
+        }
+
+        // Support image update via multipart file "image"
+        if (isset($_FILES['image']) && !empty($_FILES['image']['name'])) {
+            $upload_path = FCPATH.'uploads/students/';
+            if (!is_dir($upload_path)) {
+                @mkdir($upload_path, 0777, true);
+            }
+
+            $uploaded_image = $this->upload_media($_FILES, $upload_path, 'image');
+            if (is_array($uploaded_image) && isset($uploaded_image['status']) && $uploaded_image['status'] === '2') {
+                echo json_encode([
+                    'status' => 'false',
+                    'msg' => strip_tags($uploaded_image['msg'])
+                ]);
+                return;
+            }
+
+            if (!empty($uploaded_image)) {
+                $data_arr['image'] = $uploaded_image;
+            }
+        }
+        // Support image update via base64 "image" string
+        elseif (!empty($data['image']) && is_string($data['image'])) {
+            $raw_image = $data['image'];
+            if (preg_match('/^data:image\/(\w+);base64,/', $raw_image, $matches)) {
+                $extension = strtolower($matches[1]);
+                if (!in_array($extension, ['jpg', 'jpeg', 'png'])) {
+                    echo json_encode([
+                        'status' => 'false',
+                        'msg' => 'Only jpg, jpeg, png images are allowed'
+                    ]);
+                    return;
+                }
+
+                $base64_data = substr($raw_image, strpos($raw_image, ',') + 1);
+                $binary = base64_decode($base64_data, true);
+                if ($binary === false) {
+                    echo json_encode([
+                        'status' => 'false',
+                        'msg' => 'Invalid base64 image data'
+                    ]);
+                    return;
+                }
+
+                $upload_path = FCPATH.'uploads/students/';
+                if (!is_dir($upload_path)) {
+                    @mkdir($upload_path, 0777, true);
+                }
+
+                $file_name = 'student_'.time().'_'.mt_rand(1000, 9999).'.'.$extension;
+                if (file_put_contents($upload_path.$file_name, $binary) === false) {
+                    echo json_encode([
+                        'status' => 'false',
+                        'msg' => 'Unable to save profile image'
+                    ]);
+                    return;
+                }
+
+                $data_arr['image'] = $file_name;
+            }
+        }
+
+        if (!empty($data_arr)) {
+
+            $ins = $this->db_model->update_data_limit(
+                'students',
+                $data_arr,
+                ['id' => $student_id],
+                1
+            );
+
+            if ($ins) {
+
+                $updated = $this->db_model->select_data(
+                    '*',
+                    'students',
+                    ['id' => $student_id],
+                    1
+                );
+
+                $response_data = !empty($updated) ? $updated[0] : [];
+                if (!empty($response_data)) {
+                    // Never expose password hash in API response.
+                    unset($response_data['password']);
+                    if (!empty($response_data['image']) && strpos($response_data['image'], 'http') !== 0) {
+                        $response_data['image'] = base_url('uploads/students/').$response_data['image'];
+                    }
+                }
+
+                $arr = [
+                    'status' => 'true',
+                    'data'   => $response_data,
+                    'msg'    => 'Profile updated successfully'
+                ];
+
+            } else {
+                $arr = [
+                    'status' => 'false',
+                    'msg' => 'Update failed'
+                ];
+            }
+
+        } else {
+            $arr = [
+                'status' => 'false',
+                'msg' => 'No data to update'
+            ];
+        }
+
+    } else {
+        $arr = [
+            'status' => 'false',
+            'msg' => 'Invalid token user'
+        ];
+    }
+
+    echo json_encode($arr);
+}
+	
     function upload_media($files,$path,$file){   
         $config['upload_path'] =$path;
         $config['allowed_types'] = 'jpeg|jpg|png';
@@ -3453,8 +3647,22 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
     
     function deleteAccount(){
         $data = $_REQUEST;
-        if(!empty($data['student_id'])){
-            $student_id = trim($data['student_id']);
+        $token = $this->get_access_token_from_request();
+        $payload = $this->parse_access_token($token);
+
+        if ($payload === false || $payload['ut'] !== 'student') {
+            echo json_encode(array(
+                'status' => false,
+                'message' => 'Unauthorized: invalid or expired access token'
+            ), JSON_UNESCAPED_SLASHES);
+            return;
+        }
+
+        $student_id = (int) $payload['uid'];
+        if ($student_id > 0) {
+            if ($this->authorize_student_request($student_id) === false) {
+                return;
+            }
             $check = $this->db_model->update_data_limit('students use index (id)',array('status'=>0,),array('id'=>$student_id),1);
             if($check){
                $arr = array(
@@ -3470,7 +3678,7 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
         }else{
              $arr = array(
                  'status'=>false,
-                 'message'=>$this->lang->line('ltr_missing_parameters_msg')
+                 'message'=>'Invalid token user'
              );
         }
         echo json_encode($arr,JSON_UNESCAPED_SLASHES);
@@ -3486,8 +3694,6 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
 	    }
 
 	    // Sanitize inputs
-	    $name       = isset($data['name']) ? trim($data['name']) : '';
-	    $email      = isset($data['email']) ? trim($data['email']) : '';
 	    $mobile     = isset($data['mobile']) ? trim($data['mobile']) : '';
 	    $user_type  = isset($data['user_type']) ? strtolower(trim($data['user_type'])) : '';
 
@@ -3519,28 +3725,12 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
 
 	    // Generate OTP
 	    $otp = rand(1000, 9999);
-
-	    // Check if user exists
-	    $user = $this->db_model->get_user_by_mobile($mobile, $user_type);
-
-	    if ($user) {
-	        // Update OTP
-	        $this->db_model->update_otp($mobile, $otp, $user_type);
-	    } else {
-		    if ($user_type === 'student') {
-		        // Insert into students table
-		        $this->db_model->create_user($name, $email, $mobile, $otp);
-		    } else {
-		        // Insert into users table (teacher / institute)
-		        $this->db_model->create_user($name, $email, $mobile, $otp);
-		    }
-		}
-
-	    // TODO: Integrate SMS API here
-
+		
+		$this->db_model->update_otp($mobile, $otp, $user_type);
+	   
 	    echo json_encode([
 	        "status" => true,
-	        "msg" => "OTP sent successfully",
+	        "msg" => "OTP sent successfully. Your OTP is $otp",
 	        "data" => [
 	            "mobile" => $mobile,
 	            "user_type" => $user_type
@@ -3580,28 +3770,34 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
 	    }
 
 	    $user = $this->db_model->verify_otp($mobile, $otp, $user_type);
-	    //echo "<pre>";print_r($user);
+	   
 	    if ($user) {
 	        $this->db_model->otp_verified($mobile, $otp, $user_type);
+            $token_user_type = !empty($user->user_type) ? $user->user_type : $user_type;
+            $access_token = $this->generate_access_token($user->id, $token_user_type);
+			
+			if(empty($user->city)){
+				$profile_completed = 0;
+			}else{
+				$profile_completed = 1;
+			}
+			
 	        echo json_encode([
 	            "status" => true,
-	            "msg" => "Login successful",
+	            "msg" => "OTP verify successfully. Login successful!",
 	            "data" => [
-	                "id" => $user->id,
+					'userType' => $user->user_type,
+	                "studentId" => $user->id,
 	                "name" => $user->name,
 	                "email" => $user->email,
 	                "mobile" => $user->mobile,
-	                "address" => $user->address,
-	                "country" => $user->country,
-	                "state" => $user->state,
-	                "city" => $user->city,
-	                "pincode" => $user->pincode,
 	                "device_id" => $user->device_id,
 	                "device_token" => $user->device_token,
 	                "device_type" => $user->device_type,
-	                "school_college_name" => $user->school_college_name,
-	                "grade" => $user->grade,
-	                "user_type" => $user_type
+	                "user_type" => $user_type,
+					"is_profile_completed" => $profile_completed,
+                    "access_token" => $access_token,
+                    "token_type" => "Bearer"
 	            ]
 	        ]);
 
@@ -3613,4 +3809,84 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
 	        ]);
 	    }
 	}
+	
+	function update_password()
+{
+    $data = $_REQUEST;
+
+    if (
+        !empty($data['mobile']) &&
+        !empty($data['password']) &&
+        !empty($data['confirm_password'])
+    ) {
+
+        $mobile = $data['mobile'];
+        $password = $data['password'];
+        $confirm_password = $data['confirm_password'];
+
+        // Password mismatch
+        if ($password !== $confirm_password) {
+            $arr = [
+                'status' => 'false',
+                'msg' => 'Password and Confirm Password do not match'
+            ];
+        } else {
+
+            // 🔍 Find user by mobile
+            $user = $this->db_model->select_data(
+                'id',
+                'students',
+                ['mobile' => $mobile],
+                1
+            );
+
+            if (empty($user)) {
+                $arr = [
+                    'status' => 'false',
+                    'msg' => 'User not found'
+                ];
+            } else {
+
+                $student_id = $user[0]['id'];
+
+                // Hash password
+                $hashed_password = password_hash($password, PASSWORD_BCRYPT);
+
+                $update = $this->db_model->update_data_limit(
+                    'students',
+                    ['password' => $hashed_password],
+                    ['id' => $student_id],
+                    1
+                );
+
+                if ($update) {
+                    $arr = [
+                        'status' => 'true',
+                        'msg' => 'Password updated successfully'
+                    ];
+                } else {
+                    $arr = [
+                        'status' => 'false',
+                        'msg' => 'Failed to update password'
+                    ];
+                }
+            }
+        }
+
+    } else {
+        $arr = [
+            'status' => 'false',
+            'msg' => 'Missing parameters'
+        ];
+    }
+
+    // Proper JSON output
+    $this->output
+        ->set_content_type('application/json')
+        ->set_output(json_encode($arr));
+}
+	
+	
+	
+	
 }
