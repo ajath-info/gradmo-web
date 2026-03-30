@@ -1,15 +1,11 @@
 <?php
 defined('BASEPATH') OR exit('No direct script access allowed');
-class Home extends CI_Controller {
+class Home extends MY_Controller {
     function __construct()
     {
         //error_reporting(0);
         ini_set('display_errors', 1);
         parent::__construct();
-        $timezoneDB = $this->db_model->select_data('timezone','site_details',array('id'=>1));
-        if(isset($timezoneDB[0]['timezone']) && !empty($timezoneDB[0]['timezone'])){
-            date_default_timezone_set($timezoneDB[0]['timezone']);
-        }
 		
 			// check select language
 		$this->load->helper('language');
@@ -27,98 +23,6 @@ class Home extends CI_Controller {
 		}else{
 	    	$this->lang->load('spanish_lang', 'spanish');
 		}
-    }
-
-    private function generate_access_token($user_id, $user_type)
-    {
-        $secret = $this->config->item('encryption_key');
-        if (empty($secret)) {
-            $secret = 'education_api_secret_key';
-        }
-
-        $payload = array(
-            'uid' => (int) $user_id,
-            'ut' => (string) $user_type,
-            'iat' => time(),
-            'exp' => time() + (60 * 60 * 24 * 30)
-        );
-
-        $payload_json = json_encode($payload);
-        $payload_b64 = rtrim(strtr(base64_encode($payload_json), '+/', '-_'), '=');
-        $signature = hash_hmac('sha256', $payload_b64, $secret);
-
-        return $payload_b64.'.'.$signature;
-    }
-
-    private function parse_access_token($token)
-    {
-        $token = trim((string) $token);
-        // Accept raw token, "Bearer <token>" and "Bearer:<token>" formats.
-        if (preg_match('/^Bearer\s*:?\s*(.+)$/i', $token, $matches)) {
-            $token = trim($matches[1]);
-        }
-
-        if (empty($token) || strpos($token, '.') === false) {
-            return false;
-        }
-
-        list($payload_b64, $signature) = explode('.', $token, 2);
-        $secret = $this->config->item('encryption_key');
-        if (empty($secret)) {
-            $secret = 'education_api_secret_key';
-        }
-
-        $expected_signature = hash_hmac('sha256', $payload_b64, $secret);
-        if (!hash_equals($expected_signature, $signature)) {
-            return false;
-        }
-
-        $payload_json = base64_decode(strtr($payload_b64, '-_', '+/'));
-        $payload = json_decode($payload_json, true);
-
-        if (!is_array($payload) || empty($payload['uid']) || empty($payload['ut']) || empty($payload['exp'])) {
-            return false;
-        }
-
-        if ((int) $payload['exp'] < time()) {
-            return false;
-        }
-
-        return $payload;
-    }
-
-    private function get_access_token_from_request()
-    {
-        $auth_header = $this->input->get_request_header('Authorization', true);
-        if (!empty($auth_header) && preg_match('/Bearer\s*:?\s*(.+)/i', $auth_header, $matches)) {
-            return trim($matches[1]);
-        }
-
-        if (!empty($_REQUEST['access_token'])) {
-            return trim(preg_replace('/^Bearer\s*:?\s*/i', '', $_REQUEST['access_token']));
-        }
-
-        if (!empty($_REQUEST['token'])) {
-            return trim(preg_replace('/^Bearer\s*:?\s*/i', '', $_REQUEST['token']));
-        }
-
-        return '';
-    }
-
-    private function authorize_student_request($student_id)
-    {
-        $token = $this->get_access_token_from_request();
-        $payload = $this->parse_access_token($token);
-
-        if ($payload === false || $payload['ut'] !== 'student' || (int) $payload['uid'] !== (int) $student_id) {
-            echo json_encode(array(
-                'status' => 'false',
-                'msg' => 'Unauthorized: invalid or expired access token'
-            ));
-            return false;
-        }
-
-        return true;
     }
 	function general_settings($key_text=''){
 		$data = $this->db_model->select_data('*','general_settings',array('key_text'=>$key_text),1);
@@ -233,41 +137,24 @@ class Home extends CI_Controller {
 	            echo json_encode(['status' => 'false', 'msg' => 'Invalid password']);
 	            return;
 	        }
+            if ($student['status'] == 0) {
+	            echo json_encode(['status' => 'false', 'msg' => 'Student is not active']);
+	            return;
+	        }
 
 	        // UPDATE LOGIN STATUS
+	        $now = date('Y-m-d H:i:s');
 	        $this->db_model->update_data_limit('students', [
 	            'login_status' => 1,
-	            'last_login_app' => date("Y-m-d H:i:s"),
+	            'last_login_app' => $now,
 	            'token' => $device_token,
 				'device_id' => $device_id,
 				'device_token' => $device_token,
 				'device_type' => $device_type,
 	        ], ['id' => $student['id']], 1);
-			
-			if(empty($student['city'])){
-				$profile_completed = 0;
-			}else{
-				$profile_completed = 1;
-			}
-			
 
             $access_token = $this->generate_access_token($student['id'], 'student');
-
-	        $response = [
-	            'userType'     => 'student',
-	            'studentId'    => $student['id'],
-	            'name'         => $student['name'],
-	            'email'        => $student['email'],
-	            'mobile'       => $student['contact_no'],
-	            'enrollmentId' => $student['enrollment_id'],
-	            'image'        => base_url('uploads/students/') . $student['image'],
-				'device_id' => $device_id,
-				'device_token' => $device_token,
-				'device_type' => $device_type,
-				'is_profile_completed' => $profile_completed,
-                'access_token' => $access_token,
-                'token_type' => 'Bearer'
-	        ];
+	        $response = $this->build_student_login_data_array($student, $device_id, $device_token, $device_type, $now, $access_token);
 	    }
 
 	    // ==============================
@@ -322,13 +209,9 @@ class Home extends CI_Controller {
 	    }
 
 	    // ==============================
-	    // SUCCESS RESPONSE
+	    // SUCCESS RESPONSE (same envelope as api/user/verify-otp)
 	    // ==============================
-	    echo json_encode([
-	        'status' => 'true',
-	        'msg' => 'Login successful',
-	        'data' => $response
-	    ]);
+	    $this->json_login_success_response($response);
 	}
    
 	function logout(){
@@ -3685,6 +3568,73 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
         die;
     }
 
+	/**
+	 * Student login payload for `data` — used by password login and verify_otp (same shape).
+	 */
+	private function build_student_login_data_array(array $student, $device_id, $device_token, $device_type, $now, $access_token)
+	{
+		$profile_completed = empty($student['city']) ? 0 : 1;
+
+		$student_image = !empty($student['image'])
+			? base_url('uploads/students/') . $student['image']
+			: '';
+
+		return array(
+			'userType'     => 'student',
+			'studentId'    => (int) $student['id'],
+			'adminId'      => (int) $student['admin_id'],
+			'name'         => $student['name'],
+			'email'        => $student['email'],
+			'mobile'       => $student['contact_no'],
+			'contactNo'    => $student['contact_no'],
+			'mobileAlt'    => isset($student['mobile']) ? $student['mobile'] : '',
+			'enrollmentId' => $student['enrollment_id'],
+			'multiBatch'   => $student['multi_batch'],
+			'gender'       => $student['gender'],
+			'dob'          => $student['dob'],
+			'fatherName'   => $student['father_name'],
+			'fatherDesignation' => $student['father_designtn'],
+			'address'      => $student['address'],
+			'pincode'      => $student['pincode'],
+			'country'      => $student['country'],
+			'state'        => $student['state'],
+			'city'         => $student['city'],
+			'batchId'      => $student['batch_id'],
+			'admissionDate' => $student['admission_date'],
+			'status'       => (int) $student['status'],
+			'loginStatus'  => 1,
+			'paymentStatus' => (int) $student['payment_status'],
+			'appVersion'   => $student['app_version'],
+			'payMode'      => (int) $student['pay_mode'],
+			'schoolCollegeName' => isset($student['school_college_name']) ? $student['school_college_name'] : '',
+			'grade'        => isset($student['grade']) ? $student['grade'] : '',
+			'isVerified'   => isset($student['is_verified']) ? $student['is_verified'] : null,
+			'userTypeDb'   => isset($student['user_type']) ? $student['user_type'] : 'student',
+			'addedBy'      => $student['added_by'],
+			'lastLoginApp' => $now,
+			'updatedAt'    => isset($student['updated_at']) ? $student['updated_at'] : null,
+			'image'        => $student_image,
+			'device_id'    => $device_id,
+			'device_token' => $device_token,
+			'device_type'  => $device_type,
+			'is_profile_completed' => $profile_completed,
+			'access_token' => $access_token,
+			'token_type'   => 'Bearer',
+		);
+	}
+
+	/**
+	 * Same JSON envelope as password login — use for verify_otp success so clients get identical shape.
+	 */
+	private function json_login_success_response(array $data)
+	{
+		echo json_encode(array(
+			'status' => 'true',
+			'msg' => 'Login successful',
+			'data' => $data,
+		), JSON_UNESCAPED_SLASHES);
+	}
+
     // GET OTP
     public function send_otp() {
 	    // Get JSON input
@@ -3714,11 +3664,30 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
 	        return;
 	    }
 
+	    if (!in_array($user_type, array('student', 'teacher', 'institute'), true)) {
+	        echo json_encode([
+	            "status" => false,
+	            "msg" => "Invalid user type. Use student, teacher, or institute.",
+	            "code" => "INVALID_USER_TYPE"
+	        ]);
+	        return;
+	    }
+
 	    // Optional: validate mobile format
 	    if (!preg_match('/^[0-9]{10}$/', $mobile)) {
 	        echo json_encode([
 	            "status" => false,
-	            "msg" => "Invalid mobile number"
+	            "msg" => "Invalid mobile number",
+	            "code" => "INVALID_MOBILE"
+	        ]);
+	        return;
+	    }
+
+	    if (!$this->db_model->otp_account_exists($mobile, $user_type)) {
+	        echo json_encode([
+	            "status" => false,
+	            "msg" => "This mobile number is not registered. Please sign up or use a registered number.",
+	            "code" => "MOBILE_NOT_REGISTERED"
 	        ]);
 	        return;
 	    }
@@ -3764,7 +3733,35 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
 	    if (empty($user_type)) {
 	        echo json_encode([
 	            "status" => false,
-	            "msg" => "User type required"
+	            "msg" => "User type required",
+	            "code" => "USER_TYPE_REQUIRED"
+	        ]);
+	        return;
+	    }
+
+	    if (!in_array($user_type, array('student', 'teacher', 'institute'), true)) {
+	        echo json_encode([
+	            "status" => false,
+	            "msg" => "Invalid user type. Use student, teacher, or institute.",
+	            "code" => "INVALID_USER_TYPE"
+	        ]);
+	        return;
+	    }
+
+	    if (!preg_match('/^[0-9]{10}$/', $mobile)) {
+	        echo json_encode([
+	            "status" => false,
+	            "msg" => "Invalid mobile number",
+	            "code" => "INVALID_MOBILE"
+	        ]);
+	        return;
+	    }
+
+	    if (!$this->db_model->otp_account_exists($mobile, $user_type)) {
+	        echo json_encode([
+	            "status" => false,
+	            "msg" => "This mobile number is not registered. Please sign up first, then request an OTP.",
+	            "code" => "MOBILE_NOT_REGISTERED"
 	        ]);
 	        return;
 	    }
@@ -3773,118 +3770,205 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
 	   
 	    if ($user) {
 	        $this->db_model->otp_verified($mobile, $otp, $user_type);
-            $token_user_type = !empty($user->user_type) ? $user->user_type : $user_type;
-            $access_token = $this->generate_access_token($user->id, $token_user_type);
-			
-			if(empty($user->city)){
-				$profile_completed = 0;
-			}else{
-				$profile_completed = 1;
-			}
-			
-	        echo json_encode([
-	            "status" => true,
-	            "msg" => "OTP verify successfully. Login successful!",
-	            "data" => [
-					'userType' => $user->user_type,
-	                "studentId" => $user->id,
-	                "name" => $user->name,
-	                "email" => $user->email,
-	                "mobile" => $user->mobile,
-	                "device_id" => $user->device_id,
-	                "device_token" => $user->device_token,
-	                "device_type" => $user->device_type,
-	                "user_type" => $user_type,
-					"is_profile_completed" => $profile_completed,
-                    "access_token" => $access_token,
-                    "token_type" => "Bearer"
-	            ]
-	        ]);
+
+	        $device_id = isset($data['device_id']) ? trim($data['device_id']) : '';
+	        $device_token = isset($data['device_token']) ? trim($data['device_token']) : '';
+	        $device_type = isset($data['device_type']) ? trim($data['device_type']) : '';
+	        $now = date('Y-m-d H:i:s');
+
+	        if ($user_type === 'student') {
+	        	$this->db_model->update_data_limit('students', array(
+	        		'login_status' => 1,
+	        		'last_login_app' => $now,
+	        		'token' => $device_token,
+	        		'device_id' => $device_id,
+	        		'device_token' => $device_token,
+	        		'device_type' => $device_type,
+	        	), array('id' => $user->id), 1);
+
+	        	$fresh = $this->db_model->select_data('*', 'students use index (id)', array('id' => $user->id), 1);
+	        	if (empty($fresh)) {
+	        		echo json_encode(array('status' => 'false', 'msg' => 'Student not found'));
+	        		return;
+	        	}
+	        	$access_token = $this->generate_access_token($fresh[0]['id'], 'student');
+	        	$response_data = $this->build_student_login_data_array($fresh[0], $device_id, $device_token, $device_type, $now, $access_token);
+
+	        	$this->json_login_success_response($response_data);
+	        	return;
+	        }
+
+	        $this->db_model->update_data_limit('users', array(
+	        	'device_token' => $device_token,
+	        	'updated_at' => $now,
+	        ), array('id' => $user->id), 1);
+
+	        $urow = $this->db_model->select_data('*', 'users', array('id' => $user->id), 1);
+	        if (empty($urow)) {
+	        	echo json_encode(array('status' => 'false', 'msg' => 'User not found'));
+	        	return;
+	        }
+	        $u = $urow[0];
+	        $access_token = $this->generate_access_token($u['id'], $u['user_type']);
+	        $profile_completed = (!isset($u['city']) || $u['city'] === '') ? 0 : 1;
+
+	        $this->json_login_success_response(array(
+	        	'userType' => $u['user_type'],
+	        	'userId' => $u['id'],
+	        	'name' => $u['name'],
+	        	'email' => $u['email'],
+	        	'mobile' => $u['mobile'],
+	        	'image' => base_url('uploads/users/') . $u['image'],
+	        	'role' => $u['role'],
+	        	'is_profile_completed' => $profile_completed,
+	        	'access_token' => $access_token,
+	        	'token_type' => 'Bearer'
+	        ));
+	        return;
 
 	    } else {
 
 	        echo json_encode([
 	            "status" => false,
-	            "msg" => "Invalid OTP"
+	            "msg" => "Invalid or expired OTP. Please check the code or request a new OTP from Send OTP.",
+	            "code" => "INVALID_OTP"
 	        ]);
 	    }
 	}
 	
-	function update_password()
-{
-    $data = $_REQUEST;
+	/**
+	 * POST api/user/update-password
+	 * Body (JSON or form): mobile, password, confirm_password, user_type (student|teacher|institute)
+	 * Student lookup: mobile OR contact_no (same as OTP flow).
+	 */
+	public function update_password()
+	{
+		$data = json_decode(file_get_contents('php://input'), true);
+		if (empty($data)) {
+			$data = $this->input->post();
+		}
+		if (empty($data)) {
+			$data = $this->input->get();
+		}
 
-    if (
-        !empty($data['mobile']) &&
-        !empty($data['password']) &&
-        !empty($data['confirm_password'])
-    ) {
+		$mobile = isset($data['mobile']) ? trim($data['mobile']) : '';
+		$password = isset($data['password']) ? $data['password'] : '';
+		$confirm_password = isset($data['confirm_password']) ? $data['confirm_password'] : '';
+		$user_type = isset($data['user_type']) ? strtolower(trim($data['user_type'])) : '';
 
-        $mobile = $data['mobile'];
-        $password = $data['password'];
-        $confirm_password = $data['confirm_password'];
+		if ($mobile === '' || $password === '' || $confirm_password === '') {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'Mobile, password and confirm_password are required',
+				'code' => 'MISSING_PARAMETERS',
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
 
-        // Password mismatch
-        if ($password !== $confirm_password) {
-            $arr = [
-                'status' => 'false',
-                'msg' => 'Password and Confirm Password do not match'
-            ];
-        } else {
+		if ($user_type === '') {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'user_type is required (student, teacher, institute)',
+				'code' => 'USER_TYPE_REQUIRED',
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
 
-            // 🔍 Find user by mobile
-            $user = $this->db_model->select_data(
-                'id',
-                'students',
-                ['mobile' => $mobile],
-                1
-            );
+		if (!in_array($user_type, array('student', 'teacher', 'institute'), true)) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'Invalid user_type',
+				'code' => 'INVALID_USER_TYPE',
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
 
-            if (empty($user)) {
-                $arr = [
-                    'status' => 'false',
-                    'msg' => 'User not found'
-                ];
-            } else {
+		if (!preg_match('/^[0-9]{10}$/', $mobile)) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'Invalid mobile number (10 digits)',
+				'code' => 'INVALID_MOBILE',
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
 
-                $student_id = $user[0]['id'];
+		if ($password !== $confirm_password) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'Password and confirm password do not match',
+				'code' => 'PASSWORD_MISMATCH',
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
 
-                // Hash password
-                $hashed_password = password_hash($password, PASSWORD_BCRYPT);
+		if (strlen($password) < 6) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'Password must be at least 6 characters',
+				'code' => 'PASSWORD_TOO_SHORT',
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
 
-                $update = $this->db_model->update_data_limit(
-                    'students',
-                    ['password' => $hashed_password],
-                    ['id' => $student_id],
-                    1
-                );
+		$hashed_password = password_hash($password, PASSWORD_BCRYPT);
 
-                if ($update) {
-                    $arr = [
-                        'status' => 'true',
-                        'msg' => 'Password updated successfully'
-                    ];
-                } else {
-                    $arr = [
-                        'status' => 'false',
-                        'msg' => 'Failed to update password'
-                    ];
-                }
-            }
-        }
+		if ($user_type === 'student') {
+			$this->db->from('students');
+			$this->db->group_start();
+			$this->db->where('mobile', $mobile);
+			$this->db->or_where('contact_no', $mobile);
+			$this->db->group_end();
+			$row = $this->db->get()->row();
+			if (empty($row)) {
+				echo json_encode(array(
+					'status' => 'false',
+					'msg' => 'No account found with this mobile number',
+					'code' => 'USER_NOT_FOUND',
+				), JSON_UNESCAPED_SLASHES);
+				return;
+			}
+			$update = $this->db_model->update_data_limit(
+				'students use index (id)',
+				array('password' => $hashed_password),
+				array('id' => $row->id),
+				1
+			);
+		} else {
+			$user = $this->db_model->select_data(
+				'id',
+				'users',
+				array('mobile' => $mobile, 'user_type' => $user_type),
+				1
+			);
+			if (empty($user)) {
+				echo json_encode(array(
+					'status' => 'false',
+					'msg' => 'No account found with this mobile number',
+					'code' => 'USER_NOT_FOUND',
+				), JSON_UNESCAPED_SLASHES);
+				return;
+			}
+			$update = $this->db_model->update_data_limit(
+				'users',
+				array('password' => $hashed_password),
+				array('id' => $user[0]['id']),
+				1
+			);
+		}
 
-    } else {
-        $arr = [
-            'status' => 'false',
-            'msg' => 'Missing parameters'
-        ];
-    }
-
-    // Proper JSON output
-    $this->output
-        ->set_content_type('application/json')
-        ->set_output(json_encode($arr));
-}
+		if ($update) {
+			echo json_encode(array(
+				'status' => 'true',
+				'msg' => 'Password updated successfully',
+			), JSON_UNESCAPED_SLASHES);
+		} else {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'Failed to update password',
+				'code' => 'UPDATE_FAILED',
+			), JSON_UNESCAPED_SLASHES);
+		}
+	}
 	
 	
 	
