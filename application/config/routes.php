@@ -62,7 +62,6 @@ $route['admin/add-batch/(:any)'] = 'admin_profile/add_batch/$1';
 $route['admin/batch-manage'] = 'admin_profile/batch_manage';
 $route['admin/batch-cat-manage'] = 'admin_profile/batch_cat_manage';
 $route['admin/batch-subcat-manage'] = 'admin_profile/batch_subcat_manage';
-$route['admin/chapter-manage'] = 'admin_profile/chapter_manage';
 $route['admin/student-manage'] = 'admin_profile/student_manage';
 $route['admin/add-student'] = 'admin_profile/add_student';
 $route['admin/add-student/(:any)'] = 'admin_profile/add_student/$1';
@@ -255,7 +254,12 @@ $route['api/user/update-profile'] = 'api/user/home/profile_update';
 $route['api/user/logout'] = 'api/user/home/logout';
 $route['api/user/update-password'] = 'api/user/home/update_password';
 $route['api/user/delete-account'] = 'api/user/home/deleteAccount';
-$route['api/common/city-list'] = 'api/common/city_list';
+
+$route['api/master/city-list'] = 'api/common/city_list';
 
 /* Database migrations (see application/controllers/Migrate.php) */
 $route['migrate'] = 'migrate/index';
+
+// Batch Routes (third segment = Batch.php controller, same pattern as api/user/home/...)
+$route['api/batch/batch-list'] = 'api/batch/batch/batch_list';
+$route['api/batch/batch-details'] = 'api/batch/batch/batch_details';
