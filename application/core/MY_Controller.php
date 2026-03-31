@@ -71,6 +71,25 @@ class MY_Controller extends CI_Controller
 			return false;
 		}
 
+		// Server-side session validation for student tokens.
+		// Without this, a signed token stays "valid" until expiry even after logout.
+		if ((string) $payload['ut'] === 'student') {
+			$student_id = (int) $payload['uid'];
+			$rows = $this->db_model->select_data('id, token, login_status', 'students', array('id' => $student_id));
+			if (empty($rows) || !isset($rows[0]['token'])) {
+				return false;
+			}
+
+			$db_login_status = isset($rows[0]['login_status']) ? (int) $rows[0]['login_status'] : 0;
+
+			// If user logged out, reject immediately.
+			// NOTE: `students.token` is used as device token in this codebase (not the API access token),
+			// so we validate using `login_status` only.
+			if ($db_login_status !== 1) {
+				return false;
+			}
+		}
+
 		return $payload;
 	}
 

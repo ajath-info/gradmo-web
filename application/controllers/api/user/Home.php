@@ -218,7 +218,6 @@ class Home extends MY_Controller {
         $token = $this->get_access_token_from_request();
         $payload = $this->parse_access_token($token);
        
-
         if ($payload === false) {
             echo json_encode(array(
                 'status' => 'false',
@@ -229,21 +228,23 @@ class Home extends MY_Controller {
 
         // This logout endpoint currently supports student app sessions.
         if ($payload['ut'] !== 'student') {
-            echo json_encode(array(
-                'status' => 'false',
-                'msg' => 'Logout is currently available for student users only'
-            ));
-            return;
-        }
-
-        $student_id = (int) $payload['uid'];
-        $ins = $this->db_model->update_data_limit(
-            'students use index (id)',
-            array('login_status' => 0, 'token' => ''),
-            array('id' => $student_id),
-            1
-        );
-
+            $user_id = (int) $payload['uid'];
+            $ins = $this->db_model->update_data_limit(
+                'users use index (id)',
+                array('login_status' => 0, 'token' => ''),
+                array('id' => $user_id),
+                1
+            );
+        } else { 
+                $student_id = (int) $payload['uid'];
+                $ins = $this->db_model->update_data_limit(
+                    'students use index (id)',
+                    array('login_status' => 0, 'token' => ''),
+                    array('id' => $student_id),
+                    1
+                );
+            }
+    
         if($ins){
              $arr =	array('status'=>'true','msg'=>$this->lang->line('ltr_logged_out'));
         }else{
@@ -1031,7 +1032,7 @@ public function otherBatchData($data){
 
         $fields = [
             'name','email','mobile','address','country',
-            'state','city','pincode','school_college_name','grade'
+            'state','city','pincode','school_college_name','grade','is_complete'
         ];
 
         foreach ($fields as $field) {
@@ -2956,7 +2957,7 @@ public function otherBatchData($data){
                 'msg'=>$this->lang->line('ltr_no_record_msg')
             ); 
         }
- }
+        }
         else{  
             $arr = array(
                 'status'=>'false',
