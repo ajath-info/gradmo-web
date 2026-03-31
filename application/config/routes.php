@@ -255,3 +255,7 @@ $route['api/user/update-profile'] = 'api/user/home/profile_update';
 $route['api/user/logout'] = 'api/user/home/logout';
 $route['api/user/update-password'] = 'api/user/home/update_password';
 $route['api/user/delete-account'] = 'api/user/home/deleteAccount';
+$route['api/common/city-list'] = 'api/common/city_list';
+
+/* Database migrations (see application/controllers/Migrate.php) */
+$route['migrate'] = 'migrate/index';

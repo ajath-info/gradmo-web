@@ -11,7 +11,7 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 | and disable it back when you're done.
 |
 */
-$config['migration_enabled'] = FALSE;
+$config['migration_enabled'] = true;
 
 /*
 |--------------------------------------------------------------------------
@@ -69,7 +69,7 @@ $config['migration_auto_latest'] = FALSE;
 | be upgraded / downgraded to.
 |
 */
-$config['migration_version'] = 0;
+$config['migration_version'] = 20260330223200;
 
 /*
 |--------------------------------------------------------------------------
@@ -82,3 +82,17 @@ $config['migration_version'] = 0;
 |
 */
 $config['migration_path'] = APPPATH.'migrations/';
+
+/*
+|--------------------------------------------------------------------------
+| Migration runner (HTTP)
+|--------------------------------------------------------------------------
+|
+| Used by application/controllers/Migrate.php when you open /migrate in a browser.
+| Set a long random string here, or define MIGRATION_RUNNER_KEY in the environment.
+| Leave empty to allow migrations from CLI only (recommended for production).
+|
+*/
+$config['migration_runner_key'] = getenv('MIGRATION_RUNNER_KEY') !== FALSE && getenv('MIGRATION_RUNNER_KEY') !== ''
+	? getenv('MIGRATION_RUNNER_KEY')
+	: '';
