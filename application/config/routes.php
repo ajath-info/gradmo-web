@@ -254,7 +254,18 @@ $route['api/user/update-profile'] = 'api/user/home/profile_update';
 $route['api/user/logout'] = 'api/user/home/logout';
 $route['api/user/update-password'] = 'api/user/home/update_password';
 $route['api/user/delete-account'] = 'api/user/home/deleteAccount';
+$route['api/user/payment-history'] = 'api/user/home/paymentHistory';
+
+$route['api/user/attendance-list'] = 'api/user/home/attendanceList';
+$route['api/main/site-details'] = 'api/main/main/site_details';
+$route['api/main/notifications-list'] = 'api/main/main/notifications_list';
+$route['api/main/pages'] = 'api/main/main/pages';
+$route['api/main/post-enquiry'] = 'api/main/main/post_enquiry';
+$route['api/courses/courses-list'] = 'api/courses/courses/courses_list';
+$route['api/institute/list'] = 'api/institute/institute/institute_list';
+$route['api/institute/details'] = 'api/institute/institute/institute_details';
 
 // Batch Routes (third segment = Batch.php controller, same pattern as api/user/home/...)
 $route['api/batch/batch-list'] = 'api/batch/batch/batch_list';
 $route['api/batch/batch-details'] = 'api/batch/batch/batch_details';
+$route['api/batch/library-list'] = 'api/batch/batch/library_list';

@@ -403,4 +403,17 @@ class Db_model extends CI_Model {
 	    }
 	}
 	
+	public function otp_account_exists($mobile, $user_type) {
+		if ($user_type === 'student') {
+			return $this->db
+				->where('mobile', $mobile)
+				->count_all_results('students') > 0;
+		} else {
+			return $this->db
+				->where('mobile', $mobile)
+				->where('user_type', $user_type)
+				->count_all_results('users') > 0;
+		}
+	}
+
 }

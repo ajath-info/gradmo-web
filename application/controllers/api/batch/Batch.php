@@ -79,43 +79,111 @@ class Batch extends MY_Controller
 	}
 
 	/**
+	 * book_pdf.batch is stored in different shapes in the wild:
+	 * plain id ("1"), JSON string containing "1", or comma-separated ids ("1,2,3").
+	 */
+	private function apply_book_pdf_batch_filter($batch_id)
+	{
+		$bid = (int) $batch_id;
+		$this->db->group_start();
+		$this->db->like('batch', '"' . $bid . '"');
+		$this->db->or_where('batch', (string) $bid);
+		$this->db->or_where('batch', $bid);
+		if ($bid > 0) {
+			$this->db->or_where('FIND_IN_SET(' . (int) $bid . ', batch) > 0', null, false);
+		}
+		$this->db->group_end();
+	}
+
+	/**
 	 * POST/GET api/batch/batch-list
 	 * Optional: search (filters batch_name)
+	 * Auth:
+	 *   - student: enrolled batches from sudent_batchs
+	 *   - teacher: assigned batches from batch_subjects
 	 */
 	public function batch_list()
 	{
 		$data = $this->read_request_data();
 		$token = $this->get_access_token_from_request();
 		$payload = $this->parse_access_token($token);
-		
-		$student_id = (int) $payload['uid'];
-		if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
-			return;
-		}
 
-		$student = $this->db_model->select_data(
-			'id,name,image,email',
-			'students use index (id)',
-			array('id' => $student_id, 'status' => 1),
-			1
-		);
-		if (empty($student)) {
-			echo json_encode(array('status' => 'false', 'msg' => 'Student not found'));
+		if ($payload === false) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'Unauthorized: invalid or expired access token'
+			));
 			return;
 		}
 
 		$search = isset($data['search']) ? trim($data['search']) : '';
 		$like = ($search !== '') ? array('batches.batch_name', $search) : '';
 
-		$batches = $this->db_model->select_data(
-			'batches.*, sudent_batchs.status as enrollment_status, sudent_batchs.create_at as enrolled_at',
-			'batches use index (id)',
-			array('batches.status' => '1', 'sudent_batchs.student_id' => $student_id),
-			'',
-			array('batches.id', 'desc'),
-			$like,
-			array('sudent_batchs', 'sudent_batchs.batch_id = batches.id')
-		);
+		// STUDENT FLOW: existing behavior (enrolled batches)
+		if ($payload['ut'] === 'student') {
+			$student_id = (int) $payload['uid'];
+			if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
+				return;
+			}
+
+			$student = $this->db_model->select_data(
+				'id,name,image,email',
+				'students use index (id)',
+				array('id' => $student_id, 'status' => 1),
+				1
+			);
+			if (empty($student)) {
+				echo json_encode(array('status' => 'false', 'msg' => 'Student not found'));
+				return;
+			}
+
+			$batches = $this->db_model->select_data(
+				'batches.*, sudent_batchs.status as enrollment_status, sudent_batchs.create_at as enrolled_at',
+				'batches use index (id)',
+				array('batches.status' => '1', 'sudent_batchs.student_id' => $student_id),
+				'',
+				array('batches.id', 'desc'),
+				$like,
+				array('sudent_batchs', 'sudent_batchs.batch_id = batches.id')
+			);
+		}
+		// TEACHER FLOW: batches assigned via batch_subjects.teacher_id
+		elseif ($payload['ut'] === 'teacher') {
+			$teacher_id = (int) $payload['uid'];
+			if ($teacher_id < 1) {
+				echo json_encode(array('status' => 'false', 'msg' => 'Teacher not found'));
+				return;
+			}
+
+			// Build LIKE manually for teacher since we're using a custom query.
+			$params = array($teacher_id);
+			$like_sql = '';
+			if ($search !== '') {
+				$like_sql = ' AND b.batch_name LIKE ? ';
+				$params[] = '%' . $search . '%';
+			}
+
+			$query = $this->db->query(
+				"SELECT DISTINCT 
+					b.*, 
+					1 AS enrollment_status, 
+					NULL AS enrolled_at
+				 FROM batch_subjects bs
+				 JOIN batches b ON b.id = bs.batch_id
+				 WHERE bs.teacher_id = ?
+				   AND b.status = 1
+				   $like_sql
+				 ORDER BY b.id DESC",
+				$params
+			);
+			$batches = $query->result_array();
+		} else {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'Batch list is available for student and teacher only'
+			));
+			return;
+		}
 
 		$list = array();
 		if (!empty($batches)) {
@@ -345,5 +413,162 @@ class Batch extends MY_Controller
 		);
 		echo json_encode($arr,JSON_UNESCAPED_SLASHES);
         die;
+	}
+
+	/**
+	 * POST/GET api/batch/library-list
+	 * Books (PDF) for a batch from book_pdf.
+	 * Auth: student (enrolled in batch). Optional: search, sort_by, sort_dir, page, limit.
+	 */
+	public function library_list()
+	{
+		$data = $this->read_request_data();
+		$token = $this->get_access_token_from_request();
+		$payload = $this->parse_access_token($token);
+
+		if ($payload === false || $payload['ut'] !== 'student') {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'Unauthorized: invalid or expired access token'
+			));
+			return;
+		}
+
+		$student_id = (int) $payload['uid'];
+		if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
+			return;
+		}
+
+		if (empty($data['batch_id'])) {
+			echo json_encode(array('status' => 'false', 'msg' => 'batch_id is required'));
+			return;
+		}
+
+		$batch_id = (int) $data['batch_id'];
+		$enrollment = $this->db_model->select_data(
+			'*',
+			'sudent_batchs',
+			array('student_id' => $student_id, 'batch_id' => $batch_id),
+			1
+		);
+		if (empty($enrollment)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'You are not enrolled in this batch'));
+			return;
+		}
+
+		$batch = $this->db_model->select_data('*', 'batches use index (id)', array('id' => $batch_id), 1);
+		if (empty($batch)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Batch not found'));
+			return;
+		}
+
+		$search = isset($data['search']) ? trim($data['search']) : '';
+		$sort_by = isset($data['sort_by']) ? strtolower(trim($data['sort_by'])) : 'added_at';
+		$sort_dir = isset($data['sort_dir']) ? strtolower(trim($data['sort_dir'])) : 'desc';
+		if ($sort_dir !== 'asc' && $sort_dir !== 'desc') {
+			$sort_dir = 'desc';
+		}
+		$order_columns = array(
+			'added_at' => 'added_at',
+			'date_added' => 'added_at',
+			'title' => 'title',
+			'subject' => 'subject',
+			'topic' => 'topic',
+			'file_name' => 'file_name'
+		);
+		if (!isset($order_columns[$sort_by])) {
+			$sort_by = 'added_at';
+		}
+		$order_col = $order_columns[$sort_by];
+
+		$limit = isset($data['limit']) ? (int) $data['limit'] : 20;
+		if ($limit < 1) {
+			$limit = 20;
+		}
+		if ($limit > 100) {
+			$limit = 100;
+		}
+		$page = isset($data['page']) ? (int) $data['page'] : 1;
+		if ($page < 1) {
+			$page = 1;
+		}
+		$offset = ($page - 1) * $limit;
+
+		$this->db->from('book_pdf');
+		$this->db->where('status', 1);
+		$this->apply_book_pdf_batch_filter($batch_id);
+		if ($search !== '') {
+			$this->db->group_start();
+			$this->db->like('title', $search);
+			$this->db->or_like('topic', $search);
+			$this->db->or_like('subject', $search);
+			$this->db->or_like('file_name', $search);
+			$this->db->group_end();
+		}
+		$total = (int) $this->db->count_all_results();
+
+		$this->db->from('book_pdf');
+		$this->db->where('status', 1);
+		$this->apply_book_pdf_batch_filter($batch_id);
+		if ($search !== '') {
+			$this->db->group_start();
+			$this->db->like('title', $search);
+			$this->db->or_like('topic', $search);
+			$this->db->or_like('subject', $search);
+			$this->db->or_like('file_name', $search);
+			$this->db->group_end();
+		}
+		$this->db->order_by($order_col, $sort_dir);
+		$this->db->limit($limit, $offset);
+		$rows = $this->db->get()->result_array();
+
+		$base_path = rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'book' . DIRECTORY_SEPARATOR;
+		$items = array();
+		if (!empty($rows)) {
+			foreach ($rows as $r) {
+				$file = isset($r['file_name']) ? $r['file_name'] : '';
+				$download_url = $file !== '' ? base_url('uploads/book/') . $file : '';
+				$file_size_bytes = null;
+				$file_size_label = '';
+				if ($file !== '' && is_file($base_path . $file)) {
+					$file_size_bytes = (int) filesize($base_path . $file);
+					if ($file_size_bytes >= 1048576) {
+						$file_size_label = round($file_size_bytes / 1048576, 2) . ' MB';
+					} elseif ($file_size_bytes >= 1024) {
+						$file_size_label = round($file_size_bytes / 1024) . ' KB';
+					} else {
+						$file_size_label = $file_size_bytes . ' B';
+					}
+				}
+
+				$items[] = array(
+					'id' => (int) $r['id'],
+					'title' => isset($r['title']) ? $r['title'] : '',
+					'topic' => isset($r['topic']) ? $r['topic'] : '',
+					'subject' => isset($r['subject']) ? $r['subject'] : '',
+					'fileName' => $file,
+					'downloadUrl' => $download_url,
+					'fileSizeBytes' => $file_size_bytes,
+					'fileSize' => $file_size_label,
+					'addedAt' => isset($r['added_at']) ? $r['added_at'] : ''
+				);
+			}
+		}
+
+		$arr = array(
+			'status' => 'true',
+			'message' => 'Success',
+			'data' => array(
+				'batch_id' => $batch_id,
+				'library' => $items,
+				'pagination' => array(
+					'page' => $page,
+					'limit' => $limit,
+					'total' => $total
+				)
+			)
+		);
+		echo json_encode($arr, JSON_UNESCAPED_SLASHES);
+		die;
 	}
 }

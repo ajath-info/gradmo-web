@@ -1275,37 +1275,87 @@ public function otherBatchData($data){
     }
     function Homework(){ 
         $data = $_REQUEST;
-        if(isset($data['admin_id']) && isset($data['batch_id']) && isset($data['homework_date'])){
-            
-            if(!empty($data['student_id'])){
-                $this->viewNotificationStatus($data['student_id'],'homeWork');
+        $token = $this->get_access_token_from_request();
+        $payload = $this->parse_access_token($token);
+        if ($payload === false) {
+            echo json_encode(array(
+                'status' => 'false',
+                'msg' => 'Unauthorized: invalid or expired access token'
+            ));
+            return;
+        }
+
+        if (empty($data['batch_id'])) {
+            if ($payload['ut'] === 'student') {
+                $student_row = $this->db_model->select_data('id,batch_id,admin_id', 'students use index (id)', array('id' => (int) $payload['uid']), 1);
+                if (!empty($student_row[0]['batch_id'])) {
+                    $data['batch_id'] = $student_row[0]['batch_id'];
+                }
+                if (empty($data['admin_id']) && !empty($student_row[0]['admin_id'])) {
+                    $data['admin_id'] = $student_row[0]['admin_id'];
+                }
             }
-            $admin_id = $data['admin_id'];
-            $batch_id = $data['batch_id'];
-            $date = date('Y-m-d',strtotime($data['homework_date'])); 
-            $cond = array('homeworks.admin_id'=>$admin_id,'homeworks.date'=>date('Y-m-d',strtotime($date)),'homeworks.batch_id'=>$batch_id);
-            $homewrkData = $this->db_model->select_data('homeworks.id,homeworks.admin_id as adminId,homeworks.teacher_id teacherId, homeworks.date,homeworks.subject_id as studentId, homeworks.batch_id as batchId,homeworks.description,homeworks.added_at as addedAt,users.name,users.teach_gender as teachGender,subjects.subject_name as subjectName','homeworks use index (id)',$cond,'',array('id','desc'),'',array('multiple',array(array('users','users.id = homeworks.teacher_id'),array('subjects','subjects.id = homeworks.subject_id'))),'');
-      
+        }
+
+        if ( $payload['ut'] === 'teacher') {
+            $teacher_row = $this->db_model->select_data('id,admin_id', 'users use index (id)', array('id' => (int) $payload['uid']), 1);
+            if (!empty($teacher_row[0]['admin_id'])) {
+                $data['admin_id'] = $teacher_row[0]['admin_id'];
+            }
+        }
+
+        if ( isset($data['batch_id'])) {
+            $date = !empty($data['homework_date']) ? date('Y-m-d', strtotime($data['homework_date'])) : date('Y-m-d');
+
+            // Mark notification read for student app calls.
+            if ($payload['ut'] === 'student') {
+                $this->viewNotificationStatus((int) $payload['uid'], 'homeWork');
+            }
+
+            $cond = array(
+                'homeworks.admin_id' => $data['admin_id'],
+                'homeworks.date' => $date,
+                'homeworks.batch_id' => $data['batch_id']
+            );
+
+            // For teacher, show only homework created by logged-in teacher.
+            if ($payload['ut'] === 'teacher') {
+                $cond['homeworks.teacher_id'] = (int) $payload['uid'];
+            }
+
+            $homewrkData = $this->db_model->select_data(
+                'homeworks.id,homeworks.admin_id as adminId,homeworks.teacher_id as teacherId,homeworks.date,homeworks.subject_id as studentId,homeworks.batch_id as batchId,homeworks.description,homeworks.added_at as addedAt,users.name,users.teach_gender as teachGender,subjects.subject_name as subjectName',
+                'homeworks use index (id)',
+                $cond,
+                '',
+                array('id', 'desc'),
+                '',
+                array('multiple', array(array('users', 'users.id = homeworks.teacher_id'), array('subjects', 'subjects.id = homeworks.subject_id'))),
+                ''
+            );
+
             if (!empty($homewrkData)) {
                 $arr = array(
                     'homeWork' => $homewrkData,
                     'status' => 'true',
                     'msg' => $this->lang->line('ltr_fetch_successfully')
                 );
-            }else{
+            } else {
                 $arr = array(
                     'status' => 'false',
                     'msg' => $this->lang->line('ltr_no_record_msg')
                 );
             }
-        }else{
+        } else {
             $arr = array(
-                'status'=>'false',
-                'msg'=>$this->lang->line('ltr_missing_parameters_msg')
+                'status' => 'false',
+                'msg' => $this->lang->line('ltr_missing_parameters_msg')
             );
         }
         echo json_encode($arr);
     }
+
+
     function get_subject(){
         $data = $_REQUEST;
         if(isset($data['admin_id']) && isset($data['batch_id'])){
@@ -1372,7 +1422,7 @@ public function otherBatchData($data){
 			 $join = array('chapters',"chapters.id = video_lectures.topic");
 			 // $videos = $this->db_model->select_data('id,admin_id as adminId,title,batch,topic,subject,url,status,added_by as addedBy,added_at as addedAt,video_type as videoType, preview_type as previewType, description','video_lectures use index (id)',array('admin_id'=>$admin_id),$limit,array('id','desc'),$like);
             $videos = $this->db_model->select_data('id,admin_id as adminId,title,batch,topic,subject,url,status,added_by as addedBy,added_at as addedAt,video_type as videoType, preview_type as previewType, description','video_lectures use index (id)',array('batch'=>$data['batch_id'],'topic'=>$data['chapter']),$limit,array('video_lectures.id','desc'),$like);
-// 			echo $this->db->last_query();		die;	
+            // 			echo $this->db->last_query();		die;	
             if(!empty($videos)){
                 foreach($videos as $key=>$value){
                     $url = $value['url'];
@@ -1839,7 +1889,122 @@ public function otherBatchData($data){
         }
         echo json_encode($arr);
     }
-    
+
+    function attendanceList()
+    {
+        $data = $_REQUEST;
+        $token = $this->get_access_token_from_request();
+        $payload = $this->parse_access_token($token);
+
+        if ($payload === false) {
+            echo json_encode(array(
+                'status' => 'false',
+                'msg' => 'Unauthorized: invalid or expired access token'
+            ));
+            return;
+        }
+
+        // STUDENT VIEW: own attendance for selected month/year.
+        if ($payload['ut'] === 'student') {
+            $student_id = (int) $payload['uid'];
+            $month = isset($data['month']) ? str_pad((int) $data['month'], 2, '0', STR_PAD_LEFT) : date('m');
+            $year = isset($data['year']) ? (int) $data['year'] : (int) date('Y');
+            $like = array('date', $year . '-' . $month);
+
+            $attendance = $this->db_model->select_data(
+                'id,student_id as studentId,added_id as addedId,date,time',
+                'attendance use index (id)',
+                array('student_id' => $student_id),
+                '',
+                array('id', 'desc'),
+                $like,
+                '',
+                ''
+            );
+
+            $days_present = !empty($attendance) ? count($attendance) : 0;
+            $days_in_month = cal_days_in_month(CAL_GREGORIAN, (int) $month, (int) $year);
+            $percentage = $days_in_month > 0 ? round(($days_present / $days_in_month) * 100, 2) : 0;
+
+            echo json_encode(array(
+                'status' => 'true',
+                'userType' => 'student',
+                'attendance' => !empty($attendance) ? $attendance : array(),
+                'summary' => array(
+                    'year' => (int) $year,
+                    'month' => (int) $month,
+                    'daysPresent' => (int) $days_present,
+                    'daysInMonth' => (int) $days_in_month,
+                    'attendancePercent' => (float) $percentage
+                ),
+                'msg' => $this->lang->line('ltr_fetch_successfully')
+            ));
+            return;
+        }
+
+        // TEACHER VIEW: student list of a batch with today's/date-wise attendance state.
+        if ($payload['ut'] === 'teacher') {
+            if (empty($data['batch_id'])) {
+                echo json_encode(array(
+                    'status' => 'false',
+                    'msg' => $this->lang->line('ltr_missing_parameters_msg')
+                ));
+                return;
+            }
+
+            $teacher_id = (int) $payload['uid'];
+            $batch_id = (int) $data['batch_id'];
+            $date = !empty($data['date']) ? $data['date'] : date('Y-m-d');
+
+            $query = $this->db->query(
+                "SELECT s.id AS studentId, s.name, s.image, s.batch_id AS batchId, 
+                        a.id AS attendanceId, a.date, a.time
+                 FROM students s
+                 LEFT JOIN attendance a
+                    ON a.student_id = s.id
+                   AND a.date = ?
+                   AND a.added_id = ?
+                 WHERE s.batch_id = ?
+                   AND s.status = 1
+                 ORDER BY s.name ASC",
+                array($date, $teacher_id, $batch_id)
+            );
+            $rows = $query->result_array();
+
+            $students = array();
+            foreach ($rows as $row) {
+                $students[] = array(
+                    'studentId' => (int) $row['studentId'],
+                    'name' => $row['name'],
+                    'image' => $row['image'],
+                    'batchId' => (int) $row['batchId'],
+                    'isPresent' => !empty($row['attendanceId']) ? 1 : 0,
+                    'attendanceId' => !empty($row['attendanceId']) ? (int) $row['attendanceId'] : 0,
+                    'date' => !empty($row['date']) ? $row['date'] : $date,
+                    'time' => !empty($row['time']) ? $row['time'] : ''
+                );
+            }
+
+            echo json_encode(array(
+                'status' => 'true',
+                'userType' => 'teacher',
+                'batchId' => $batch_id,
+                'date' => $date,
+                'students' => $students,
+                'presentCount' => count(array_filter($students, function ($v) { return $v['isPresent'] == 1; })),
+                'totalStudents' => count($students),
+                'msg' => $this->lang->line('ltr_fetch_successfully')
+            ));
+            return;
+        }
+
+        echo json_encode(array(
+            'status' => 'false',
+            'msg' => 'Attendance list is currently available for student and teacher only'
+        ));
+    }
+
+
     function getTopScorer(){ 
         $data = $_REQUEST;
       
@@ -1990,46 +2155,6 @@ public function otherBatchData($data){
         }
         echo json_encode($arr);
     }
-    // function certificate(){
-      
-    //    $data = $_REQUEST;
-    //     if(isset($data['batch_id']) && isset($data['student_id']) ){
-    //         $id=$data['student_id'];
-    //     	$batch_id = $data['batch_id'];
-    //     	$data['student_certificate']=$this->db_model->select_data('*','certificate',array('student_id'=>$id,'batch_id'=>$batch_id),1,array('id','desc'));
-    //     	if(!empty($data['student_certificate'])){
-    //     	    $data['certificate_details']=$this->db_model->select_data('*','certificate_setting','',1,array('id','desc'));
-    //         	$data['site_details_logo']=$this->db_model->select_data('site_logo','site_details','',1,array('id','desc'));
-    //         	$data['student_details']=$this->db_model->select_data('name','students',array('id'=>$id),1,array('id','desc'));
-    //         	$data['batchdata']=$this->db_model->select_data('batch_name','batches',array('id'=>$batch_id),1,array('id','desc'));
-    //         	$data['baseurl'] = base_url();
-    //             $html=	$this->load->view("student/certificate_pdf",$data,true); 
-    //             $this->load->library('pdf'); // change to pdf_ssl for ssl
-    //             $filename = "certificate_".$id."_".$batch_id;
-    //             $result=$this->pdf->create($html);
-                
-    //             $file_path= explode("application",APPPATH);
-    //             file_put_contents($file_path[0].'uploads/certificate/'.$filename.'.pdf', $result);
-    //             $arr = array(
-    //                 'fileName' => $filename.'.pdf',
-    //                 'filesUrl' => base_url('uploads/certificate/'),
-    //                 'status' => 'true',
-    //                 'msg' => $this->lang->line('ltr_fetch_successfully')
-    //             );
-    //         }else{
-    //             $arr = array(
-    //                 'status' => 'false',
-    //                 'msg' => $this->lang->line('ltr_no_record_msg')
-    //             );
-    //         }
-    //     }else{
-    //         $arr = array(
-    //             'status'=>'false',
-    //             'msg'=>$this->lang->line('ltr_missing_parameters_msg')
-    //         );
-    //     }
-    //     echo json_encode($arr);
-    // }
     
     function apply_leave(){
         $data = $_REQUEST;
@@ -2321,37 +2446,68 @@ public function otherBatchData($data){
 	
 	function get_payment_history(){
         $data = $_REQUEST;
-		if(!empty($data['student_id'])){
-			
-			$payData= $this->db_model->select_data('id, batch_id as batchId,transaction_id as transactionId, amount, create_at as createAt','student_payment_history',array('student_id'=>$data['student_id']),'',array('id ','desc'));
-			if(!empty($payData)){
-				foreach($payData as $key=>$value){
-					$batchData =$this->db_model->select_data('*','batches use index (id)',array('id'=>$value['batchId']),1);
-					
-					$payData[$key]['batchName'] =!empty($batchData)?$batchData[0]['batch_name']:'';
-					$payData[$key]['startDate'] =!empty($batchData)?$batchData[0]['start_date']:'';
-					$payData[$key]['endDate'] =!empty($batchData)?$batchData[0]['end_date']:'';
-					$payData[$key]['startTime'] =!empty($batchData)?$batchData[0]['start_time']:'';
-					$payData[$key]['endTime'] =!empty($batchData)?$batchData[0]['end_time']:'';
-					$payData[$key]['batchType'] =!empty($batchData)?$batchData[0]['batch_type']:'';
-					$payData[$key]['batchPrice'] =!empty($batchData)?$batchData[0]['batch_price']:'';
-					$payData[$key]['description'] =!empty($batchData)?$batchData[0]['description']:'';
-					$payData[$key]['status'] =!empty($batchData)?$batchData[0]['status']:'';
-					$payData[$key]['batchOfferPrice'] =!empty($batchData)?$batchData[0]['batch_offer_price']:'';
-					$payData[$key]['currencyCode'] = $this->general_settings('currency_code');
-					$payData[$key]['currencyDecimalCode'] = $this->general_settings('currency_decimal_code');
-				}
-				$resp = array('status'=>'true','msg'=>$this->lang->line('ltr_fetch_successfully'), 'paymentData'=>$payData);
-				
-			}else{
-				$resp = array('status'=>'false','msg'=>$this->lang->line('ltr_no_record_msg'));
+		//$student_id = 0;
+
+		$token = $this->get_access_token_from_request();
+		$payload = $this->parse_access_token($token);
+		if ($payload !== false && isset($payload['ut']) && $payload['ut'] === 'student') {
+			$student_id = (int) $payload['uid'];
+			if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
+				return;
 			}
-		}else{
-			$resp = array('status'=>'false','msg'=>$this->lang->line('ltr_missing_parameters_msg')); 
-		} 
-		echo json_encode($resp,JSON_UNESCAPED_SLASHES);
-        
+		} elseif (!empty($data['student_id'])) {
+			$student_id = (int) $data['student_id'];
+		}
+
+		if ($student_id < 1) {
+			$resp = array('status'=>'false','msg'=>$this->lang->line('ltr_missing_parameters_msg'));
+			echo json_encode($resp, JSON_UNESCAPED_SLASHES);
+			return;
+		}
+
+		$cond = array('student_id' => $student_id);
+		if (!empty($data['batch_id'])) {
+			$cond['batch_id'] = (int) $data['batch_id'];
+		}
+
+		$payData = $this->db_model->select_data(
+			'id,batch_id as batchId,transaction_id as transactionId,mode,amount,create_at as createAt,admin_id as adminId',
+			'student_payment_history',
+			$cond,
+			'',
+			array('id', 'desc')
+		);
+		if (!empty($payData)) {
+			foreach ($payData as $key => $value) {
+				$batchData = $this->db_model->select_data('*', 'batches use index (id)', array('id' => $value['batchId']), 1);
+
+				$payData[$key]['batchName'] = !empty($batchData) ? $batchData[0]['batch_name'] : '';
+				$payData[$key]['startDate'] = !empty($batchData) ? $batchData[0]['start_date'] : '';
+				$payData[$key]['endDate'] = !empty($batchData) ? $batchData[0]['end_date'] : '';
+				$payData[$key]['startTime'] = !empty($batchData) ? $batchData[0]['start_time'] : '';
+				$payData[$key]['endTime'] = !empty($batchData) ? $batchData[0]['end_time'] : '';
+				$payData[$key]['batchType'] = !empty($batchData) ? $batchData[0]['batch_type'] : '';
+				$payData[$key]['batchPrice'] = !empty($batchData) ? $batchData[0]['batch_price'] : '';
+				$payData[$key]['description'] = !empty($batchData) ? $batchData[0]['description'] : '';
+				$payData[$key]['status'] = !empty($batchData) ? $batchData[0]['status'] : '';
+				$payData[$key]['batchOfferPrice'] = !empty($batchData) ? $batchData[0]['batch_offer_price'] : '';
+				$payData[$key]['currencyCode'] = $this->general_settings('currency_code');
+				$payData[$key]['currencyDecimalCode'] = $this->general_settings('currency_decimal_code');
+			}
+			$resp = array('status' => 'true', 'msg' => $this->lang->line('ltr_fetch_successfully'), 'paymentData' => $payData);
+		} else {
+			$resp = array('status' => 'false', 'msg' => $this->lang->line('ltr_no_record_msg'));
+		}
+		echo json_encode($resp, JSON_UNESCAPED_SLASHES);
     }
+
+	/**
+	 * Same as get_payment_history — REST-style name for mobile routes.
+	 */
+	function paymentHistory()
+	{
+		$this->get_payment_history();
+	}
     
     function convertCurrency($amount,$from_currency,$to_currency){
           $apikey = $this->general_settings('currency_converter_api');
@@ -2370,7 +2526,8 @@ public function otherBatchData($data){
           $total = $val * $amount;
           return number_format($total, 2, '.', '');
         }
-    public function SendMail($tomail='', $subject='', $msg=''){
+    
+        public function SendMail($tomail='', $subject='', $msg=''){
             $frommail =$this->general_settings('smtp_mail');
             $frompwd =$this->general_settings('smtp_pwd');
             $title = $this->db_model->select_data('site_title','site_details','',1,array('id','desc'))[0]['site_title'];
@@ -2625,7 +2782,8 @@ public function otherBatchData($data){
             echo json_encode($resp,JSON_UNESCAPED_SLASHES);
         }
         
-    function db_new_changes_all_batch(){
+
+        function db_new_changes_all_batch(){
         $data =	$_REQUEST;
         if(isset($data['admin_id']) && isset($data['student_id'])){
             $admin_id = $data['admin_id'];
@@ -2967,7 +3125,6 @@ public function otherBatchData($data){
         echo json_encode($arr);
     }
   
-  
     function get_all_data(){
         $data = $_REQUEST;
         
@@ -3017,7 +3174,7 @@ public function otherBatchData($data){
                     }
                   
                    
-$batchData = $this->db_model->select_data('id, batch_name as batchName, start_date as startDate, end_date as endDate, start_time as startTime, end_time as endTime, batch_type as batchType, batch_price as batchPrice, no_of_student as noOfStudent ,status,description, batch_image as batchImage, batch_offer_price as batchOfferPrice','batches use index (id)',$cond_sub1,$limit,array('id','desc'),$like_search);
+            $batchData = $this->db_model->select_data('id, batch_name as batchName, start_date as startDate, end_date as endDate, start_time as startTime, end_time as endTime, batch_type as batchType, batch_price as batchPrice, no_of_student as noOfStudent ,status,description, batch_image as batchImage, batch_offer_price as batchOfferPrice, enrollment_status as enrollmentStatus, enrolled_at as enrolledAt, enrollment_type as enrollmentType ','batches use index (id)',$cond_sub1,$limit,array('id','desc'),$like_search);
  
             if(!empty($batchData)){
                 foreach($batchData as $key=>$value){
@@ -3128,26 +3285,26 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
                             );
         }
             
-   //     elseif(!empty($data['search'])){
-            
-   //       $search = trim($data['search']);
-         // $like_search = array('batch_name',$search);
-          
-   // 	if(isset($data['length']) && $data['length']>0){
-//             if(isset($data['start']) && !empty($data['start'])){
-//                 $limit = array($data['length'],$data['start']);
-//                 // $count = $data['start']+1;
-//             }else{ 
-//                 $limit = array($data['length'],0);
-//                 // $count = 1;
-//             }
-//         }else{
-//             $limit = '';
-//             // $count = 1;
-//         }
+                    //     elseif(!empty($data['search'])){
+                                
+                    //       $search = trim($data['search']);
+                            // $like_search = array('batch_name',$search);
+                            
+                    // 	if(isset($data['length']) && $data['length']>0){
+                    //             if(isset($data['start']) && !empty($data['start'])){
+                    //                 $limit = array($data['length'],$data['start']);
+                    //                 // $count = $data['start']+1;
+                    //             }else{ 
+                    //                 $limit = array($data['length'],0);
+                    //                 // $count = 1;
+                    //             }
+                    //         }else{
+                    //             $limit = '';
+                    //             // $count = 1;
+                    //         }
 
-   //         //  $slider_limit = $data['limit'];
-   //         $category = $this->db_model->select_data('id as categoryId,name as categoryName','batch_category use index (id)',array('status'=>1),$limit);
+            //         //  $slider_limit = $data['limit'];
+            //         $category = $this->db_model->select_data('id as categoryId,name as categoryName','batch_category use index (id)',array('status'=>1),$limit);
             // 	     if(!empty($category)){
                         
             // 	        foreach($category as $catkey=>$value){
@@ -3166,7 +3323,7 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
                      
             // 	   $cond_sub1 = array('status'=>1,'sub_cat_id'=>$value['SubcategoryId']);
                    
-   //                $batchData = $this->db_model->select_data('id, batch_name as batchName, start_date as startDate, end_date as endDate, start_time as startTime, end_time as endTime, batch_type as batchType, batch_price as batchPrice, no_of_student as noOfStudent ,status,description, batch_image as batchImage, batch_offer_price as batchOfferPrice','batches use index (id)',$cond_sub1,$slider_limit,array('id','desc'),$like_search);
+            //                $batchData = $this->db_model->select_data('id, batch_name as batchName, start_date as startDate, end_date as endDate, start_time as startTime, end_time as endTime, batch_type as batchType, batch_price as batchPrice, no_of_student as noOfStudent ,status,description, batch_image as batchImage, batch_offer_price as batchOfferPrice','batches use index (id)',$cond_sub1,$slider_limit,array('id','desc'),$like_search);
    
             // if(!empty($batchData)){
             // 	foreach($batchData as $key=>$value){
@@ -3175,8 +3332,8 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
             // 		}
             // 		$startDate =$value['startDate'];
             // 		$endDate =$value['endDate'];
-//                     $batchData[$key]['startDate']=date('d-m-Y',strtotime($startDate));
-//                     $batchData[$key]['endDate']=date('d-m-Y',strtotime($endDate));
+            //                     $batchData[$key]['startDate']=date('d-m-Y',strtotime($startDate));
+            //                     $batchData[$key]['endDate']=date('d-m-Y',strtotime($endDate));
                    
             // 		$batch_fecherd =$this->db_model->select_data('batch_specification_heading as batchSpecification, batch_fecherd as fecherd','batch_fecherd',array('batch_id'=>$value['id']));
             // 		if(!empty($batch_fecherd)){
@@ -3201,17 +3358,17 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
             // 	                foreach($chapter as $ckey=>$cvalue){
                                     
             // 	                    $sub_like = array('topic,batch',urldecode($cvalue['chapterName']).',"'.$value['id'].'"');
-//             					    $sub_videos = $this->db_model->select_data('id,admin_id as adminId,title,batch,topic,subject,url,status,added_by as addedBy,added_at as addedAt,video_type as videoType, preview_type as previewType, description','video_lectures use index (id)',array('status'=>1),'',array('id','desc'),$sub_like);
-//                                     if(!empty($sub_videos)){
-//                                         foreach($sub_videos as $vkey=>$vvalue){
-//                                             $url = $vvalue['url'];
-//                                             preg_match('%(?:youtube(?:-nocookie)?\.com/(?:[^/]+/.+/|(?:v|e(?:mbed)?)/|.*[?&]v=)|youtu\.be/)([^"&?/ ]{11})%i', $url, $match);
-//                                             $sub_videos[$vkey]['videoId']=$match[1];
-//                                         }
-//                                         $chapter[$ckey]['videoLectures']=$sub_videos;
-//                                     }else{
-//                                       $chapter[$ckey]['videoLectures'] = array(); 
-//                                     }
+            //             					    $sub_videos = $this->db_model->select_data('id,admin_id as adminId,title,batch,topic,subject,url,status,added_by as addedBy,added_at as addedAt,video_type as videoType, preview_type as previewType, description','video_lectures use index (id)',array('status'=>1),'',array('id','desc'),$sub_like);
+            //                                     if(!empty($sub_videos)){
+            //                                         foreach($sub_videos as $vkey=>$vvalue){
+            //                                             $url = $vvalue['url'];
+            //                                             preg_match('%(?:youtube(?:-nocookie)?\.com/(?:[^/]+/.+/|(?:v|e(?:mbed)?)/|.*[?&]v=)|youtu\.be/)([^"&?/ ]{11})%i', $url, $match);
+            //                                             $sub_videos[$vkey]['videoId']=$match[1];
+            //                                         }
+            //                                         $chapter[$ckey]['videoLectures']=$sub_videos;
+            //                                     }else{
+            //                                       $chapter[$ckey]['videoLectures'] = array(); 
+            //                                     }
                                     
                                     
             // 	                }
@@ -3229,16 +3386,16 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
             // 	   }
             // 	    $like = array('batch','"'.$value['id'].'"');
             // 	    $videos = $this->db_model->select_data('id,admin_id as adminId,title,batch,topic,subject,url,status,added_by as addedBy,added_at as addedAt,video_type as videoType, preview_type as previewType, description','video_lectures use index (id)',array('status'=>1),'',array('id','desc'),$like);
-//                     if(!empty($videos)){
-//                         foreach($videos as $vkey=>$vvalue){
-//                             $url = $vvalue['url'];
-//                             preg_match('%(?:youtube(?:-nocookie)?\.com/(?:[^/]+/.+/|(?:v|e(?:mbed)?)/|.*[?&]v=)|youtu\.be/)([^"&?/ ]{11})%i', $url, $match);
-//                             $videos[$vkey]['videoId']=$match[1];
-//                         }
-//                         $batchData[$key]['videoLectures']=$videos;
-//                     }else{
-//                       $batchData[$key]['videoLectures'] = array(); 
-//                     }
+            //                     if(!empty($videos)){
+            //                         foreach($videos as $vkey=>$vvalue){
+            //                             $url = $vvalue['url'];
+            //                             preg_match('%(?:youtube(?:-nocookie)?\.com/(?:[^/]+/.+/|(?:v|e(?:mbed)?)/|.*[?&]v=)|youtu\.be/)([^"&?/ ]{11})%i', $url, $match);
+            //                             $videos[$vkey]['videoId']=$match[1];
+            //                         }
+            //                         $batchData[$key]['videoLectures']=$videos;
+            //                     }else{
+            //                       $batchData[$key]['videoLectures'] = array(); 
+            //                     }
             // 	   $student_batch_dtail = $this->db_model->select_data('*','sudent_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
             // 	   if(!empty($student_batch_dtail)){
             // 	        $batchData[$key]['purchase_condition'] = true;
@@ -3246,12 +3403,12 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
             // 	       $batchData[$key]['purchase_condition'] = false;
             // 	   }
             // 	}
-//     			$subCategory[$subkey]['BatchData'] = $batchData;
+            //     			$subCategory[$subkey]['BatchData'] = $batchData;
             
             // 	    }else{
                        
-//     					   	 $subCategory[$subkey]['BatchData'] = array();
-//     					   	}
+            //     					   	 $subCategory[$subkey]['BatchData'] = array();
+            //     					   	}
             // 			}
             // 			 $category[$catkey]['subcategory'] = $subCategory;
             // 	   }else{
@@ -3261,8 +3418,8 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
             // 	}
             // }
 
-   //         $arr = array(           
-   //                         'status'=>'true',
+                //         $arr = array(           
+                //                         'status'=>'true',
             //                 'msg' =>$this->lang->line('ltr_fetch_successfully'),
             //                 'batchData'=>$category
             //                 );
