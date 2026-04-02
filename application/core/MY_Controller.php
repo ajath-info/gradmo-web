@@ -63,7 +63,7 @@ class MY_Controller extends CI_Controller
 		$payload_json = base64_decode(strtr($payload_b64, '-_', '+/'));
 		$payload = json_decode($payload_json, true);
 
-		if (!is_array($payload) || empty($payload['uid']) || empty($payload['ut']) || empty($payload['exp'])) {
+		if (!is_array($payload) || empty($payload['uid']) || empty($payload['ut']) || empty($payload['exp']) || empty($payload['iat'])) {
 			return false;
 		}
 
@@ -71,22 +71,50 @@ class MY_Controller extends CI_Controller
 			return false;
 		}
 
-		// Server-side session validation for student tokens.
-		// Without this, a signed token stays "valid" until expiry even after logout.
-		if ((string) $payload['ut'] === 'student') {
-			$student_id = (int) $payload['uid'];
-			$rows = $this->db_model->select_data('id, token, login_status', 'students', array('id' => $student_id));
-			if (empty($rows) || !isset($rows[0]['token'])) {
+		$user_type = (string) $payload['ut'];
+		$user_id = (int) $payload['uid'];
+		$iat = (int) $payload['iat'];
+
+		// Server-side session validation.
+		// Without this, a signed token stays valid until expiry even after logout or re-login.
+		if ($user_type === 'student') {
+			$rows = $this->db_model->select_data('id, login_status, last_login_app', 'students', array('id' => $user_id), 1);
+			if (empty($rows)) {
 				return false;
 			}
 
 			$db_login_status = isset($rows[0]['login_status']) ? (int) $rows[0]['login_status'] : 0;
-
-			// If user logged out, reject immediately.
-			// NOTE: `students.token` is used as device token in this codebase (not the API access token),
-			// so we validate using `login_status` only.
 			if ($db_login_status !== 1) {
 				return false;
+			}
+
+			// Reject tokens issued before the latest login.
+			$last_login = isset($rows[0]['last_login_app']) ? trim((string) $rows[0]['last_login_app']) : '';
+			if ($last_login !== '' && $last_login !== '0000-00-00 00:00:00') {
+				$last_login_ts = strtotime($last_login);
+				if ($last_login_ts && $iat < $last_login_ts) {
+					return false;
+				}
+			}
+		} else {
+			// Teacher/Institute/Admin users
+			$rows = $this->db_model->select_data('id, login_status, updated_at', 'users', array('id' => $user_id), 1);
+			if (empty($rows)) {
+				return false;
+			}
+
+			// If login_status column exists and is 0, reject.
+			if (isset($rows[0]['login_status']) && (int) $rows[0]['login_status'] === 0) {
+				return false;
+			}
+
+			// Reject tokens issued before the latest login/update timestamp set at login.
+			$updated_at = isset($rows[0]['updated_at']) ? trim((string) $rows[0]['updated_at']) : '';
+			if ($updated_at !== '' && $updated_at !== '0000-00-00 00:00:00') {
+				$updated_ts = strtotime($updated_at);
+				if ($updated_ts && $iat < $updated_ts) {
+					return false;
+				}
 			}
 		}
 
@@ -125,5 +153,39 @@ class MY_Controller extends CI_Controller
 		}
 
 		return true;
+	}
+
+	/**
+	 * Central auth helper to avoid repeating token parsing in every endpoint.
+	 * @param array|string $allowed_types Example: ['student'] or ['student','teacher']
+	 * @return array|false Payload array on success, false on failure (response already echoed).
+	 */
+	protected function require_auth_payload($allowed_types = array())
+	{
+		$token = $this->get_access_token_from_request();
+		$payload = $this->parse_access_token($token);
+		if ($payload === false) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'Unauthorized: invalid or expired access token'
+			));
+			return false;
+		}
+
+		if (!empty($allowed_types)) {
+			if (is_string($allowed_types)) {
+				$allowed_types = array($allowed_types);
+			}
+			$ut = isset($payload['ut']) ? (string) $payload['ut'] : '';
+			if (!in_array($ut, $allowed_types, true)) {
+				echo json_encode(array(
+					'status' => 'false',
+					'msg' => 'Unauthorized: invalid token user'
+				));
+				return false;
+			}
+		}
+
+		return $payload;
 	}
 }

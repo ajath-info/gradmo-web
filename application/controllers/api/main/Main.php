@@ -49,14 +49,8 @@ class Main extends MY_Controller
 	public function notifications_list()
 	{
 		$data = $_REQUEST;
-		$token = $this->get_access_token_from_request();
-		$payload = $this->parse_access_token($token);
-
+		$payload = $this->require_auth_payload();
 		if ($payload === false) {
-			echo json_encode(array(
-				'status' => 'false',
-				'msg' => 'Unauthorized: invalid or expired access token'
-			));
 			return;
 		}
 
@@ -279,6 +273,145 @@ class Main extends MY_Controller
 		echo json_encode(array(
 			'status' => !empty($ins_id) ? 'true' : 'false',
 			'msg' => !empty($ins_id) ? 'Enquiry submitted successfully' : 'Failed to submit enquiry'
+		));
+	}
+
+	/**
+	 * GET/POST api/main/country-list
+	 * Optional: id (country id) — returns one country; omit for all countries.
+	 */
+	public function country_list()
+	{
+		$data = json_decode(file_get_contents('php://input'), true);
+		if (!is_array($data)) {
+			$data = $_REQUEST;
+		}
+
+		$where = '';
+		if (isset($data['id']) && $data['id'] !== '') {
+			$cid = (int) $data['id'];
+			if ($cid > 0) {
+				$where = array('id' => $cid);
+			}
+		}
+
+		$rows = $this->db_model->select_data(
+			'id,countryCode,name',
+			'countries',
+			$where,
+			'',
+			array('name', 'asc')
+		);
+
+		$out = array();
+		if (!empty($rows)) {
+			foreach ($rows as $r) {
+				$out[] = array(
+					'id' => (int) $r['id'],
+					'countryCode' => isset($r['countryCode']) ? $r['countryCode'] : (isset($r['countrycode']) ? $r['countrycode'] : ''),
+					'name' => isset($r['name']) ? $r['name'] : ''
+				);
+			}
+		}
+
+		echo json_encode(array(
+			'status' => !empty($out) ? 'true' : 'false',
+			'countries' => $out,
+			'msg' => !empty($out) ? $this->lang->line('ltr_fetch_successfully') : $this->lang->line('ltr_no_record_msg')
+		));
+	}
+
+	/**
+	 * GET/POST api/main/state-list
+	 * Required: country_id
+	 */
+	public function state_list()
+	{
+		$data = json_decode(file_get_contents('php://input'), true);
+		if (!is_array($data)) {
+			$data = $_REQUEST;
+		}
+
+		$country_id = isset($data['country_id']) ? (int) $data['country_id'] : 0;
+		if ($country_id < 1) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'country_id is required'
+			));
+			return;
+		}
+
+		$rows = $this->db_model->select_data(
+			'id,name,country_id',
+			'states',
+			array('country_id' => $country_id),
+			'',
+			array('name', 'asc')
+		);
+
+		$out = array();
+		if (!empty($rows)) {
+			foreach ($rows as $r) {
+				$out[] = array(
+					'id' => (int) $r['id'],
+					'name' => isset($r['name']) ? $r['name'] : '',
+					'countryId' => isset($r['country_id']) ? (int) $r['country_id'] : $country_id
+				);
+			}
+		}
+
+		echo json_encode(array(
+			'status' => !empty($out) ? 'true' : 'false',
+			'countryId' => $country_id,
+			'states' => $out,
+			'msg' => !empty($out) ? $this->lang->line('ltr_fetch_successfully') : $this->lang->line('ltr_no_record_msg')
+		));
+	}
+
+	/**
+	 * GET/POST api/main/city-list
+	 * Required: state_id
+	 */
+	public function city_list()
+	{
+		$data = json_decode(file_get_contents('php://input'), true);
+		if (!is_array($data)) {
+			$data = $_REQUEST;
+		}
+
+		$state_id = isset($data['state_id']) ? (int) $data['state_id'] : 0;
+		if ($state_id < 1) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'state_id is required'
+			));
+			return;
+		}
+
+		$rows = $this->db_model->select_data(
+			'id,city,state_id',
+			'cities',
+			array('state_id' => $state_id),
+			'',
+			array('city', 'asc')
+		);
+
+		$out = array();
+		if (!empty($rows)) {
+			foreach ($rows as $r) {
+				$out[] = array(
+					'id' => (int) $r['id'],
+					'city' => isset($r['city']) ? $r['city'] : '',
+					'stateId' => isset($r['state_id']) ? (int) $r['state_id'] : $state_id
+				);
+			}
+		}
+
+		echo json_encode(array(
+			'status' => !empty($out) ? 'true' : 'false',
+			'stateId' => $state_id,
+			'cities' => $out,
+			'msg' => !empty($out) ? $this->lang->line('ltr_fetch_successfully') : $this->lang->line('ltr_no_record_msg')
 		));
 	}
 }

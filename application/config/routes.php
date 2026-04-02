@@ -261,6 +261,11 @@ $route['api/main/site-details'] = 'api/main/main/site_details';
 $route['api/main/notifications-list'] = 'api/main/main/notifications_list';
 $route['api/main/pages'] = 'api/main/main/pages';
 $route['api/main/post-enquiry'] = 'api/main/main/post_enquiry';
+$route['api/main/country-list'] = 'api/main/main/country_list';
+$route['api/main/state-list'] = 'api/main/main/state_list';
+$route['api/main/city-list'] = 'api/main/main/city_list';
+
+
 $route['api/courses/courses-list'] = 'api/courses/courses/courses_list';
 $route['api/institute/list'] = 'api/institute/institute/institute_list';
 $route['api/institute/details'] = 'api/institute/institute/institute_details';
@@ -269,3 +274,9 @@ $route['api/institute/details'] = 'api/institute/institute/institute_details';
 $route['api/batch/batch-list'] = 'api/batch/batch/batch_list';
 $route['api/batch/batch-details'] = 'api/batch/batch/batch_details';
 $route['api/batch/library-list'] = 'api/batch/batch/library_list';
+$route['api/batch/live-class-list'] = 'api/batch/batch/live_class_list';
+$route['api/batch/live-class-details'] = 'api/batch/batch/live_class_details';
+$route['api/batch/video-lecture-list'] = 'api/batch/batch/video_lecture_list';
+$route['api/batch/video-lecture-details'] = 'api/batch/batch/video_lecture_details';
+$route['api/batch/upcoming-exam-list'] = 'api/batch/batch/upcoming_exam_list';
+$route['api/batch/upcoming-exam-details'] = 'api/batch/batch/upcoming_exam_details';

@@ -95,6 +95,19 @@ class Batch extends MY_Controller
 		$this->db->group_end();
 	}
 
+	private function apply_text_batch_filter($column, $batch_id)
+	{
+		$bid = (int) $batch_id;
+		$this->db->group_start();
+		$this->db->like($column, '"' . $bid . '"');
+		$this->db->or_where($column, (string) $bid);
+		$this->db->or_where($column, $bid);
+		if ($bid > 0) {
+			$this->db->or_where('FIND_IN_SET(' . (int) $bid . ', ' . $column . ') > 0', null, false);
+		}
+		$this->db->group_end();
+	}
+
 	/**
 	 * POST/GET api/batch/batch-list
 	 * Optional: search (filters batch_name)
@@ -105,14 +118,8 @@ class Batch extends MY_Controller
 	public function batch_list()
 	{
 		$data = $this->read_request_data();
-		$token = $this->get_access_token_from_request();
-		$payload = $this->parse_access_token($token);
-
+		$payload = $this->require_auth_payload();
 		if ($payload === false) {
-			echo json_encode(array(
-				'status' => 'false',
-				'msg' => 'Unauthorized: invalid or expired access token'
-			));
 			return;
 		}
 
@@ -234,14 +241,8 @@ class Batch extends MY_Controller
 	public function batch_details()
 	{
 		$data = $this->read_request_data();
-		$token = $this->get_access_token_from_request();
-		$payload = $this->parse_access_token($token);
-
-		if ($payload === false || $payload['ut'] !== 'student') {
-			echo json_encode(array(
-				'status' => 'false',
-				'msg' => 'Unauthorized: invalid or expired access token'
-			));
+		$payload = $this->require_auth_payload(array('student'));
+		if ($payload === false) {
 			return;
 		}
 
@@ -423,14 +424,8 @@ class Batch extends MY_Controller
 	public function library_list()
 	{
 		$data = $this->read_request_data();
-		$token = $this->get_access_token_from_request();
-		$payload = $this->parse_access_token($token);
-
-		if ($payload === false || $payload['ut'] !== 'student') {
-			echo json_encode(array(
-				'status' => 'false',
-				'msg' => 'Unauthorized: invalid or expired access token'
-			));
+		$payload = $this->require_auth_payload(array('student'));
+		if ($payload === false) {
 			return;
 		}
 
@@ -569,6 +564,520 @@ class Batch extends MY_Controller
 			)
 		);
 		echo json_encode($arr, JSON_UNESCAPED_SLASHES);
+		die;
+	}
+
+	/**
+	 * POST/GET api/batch/live-class-list
+	 * Live class history list for a student's enrolled batch.
+	 * Params: batch_id (required), search, sort_by, sort_dir, page, limit
+	 */
+	public function live_class_list()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('student'));
+		if ($payload === false) {
+			return;
+		}
+
+		$student_id = (int) $payload['uid'];
+		if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
+			return;
+		}
+
+		if (empty($data['batch_id'])) {
+			echo json_encode(array('status' => 'false', 'msg' => 'batch_id is required'));
+			return;
+		}
+
+		$batch_id = (int) $data['batch_id'];
+		$enrollment = $this->db_model->select_data('*', 'sudent_batchs', array('student_id' => $student_id, 'batch_id' => $batch_id), 1);
+		if (empty($enrollment)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'You are not enrolled in this batch'));
+			return;
+		}
+
+		$search = isset($data['search']) ? trim($data['search']) : '';
+		$sort_by = isset($data['sort_by']) ? strtolower(trim($data['sort_by'])) : 'entry_date_time';
+		$sort_dir = isset($data['sort_dir']) ? strtolower(trim($data['sort_dir'])) : 'desc';
+		if ($sort_dir !== 'asc' && $sort_dir !== 'desc') {
+			$sort_dir = 'desc';
+		}
+		$order_map = array(
+			'entry_date_time' => 'lch.entry_date_time',
+			'date' => 'lch.date',
+			'start_time' => 'lch.start_time',
+			'end_time' => 'lch.end_time'
+		);
+		if (!isset($order_map[$sort_by])) {
+			$sort_by = 'entry_date_time';
+		}
+
+		$limit = isset($data['limit']) ? (int) $data['limit'] : 20;
+		if ($limit < 1) {
+			$limit = 20;
+		}
+		if ($limit > 100) {
+			$limit = 100;
+		}
+		$page = isset($data['page']) ? (int) $data['page'] : 1;
+		if ($page < 1) {
+			$page = 1;
+		}
+		$offset = ($page - 1) * $limit;
+
+		// Count query
+		$this->db->from('live_class_history lch');
+		$this->db->where('lch.batch_id', $batch_id);
+		if ($search !== '') {
+			$this->db->join('subjects s', 's.id = lch.subject_id', 'left');
+			$this->db->join('chapters c', 'c.id = lch.chapter_id', 'left');
+			$this->db->join('users u', 'u.id = lch.uid', 'left');
+			$this->db->group_start();
+			$this->db->like('s.subject_name', $search);
+			$this->db->or_like('c.chapter_name', $search);
+			$this->db->or_like('u.name', $search);
+			$this->db->or_like('lch.start_time', $search);
+			$this->db->group_end();
+		}
+		$total = (int) $this->db->count_all_results();
+
+		$this->db->select(
+			'lch.id as liveClassId,lch.uid as teacherId,lch.batch_id as batchId,lch.subject_id as subjectId,lch.chapter_id as chapterId,' .
+			'lch.start_time as startTime,lch.end_time as endTime,lch.date,lch.entry_date_time as entryDateTime,lch.type_class as typeClass,' .
+			'u.name as teacherName,u.teach_image as teacherImage,s.subject_name as subjectName,c.chapter_name as chapterName'
+		);
+		$this->db->from('live_class_history lch');
+		$this->db->join('users u', 'u.id = lch.uid', 'left');
+		$this->db->join('subjects s', 's.id = lch.subject_id', 'left');
+		$this->db->join('chapters c', 'c.id = lch.chapter_id', 'left');
+		$this->db->where('lch.batch_id', $batch_id);
+		if ($search !== '') {
+			$this->db->group_start();
+			$this->db->like('s.subject_name', $search);
+			$this->db->or_like('c.chapter_name', $search);
+			$this->db->or_like('u.name', $search);
+			$this->db->or_like('lch.start_time', $search);
+			$this->db->group_end();
+		}
+		$this->db->order_by($order_map[$sort_by], $sort_dir);
+		$this->db->limit($limit, $offset);
+		$rows = $this->db->get()->result_array();
+
+		$list = array();
+		if (!empty($rows)) {
+			foreach ($rows as $r) {
+				$type = isset($r['typeClass']) ? (int) $r['typeClass'] : 0;
+				$r['typeLabel'] = ($type === 1) ? 'Zoom' : (($type === 2) ? 'Jetsi' : '');
+				$r['teacherImageUrl'] = !empty($r['teacherImage']) ? base_url('uploads/users/') . $r['teacherImage'] : '';
+				$r['isLive'] = (isset($r['endTime']) && (trim((string) $r['endTime']) === '' || $r['endTime'] === '0000-00-00 00:00:00')) ? 1 : 0;
+				$list[] = $r;
+			}
+		}
+
+		echo json_encode(array(
+			'status' => 'true',
+			'message' => 'Success',
+			'data' => array(
+				'batch_id' => $batch_id,
+				'liveClasses' => $list,
+				'pagination' => array(
+					'page' => $page,
+					'limit' => $limit,
+					'total' => $total
+				)
+			)
+		), JSON_UNESCAPED_SLASHES);
+		die;
+	}
+
+	/**
+	 * POST/GET api/batch/live-class-details
+	 * Required: live_class_id
+	 */
+	public function live_class_details()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('student'));
+		if ($payload === false) {
+			return;
+		}
+
+		$student_id = (int) $payload['uid'];
+		if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
+			return;
+		}
+
+		if (empty($data['live_class_id'])) {
+			echo json_encode(array('status' => 'false', 'msg' => 'live_class_id is required'));
+			return;
+		}
+
+		$live_class_id = (int) $data['live_class_id'];
+		$this->db->select(
+			'lch.id as liveClassId,lch.uid as teacherId,lch.batch_id as batchId,lch.subject_id as subjectId,lch.chapter_id as chapterId,' .
+			'lch.start_time as startTime,lch.end_time as endTime,lch.date,lch.entry_date_time as entryDateTime,lch.admin_id as adminId,lch.type_class as typeClass,' .
+			'u.name as teacherName,u.teach_image as teacherImage,s.subject_name as subjectName,c.chapter_name as chapterName'
+		);
+		$this->db->from('live_class_history lch');
+		$this->db->join('users u', 'u.id = lch.uid', 'left');
+		$this->db->join('subjects s', 's.id = lch.subject_id', 'left');
+		$this->db->join('chapters c', 'c.id = lch.chapter_id', 'left');
+		$this->db->where('lch.id', $live_class_id);
+		$row = $this->db->get()->row_array();
+
+		if (empty($row)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Live class not found'));
+			return;
+		}
+
+		$batch_id = (int) $row['batchId'];
+		$enrollment = $this->db_model->select_data('*', 'sudent_batchs', array('student_id' => $student_id, 'batch_id' => $batch_id), 1);
+		if (empty($enrollment)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'You are not enrolled in this batch'));
+			return;
+		}
+
+		$type = isset($row['typeClass']) ? (int) $row['typeClass'] : 0;
+		$row['typeLabel'] = ($type === 1) ? 'Zoom' : (($type === 2) ? 'Jetsi' : '');
+		$row['teacherImageUrl'] = !empty($row['teacherImage']) ? base_url('uploads/users/') . $row['teacherImage'] : '';
+		$row['isLive'] = (isset($row['endTime']) && (trim((string) $row['endTime']) === '' || $row['endTime'] === '0000-00-00 00:00:00')) ? 1 : 0;
+
+		// Attach meeting settings by class type.
+		if ($type === 2) {
+			$meeting = $this->db_model->select_data('meeting_number as meetingNumber', 'jetsi_setting', array('batch' => $batch_id), 1, array('id', 'desc'));
+			$row['meeting'] = array(
+				'type' => 'jetsi',
+				'meetingNumber' => !empty($meeting[0]['meetingNumber']) ? $meeting[0]['meetingNumber'] : '',
+				'password' => ''
+			);
+		} else {
+			$meeting = $this->db_model->select_data(
+				'meeting_number as meetingNumber,password',
+				'live_class_setting',
+				array('batch' => $batch_id, 'status' => 1),
+				1,
+				array('id', 'desc')
+			);
+			$row['meeting'] = array(
+				'type' => 'zoom',
+				'meetingNumber' => !empty($meeting[0]['meetingNumber']) ? $meeting[0]['meetingNumber'] : '',
+				'password' => !empty($meeting[0]['password']) ? $meeting[0]['password'] : ''
+			);
+		}
+
+		echo json_encode(array(
+			'status' => 'true',
+			'message' => 'Success',
+			'liveClass' => $row
+		), JSON_UNESCAPED_SLASHES);
+		die;
+	}
+
+	/**
+	 * POST/GET api/batch/video-lecture-list
+	 * Params: batch_id (required), search, sort_by, sort_dir, page, limit
+	 */
+	public function video_lecture_list()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('student'));
+		if ($payload === false) {
+			return;
+		}
+
+		$student_id = (int) $payload['uid'];
+		if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
+			return;
+		}
+
+		if (empty($data['batch_id'])) {
+			echo json_encode(array('status' => 'false', 'msg' => 'batch_id is required'));
+			return;
+		}
+		$batch_id = (int) $data['batch_id'];
+
+		$enrollment = $this->db_model->select_data('*', 'sudent_batchs', array('student_id' => $student_id, 'batch_id' => $batch_id), 1);
+		if (empty($enrollment)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'You are not enrolled in this batch'));
+			return;
+		}
+
+		$search = isset($data['search']) ? trim($data['search']) : '';
+		$sort_by = isset($data['sort_by']) ? strtolower(trim($data['sort_by'])) : 'added_at';
+		$sort_dir = isset($data['sort_dir']) ? strtolower(trim($data['sort_dir'])) : 'desc';
+		if ($sort_dir !== 'asc' && $sort_dir !== 'desc') {
+			$sort_dir = 'desc';
+		}
+		$order_map = array(
+			'added_at' => 'added_at',
+			'date_added' => 'added_at',
+			'title' => 'title',
+			'topic' => 'topic',
+			'subject' => 'subject'
+		);
+		if (!isset($order_map[$sort_by])) {
+			$sort_by = 'added_at';
+		}
+
+		$limit = isset($data['limit']) ? (int) $data['limit'] : 20;
+		if ($limit < 1) $limit = 20;
+		if ($limit > 100) $limit = 100;
+		$page = isset($data['page']) ? (int) $data['page'] : 1;
+		if ($page < 1) $page = 1;
+		$offset = ($page - 1) * $limit;
+
+		$this->db->from('video_lectures');
+		$this->db->where('status', 1);
+		$this->apply_text_batch_filter('batch', $batch_id);
+		if ($search !== '') {
+			$this->db->group_start();
+			$this->db->like('title', $search);
+			$this->db->or_like('topic', $search);
+			$this->db->or_like('subject', $search);
+			$this->db->or_like('description', $search);
+			$this->db->group_end();
+		}
+		$total = (int) $this->db->count_all_results();
+
+		$this->db->select('id,admin_id as adminId,title,batch,topic,subject,description,url,video_type as videoType,preview_type as previewType,added_by as addedBy,added_at as addedAt');
+		$this->db->from('video_lectures');
+		$this->db->where('status', 1);
+		$this->apply_text_batch_filter('batch', $batch_id);
+		if ($search !== '') {
+			$this->db->group_start();
+			$this->db->like('title', $search);
+			$this->db->or_like('topic', $search);
+			$this->db->or_like('subject', $search);
+			$this->db->or_like('description', $search);
+			$this->db->group_end();
+		}
+		$this->db->order_by($order_map[$sort_by], $sort_dir);
+		$this->db->limit($limit, $offset);
+		$list = $this->db->get()->result_array();
+
+		echo json_encode(array(
+			'status' => 'true',
+			'message' => 'Success',
+			'data' => array(
+				'batch_id' => $batch_id,
+				'videoLectures' => !empty($list) ? $list : array(),
+				'pagination' => array('page' => $page, 'limit' => $limit, 'total' => $total)
+			)
+		), JSON_UNESCAPED_SLASHES);
+		die;
+	}
+
+	/**
+	 * POST/GET api/batch/video-lecture-details
+	 * Required: video_lecture_id
+	 */
+	public function video_lecture_details()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('student'));
+		if ($payload === false) {
+			return;
+		}
+
+		$student_id = (int) $payload['uid'];
+		if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
+			return;
+		}
+		if (empty($data['video_lecture_id'])) {
+			echo json_encode(array('status' => 'false', 'msg' => 'video_lecture_id is required'));
+			return;
+		}
+		$video_id = (int) $data['video_lecture_id'];
+
+		$row = $this->db_model->select_data(
+			'id,admin_id as adminId,title,batch,topic,subject,description,url,video_type as videoType,preview_type as previewType,added_by as addedBy,added_at as addedAt,status',
+			'video_lectures use index (id)',
+			array('id' => $video_id, 'status' => 1),
+			1
+		);
+		if (empty($row)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Video lecture not found'));
+			return;
+		}
+		$video = $row[0];
+
+		// Validate student enrollment with at least one batch mapped in this lecture.
+		$student = $this->db_model->select_data('batch_id', 'students use index (id)', array('id' => $student_id), 1);
+		$student_batch_id = !empty($student[0]['batch_id']) ? (int) $student[0]['batch_id'] : 0;
+		if ($student_batch_id < 1) {
+			echo json_encode(array('status' => 'false', 'msg' => 'You are not enrolled in any batch'));
+			return;
+		}
+
+		$this->db->from('video_lectures');
+		$this->db->where('id', $video_id);
+		$this->apply_text_batch_filter('batch', $student_batch_id);
+		$allowed = (int) $this->db->count_all_results();
+		if ($allowed < 1) {
+			echo json_encode(array('status' => 'false', 'msg' => 'You are not allowed to access this video'));
+			return;
+		}
+
+		echo json_encode(array(
+			'status' => 'true',
+			'message' => 'Success',
+			'videoLecture' => $video
+		), JSON_UNESCAPED_SLASHES);
+		die;
+	}
+
+	/**
+	 * POST/GET api/batch/upcoming-exam-list
+	 * Params: batch_id (required), search, sort_by, sort_dir, page, limit
+	 */
+	public function upcoming_exam_list()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('student'));
+		if ($payload === false) {
+			return;
+		}
+		$student_id = (int) $payload['uid'];
+		if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
+			return;
+		}
+
+		if (empty($data['batch_id'])) {
+			echo json_encode(array('status' => 'false', 'msg' => 'batch_id is required'));
+			return;
+		}
+		$batch_id = (int) $data['batch_id'];
+		$enrollment = $this->db_model->select_data('*', 'sudent_batchs', array('student_id' => $student_id, 'batch_id' => $batch_id), 1);
+		if (empty($enrollment)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'You are not enrolled in this batch'));
+			return;
+		}
+
+		$search = isset($data['search']) ? trim($data['search']) : '';
+		$sort_by = isset($data['sort_by']) ? strtolower(trim($data['sort_by'])) : 'mock_sheduled_date';
+		$sort_dir = isset($data['sort_dir']) ? strtolower(trim($data['sort_dir'])) : 'asc';
+		if ($sort_dir !== 'asc' && $sort_dir !== 'desc') {
+			$sort_dir = 'asc';
+		}
+		$order_map = array(
+			'mock_sheduled_date' => 'mock_sheduled_date',
+			'mock_sheduled_time' => 'mock_sheduled_time',
+			'added_at' => 'added_at',
+			'name' => 'name',
+			'time_duration' => 'time_duration'
+		);
+		if (!isset($order_map[$sort_by])) {
+			$sort_by = 'mock_sheduled_date';
+		}
+
+		$limit = isset($data['limit']) ? (int) $data['limit'] : 20;
+		if ($limit < 1) $limit = 20;
+		if ($limit > 100) $limit = 100;
+		$page = isset($data['page']) ? (int) $data['page'] : 1;
+		if ($page < 1) $page = 1;
+		$offset = ($page - 1) * $limit;
+
+		$cond = array(
+			'batch_id' => $batch_id,
+			'status' => 1,
+			'type' => 1,
+			'mock_sheduled_date >=' => date('Y-m-d')
+		);
+
+		$this->db->from('exams');
+		$this->db->where($cond);
+		if ($search !== '') {
+			$this->db->group_start();
+			$this->db->like('name', $search);
+			$this->db->or_like('total_question', $search);
+			$this->db->or_like('time_duration', $search);
+			$this->db->group_end();
+		}
+		$total = (int) $this->db->count_all_results();
+
+		$this->db->select('id,admin_id as adminId,name,type,format,batch_id as batchId,total_question as totalQuestion,time_duration as timeDuration,mock_sheduled_date as scheduledDate,mock_sheduled_time as scheduledTime,total_marks as totalMarks,marking_parcent as markingPercent,added_by as addedBy,added_at as addedAt');
+		$this->db->from('exams');
+		$this->db->where($cond);
+		if ($search !== '') {
+			$this->db->group_start();
+			$this->db->like('name', $search);
+			$this->db->or_like('total_question', $search);
+			$this->db->or_like('time_duration', $search);
+			$this->db->group_end();
+		}
+		$this->db->order_by($order_map[$sort_by], $sort_dir);
+		$this->db->limit($limit, $offset);
+		$list = $this->db->get()->result_array();
+
+		if (!empty($list)) {
+			foreach ($list as $k => $v) {
+				$list[$k]['completeBy'] = trim($v['scheduledTime'] . ', ' . date('M d, Y', strtotime($v['scheduledDate'])));
+				$list[$k]['examTypeLabel'] = ((int) $v['type'] === 1) ? 'mock' : 'practice';
+			}
+		}
+
+		echo json_encode(array(
+			'status' => 'true',
+			'message' => 'Success',
+			'data' => array(
+				'batch_id' => $batch_id,
+				'upcomingExams' => !empty($list) ? $list : array(),
+				'pagination' => array('page' => $page, 'limit' => $limit, 'total' => $total)
+			)
+		), JSON_UNESCAPED_SLASHES);
+		die;
+	}
+
+	/**
+	 * POST/GET api/batch/upcoming-exam-details
+	 * Required: exam_id
+	 */
+	public function upcoming_exam_details()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('student'));
+		if ($payload === false) {
+			return;
+		}
+		$student_id = (int) $payload['uid'];
+		if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
+			return;
+		}
+
+		if (empty($data['exam_id'])) {
+			echo json_encode(array('status' => 'false', 'msg' => 'exam_id is required'));
+			return;
+		}
+		$exam_id = (int) $data['exam_id'];
+
+		$exam = $this->db_model->select_data(
+			'id,admin_id as adminId,name,type,format,batch_id as batchId,total_question as totalQuestion,time_duration as timeDuration,mock_sheduled_date as scheduledDate,mock_sheduled_time as scheduledTime,total_marks as totalMarks,marking_parcent as markingPercent,question_ids as questionIds,status,added_by as addedBy,added_at as addedAt',
+			'exams use index (id)',
+			array('id' => $exam_id, 'status' => 1, 'type' => 1),
+			1
+		);
+		if (empty($exam)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Exam not found'));
+			return;
+		}
+		$e = $exam[0];
+
+		$enrollment = $this->db_model->select_data('*', 'sudent_batchs', array('student_id' => $student_id, 'batch_id' => (int) $e['batchId']), 1);
+		if (empty($enrollment)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'You are not enrolled in this batch'));
+			return;
+		}
+
+		$e['completeBy'] = trim($e['scheduledTime'] . ', ' . date('M d, Y', strtotime($e['scheduledDate'])));
+		$e['examTypeLabel'] = ((int) $e['type'] === 1) ? 'mock' : 'practice';
+		$e['formatLabel'] = ((int) $e['format'] === 1) ? 'Shuffle' : (((int) $e['format'] === 2) ? 'Fix' : '');
+
+		echo json_encode(array(
+			'status' => 'true',
+			'message' => 'Success',
+			'exam' => $e
+		), JSON_UNESCAPED_SLASHES);
 		die;
 	}
 }

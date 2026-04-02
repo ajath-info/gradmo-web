@@ -173,7 +173,6 @@ class Home extends MY_Controller {
 	        }
 
 	        $user = $user[0];
-
 	        // VERIFY PASSWORD
 	        if (!password_verify($password, $user['password'])) {
 	            echo json_encode(['status' => 'false', 'msg' => 'Invalid password']);
@@ -181,9 +180,11 @@ class Home extends MY_Controller {
 	        }
 
 	        // UPDATE LOGIN STATUS
+			$now = date('Y-m-d H:i:s');
 	        $this->db_model->update_data_limit('users', [
+				'login_status' => 1,
 	            'device_token' => $device_token,
-	            'updated_at'   => date("Y-m-d H:i:s")
+	            'updated_at'   => $now
 	        ], ['id' => $user['id']], 1);
 			
 			if(empty($user['city'])){
@@ -215,14 +216,8 @@ class Home extends MY_Controller {
 	}
    
 	function logout(){
-        $token = $this->get_access_token_from_request();
-        $payload = $this->parse_access_token($token);
-       
+        $payload = $this->require_auth_payload();
         if ($payload === false) {
-            echo json_encode(array(
-                'status' => 'false',
-                'msg' => 'Unauthorized: invalid or expired access token'
-            ));
             return;
         }
 
@@ -1012,14 +1007,8 @@ public function otherBatchData($data){
     //ini_set('display_errors', 1);
 
     $data = $_REQUEST;
-    $token = $this->get_access_token_from_request();
-    $payload = $this->parse_access_token($token);
-
-    if ($payload === false || $payload['ut'] !== 'student') {
-        echo json_encode([
-            'status' => 'false',
-            'msg' => 'Unauthorized: invalid or expired access token'
-        ]);
+    $payload = $this->require_auth_payload(array('student'));
+    if ($payload === false) {
         return;
     }
 
@@ -1120,19 +1109,40 @@ public function otherBatchData($data){
                     1
                 );
 
-                $response_data = !empty($updated) ? $updated[0] : [];
-                if (!empty($response_data)) {
-                    // Never expose password hash in API response.
-                    unset($response_data['password']);
-                    if (!empty($response_data['image']) && strpos($response_data['image'], 'http') !== 0) {
-                        $response_data['image'] = base_url('uploads/students/').$response_data['image'];
+                if (!empty($updated[0])) {
+                    $stu = $updated[0];
+                    unset($stu['password']);
+
+                    $access_token = trim((string) $this->get_access_token_from_request());
+                    if ($access_token === '') {
+                        $access_token = $this->generate_access_token($student_id, 'student');
                     }
+
+                    $now = date('Y-m-d H:i:s');
+                    $dev_id = isset($stu['device_id']) ? $stu['device_id'] : '';
+                    $dev_tok = isset($stu['device_token']) ? $stu['device_token'] : '';
+                    $dev_type = isset($stu['device_type']) ? $stu['device_type'] : '';
+
+                    $response_data = $this->build_student_login_data_array(
+                        $stu,
+                        $dev_id,
+                        $dev_tok,
+                        $dev_type,
+                        $now,
+                        $access_token
+                    );
+
+                    echo json_encode(array(
+                        'status' => 'true',
+                        'msg' => 'Profile updated successfully',
+                        'data' => $response_data,
+                    ), JSON_UNESCAPED_SLASHES);
+                    return;
                 }
 
                 $arr = [
-                    'status' => 'true',
-                    'data'   => $response_data,
-                    'msg'    => 'Profile updated successfully'
+                    'status' => 'false',
+                    'msg' => 'Unable to load updated profile',
                 ];
 
             } else {
@@ -1275,13 +1285,8 @@ public function otherBatchData($data){
     }
     function Homework(){ 
         $data = $_REQUEST;
-        $token = $this->get_access_token_from_request();
-        $payload = $this->parse_access_token($token);
+        $payload = $this->require_auth_payload();
         if ($payload === false) {
-            echo json_encode(array(
-                'status' => 'false',
-                'msg' => 'Unauthorized: invalid or expired access token'
-            ));
             return;
         }
 
@@ -1893,14 +1898,8 @@ public function otherBatchData($data){
     function attendanceList()
     {
         $data = $_REQUEST;
-        $token = $this->get_access_token_from_request();
-        $payload = $this->parse_access_token($token);
-
+        $payload = $this->require_auth_payload();
         if ($payload === false) {
-            echo json_encode(array(
-                'status' => 'false',
-                'msg' => 'Unauthorized: invalid or expired access token'
-            ));
             return;
         }
 
@@ -2448,8 +2447,7 @@ public function otherBatchData($data){
         $data = $_REQUEST;
 		//$student_id = 0;
 
-		$token = $this->get_access_token_from_request();
-		$payload = $this->parse_access_token($token);
+		$payload = $this->parse_access_token($this->get_access_token_from_request());
 		if ($payload !== false && isset($payload['ut']) && $payload['ut'] === 'student') {
 			$student_id = (int) $payload['uid'];
 			if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
@@ -3688,14 +3686,8 @@ public function otherBatchData($data){
     
     function deleteAccount(){
         $data = $_REQUEST;
-        $token = $this->get_access_token_from_request();
-        $payload = $this->parse_access_token($token);
-
-        if ($payload === false || $payload['ut'] !== 'student') {
-            echo json_encode(array(
-                'status' => false,
-                'message' => 'Unauthorized: invalid or expired access token'
-            ), JSON_UNESCAPED_SLASHES);
+        $payload = $this->require_auth_payload(array('student'));
+        if ($payload === false) {
             return;
         }
 
