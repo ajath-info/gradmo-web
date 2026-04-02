@@ -253,6 +253,7 @@ $route['api/user/verify-otp'] = 'api/user/home/verify_otp';
 $route['api/user/update-profile'] = 'api/user/home/profile_update';
 $route['api/user/logout'] = 'api/user/home/logout';
 $route['api/user/update-password'] = 'api/user/home/update_password';
+$route['api/user/change-password'] = 'api/user/home/change_password';
 $route['api/user/delete-account'] = 'api/user/home/deleteAccount';
 $route['api/user/payment-history'] = 'api/user/home/paymentHistory';
 

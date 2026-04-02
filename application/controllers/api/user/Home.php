@@ -45,6 +45,46 @@ class Home extends MY_Controller {
                         );
         echo json_encode($arr);
 	}
+
+	private function is_valid_password($plain_password, $stored_password)
+	{
+		$plain_password = (string) $plain_password;
+		$stored_password = trim((string) $stored_password);
+		if ($stored_password === '') {
+			return false;
+		}
+
+		// Preferred: modern hash (bcrypt/argon).
+		if (password_verify($plain_password, $stored_password)) {
+			return true;
+		}
+
+		// Backward compatibility: legacy MD5/plain text records.
+		$md5_plain = md5($plain_password);
+		if (strcasecmp($md5_plain, $stored_password) === 0 || $plain_password === $stored_password) {
+			return true;
+		}
+
+		// Some admin flows use SHA1.
+		if (strlen($stored_password) === 40 && ctype_xdigit($stored_password)) {
+			if (strcasecmp(sha1($plain_password), $stored_password) === 0) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/** Read password column from DB row regardless of key casing (PASSWORD vs password). */
+	private function row_password_value(array $row)
+	{
+		foreach ($row as $key => $val) {
+			if (strtolower((string) $key) === 'password') {
+				return (string) $val;
+			}
+		}
+		return '';
+	}
 	
     function chekLogin(){
         $data = $_REQUEST;
@@ -133,7 +173,7 @@ class Home extends MY_Controller {
 	        $student = $student[0];
 
 	        // VERIFY PASSWORD
-	        if (!password_verify($password, $student['password'])) {
+	        if (!$this->is_valid_password($password, isset($student['password']) ? $student['password'] : '')) {
 	            echo json_encode(['status' => 'false', 'msg' => 'Invalid password']);
 	            return;
 	        }
@@ -174,7 +214,7 @@ class Home extends MY_Controller {
 
 	        $user = $user[0];
 	        // VERIFY PASSWORD
-	        if (!password_verify($password, $user['password'])) {
+	        if (!$this->is_valid_password($password, isset($user['password']) ? $user['password'] : '')) {
 	            echo json_encode(['status' => 'false', 'msg' => 'Invalid password']);
 	            return;
 	        }
@@ -194,19 +234,7 @@ class Home extends MY_Controller {
 			}
 
             $access_token = $this->generate_access_token($user['id'], $user['user_type']);
-
-	        $response = [
-	            'userType' => $user['user_type'],
-	            'userId'   => $user['id'],
-	            'name'     => $user['name'],
-	            'email'    => $user['email'],
-	            'mobile'   => $user['mobile'],
-	            'image'    => base_url('uploads/users/') . $user['image'],
-	            'role'     => $user['role'],
-				'is_profile_completed' => $profile_completed,
-                'access_token' => $access_token,
-                'token_type' => 'Bearer'
-	        ];
+	        $response = $this->build_non_student_login_data_array($user, $device_id, $device_token, $device_type, $now, $access_token, $profile_completed);
 	    }
 
 	    // ==============================
@@ -3774,6 +3802,66 @@ public function otherBatchData($data){
 	}
 
 	/**
+	 * Teacher/Institute login payload in the same key shape as student login payload.
+	 * Missing fields are returned as blank/default values for app compatibility.
+	 */
+	private function build_non_student_login_data_array(array $user, $device_id, $device_token, $device_type, $now, $access_token, $profile_completed)
+	{
+		$user_image = !empty($user['image'])
+			? base_url('uploads/users/') . $user['image']
+			: (!empty($user['teach_image']) ? base_url('uploads/users/') . $user['teach_image'] : '');
+
+		$mobile = isset($user['mobile']) ? $user['mobile'] : '';
+		$city = isset($user['city']) ? $user['city'] : '';
+		$admin_id = isset($user['admin_id']) ? (int) $user['admin_id'] : 0;
+
+		return array(
+			'userType'     => isset($user['user_type']) ? $user['user_type'] : 'teacher',
+			'studentId'    => (int) $user['id'],
+			'userId'       => (int) $user['id'],
+			'adminId'      => $admin_id,
+			'name'         => isset($user['name']) ? $user['name'] : '',
+			'email'        => isset($user['email']) ? $user['email'] : '',
+			'mobile'       => $mobile,
+			'contactNo'    => $mobile,
+			'mobileAlt'    => $mobile,
+			'enrollmentId' => '',
+			'multiBatch'   => '',
+			'gender'       => isset($user['teach_gender']) ? $user['teach_gender'] : '',
+			'dob'          => isset($user['dob']) ? $user['dob'] : '',
+			'fatherName'   => '',
+			'fatherDesignation' => '',
+			'address'      => isset($user['address']) ? $user['address'] : '',
+			'pincode'      => isset($user['pincode']) ? $user['pincode'] : '',
+			'country'      => isset($user['country']) ? $user['country'] : '',
+			'state'        => isset($user['state']) ? $user['state'] : '',
+			'city'         => $city,
+			'batchId'      => isset($user['teach_batch']) ? $user['teach_batch'] : '',
+			'admissionDate' => '',
+			'status'       => isset($user['status']) ? (int) $user['status'] : 1,
+			'loginStatus'  => 1,
+			'paymentStatus' => 0,
+			'appVersion'   => '',
+			'payMode'      => 0,
+			'schoolCollegeName' => '',
+			'grade'        => '',
+			'isVerified'   => isset($user['is_verified']) ? $user['is_verified'] : '',
+			'userTypeDb'   => isset($user['user_type']) ? $user['user_type'] : '',
+			'addedBy'      => isset($user['added_by']) ? $user['added_by'] : '',
+			'lastLoginApp' => $now,
+			'updatedAt'    => isset($user['updated_at']) ? $user['updated_at'] : null,
+			'image'        => $user_image,
+			'device_id'    => $device_id,
+			'device_token' => $device_token,
+			'device_type'  => $device_type,
+			'role'         => isset($user['role']) ? $user['role'] : '',
+			'is_profile_completed' => (int) $profile_completed,
+			'access_token' => $access_token,
+			'token_type'   => 'Bearer',
+		);
+	}
+
+	/**
 	 * Same JSON envelope as password login — use for verify_otp success so clients get identical shape.
 	 */
 	private function json_login_success_response(array $data)
@@ -3984,6 +4072,171 @@ public function otherBatchData($data){
 	            "code" => "INVALID_OTP"
 	        ]);
 	    }
+	}
+
+	/**
+	 * POST/GET api/user/change-password
+	 * Auth: Bearer access_token (logged-in student, teacher, or institute).
+	 * Body (JSON, form, or query): current_password, new_password, confirm_password
+	 * Aliases: current_pass, new_pass, confirm_pass
+	 */
+	public function change_password()
+	{
+		$from_body = json_decode(file_get_contents('php://input'), true);
+		if (!is_array($from_body)) {
+			$from_body = array();
+		}
+		$post = $this->input->post();
+		$get = $this->input->get();
+		if (!is_array($post)) {
+			$post = array();
+		}
+		if (!is_array($get)) {
+			$get = array();
+		}
+		// JSON body must win — merging body first then post/get overwrites correct passwords with empty fields.
+		$data = array_merge($post, $get, $from_body);
+
+		$payload = $this->require_auth_payload();
+		if ($payload === false) {
+			return;
+		}
+
+		$current = '';
+		if (isset($data['current_password']) && $data['current_password'] !== '') {
+			$current = trim((string) $data['current_password']);
+		} elseif (isset($data['current_pass']) && $data['current_pass'] !== '') {
+			$current = trim((string) $data['current_pass']);
+		}
+
+		$new = '';
+		if (isset($data['new_password']) && $data['new_password'] !== '') {
+			$new = (string) $data['new_password'];
+		} elseif (isset($data['new_pass']) && $data['new_pass'] !== '') {
+			$new = (string) $data['new_pass'];
+		}
+
+		$confirm = '';
+		if (isset($data['confirm_password']) && $data['confirm_password'] !== '') {
+			$confirm = (string) $data['confirm_password'];
+		} elseif (isset($data['confirm_pass']) && $data['confirm_pass'] !== '') {
+			$confirm = (string) $data['confirm_pass'];
+		}
+
+		if ($current === '' || $new === '' || $confirm === '') {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'current_password, new_password and confirm_password are required',
+				'code' => 'MISSING_PARAMETERS',
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
+
+		if ($new !== $confirm) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'New password and confirm password do not match',
+				'code' => 'PASSWORD_MISMATCH',
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
+
+		if (strlen($new) < 6) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'New password must be at least 6 characters',
+				'code' => 'PASSWORD_TOO_SHORT',
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
+
+		$uid = (int) $payload['uid'];
+		$ut = strtolower(trim((string) $payload['ut']));
+
+		if (!in_array($ut, array('student', 'teacher', 'institute'), true)) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'Password change is not available for this account type',
+				'code' => 'INVALID_USER_TYPE',
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
+
+		if ($ut === 'student') {
+			$rows = $this->db_model->select_data('id,password', 'students', array('id' => $uid), 1);
+		} else {
+			$rows = $this->db_model->select_data('id,password,user_type', 'users', array('id' => $uid), 1);
+			if (!empty($rows[0]) && isset($rows[0]['user_type']) && trim((string) $rows[0]['user_type']) !== '') {
+				$db_ut = strtolower(trim((string) $rows[0]['user_type']));
+				if ($db_ut !== $ut) {
+					echo json_encode(array(
+						'status' => 'false',
+						'msg' => 'Token does not match this account',
+						'code' => 'USER_MISMATCH',
+					), JSON_UNESCAPED_SLASHES);
+					return;
+				}
+			}
+		}
+
+		if (empty($rows)) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'User not found',
+				'code' => 'USER_NOT_FOUND',
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
+
+		$stored = $this->row_password_value($rows[0]);
+		if (!$this->is_valid_password($current, $stored)) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'Current password is incorrect',
+				'code' => 'INVALID_CURRENT_PASSWORD',
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
+
+		if ($this->is_valid_password($new, $stored)) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'New password must be different from current password',
+				'code' => 'SAME_PASSWORD',
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
+
+		$hashed_new = password_hash($new, PASSWORD_DEFAULT);
+
+		if ($ut === 'student') {
+			$update = $this->db_model->update_data_limit(
+				'students use index (id)',
+				array('password' => $hashed_new),
+				array('id' => $uid),
+				1
+			);
+		} else {
+			$update = $this->db_model->update_data_limit(
+				'users',
+				array('password' => $hashed_new),
+				array('id' => $uid),
+				1
+			);
+		}
+
+		if ($update) {
+			echo json_encode(array(
+				'status' => 'true',
+				'msg' => 'Password changed successfully',
+			), JSON_UNESCAPED_SLASHES);
+		} else {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'Failed to update password',
+				'code' => 'UPDATE_FAILED',
+			), JSON_UNESCAPED_SLASHES);
+		}
 	}
 	
 	/**
