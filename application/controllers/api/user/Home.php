@@ -182,8 +182,10 @@ class Home extends MY_Controller {
 	            return;
 	        }
 
-	        // UPDATE LOGIN STATUS
-	        $now = date('Y-m-d H:i:s');
+	        // Issue token first, then store last_login_app from token iat so only this session validates.
+	        $tok = $this->generate_access_token($student['id'], 'student');
+	        $access_token = $tok['access_token'];
+	        $now = date('Y-m-d H:i:s', $tok['iat']);
 	        $this->db_model->update_data_limit('students', [
 	            'login_status' => 1,
 	            'last_login_app' => $now,
@@ -193,7 +195,6 @@ class Home extends MY_Controller {
 				'device_type' => $device_type,
 	        ], ['id' => $student['id']], 1);
 
-            $access_token = $this->generate_access_token($student['id'], 'student');
 	        $response = $this->build_student_login_data_array($student, $device_id, $device_token, $device_type, $now, $access_token);
 	    }
 
@@ -219,8 +220,9 @@ class Home extends MY_Controller {
 	            return;
 	        }
 
-	        // UPDATE LOGIN STATUS
-			$now = date('Y-m-d H:i:s');
+	        $tok = $this->generate_access_token($user['id'], $user['user_type']);
+	        $access_token = $tok['access_token'];
+	        $now = date('Y-m-d H:i:s', $tok['iat']);
 	        $this->db_model->update_data_limit('users', [
 				'login_status' => 1,
 	            'device_token' => $device_token,
@@ -233,7 +235,6 @@ class Home extends MY_Controller {
 				$profile_completed = 1;
 			}
 
-            $access_token = $this->generate_access_token($user['id'], $user['user_type']);
 	        $response = $this->build_non_student_login_data_array($user, $device_id, $device_token, $device_type, $now, $access_token, $profile_completed);
 	    }
 
@@ -1031,26 +1032,35 @@ public function otherBatchData($data){
 							/*Other batch functio end*/
     function profile_update()
 {
-    //error_reporting(E_ALL);
-    //ini_set('display_errors', 1);
+    $from_body = json_decode(file_get_contents('php://input'), true);
+    if (!is_array($from_body)) {
+        $from_body = array();
+    }
+    $data = array_merge($_REQUEST, $from_body);
 
-    $data = $_REQUEST;
-    $payload = $this->require_auth_payload(array('student'));
+    $payload = $this->require_auth_payload();
     if ($payload === false) {
         return;
     }
 
-    $student_id = (int) $payload['uid'];
-    if ($student_id > 0) {
-        if ($this->authorize_student_request($student_id) === false) {
+    $uid = (int) $payload['uid'];
+    $ut = strtolower(trim((string) $payload['ut']));
+
+    if ($uid < 1) {
+        echo json_encode(array('status' => 'false', 'msg' => 'Invalid token user'));
+        return;
+    }
+
+    if ($ut === 'student') {
+        if ($this->authorize_student_request($uid) === false) {
             return;
         }
-        $data_arr = [];
+        $data_arr = array();
 
-        $fields = [
-            'name','email','mobile','address','country',
-            'state','city','pincode','school_college_name','grade','is_complete'
-        ];
+        $fields = array(
+            'name', 'email', 'mobile', 'address', 'country',
+            'state', 'city', 'pincode', 'school_college_name', 'grade', 'is_complete',
+        );
 
         foreach ($fields as $field) {
             if (isset($data[$field]) && $data[$field] !== '') {
@@ -1058,60 +1068,57 @@ public function otherBatchData($data){
             }
         }
 
-        // Support image update via multipart file "image"
         if (isset($_FILES['image']) && !empty($_FILES['image']['name'])) {
-            $upload_path = FCPATH.'uploads/students/';
+            $upload_path = FCPATH . 'uploads/students/';
             if (!is_dir($upload_path)) {
                 @mkdir($upload_path, 0777, true);
             }
 
             $uploaded_image = $this->upload_media($_FILES, $upload_path, 'image');
             if (is_array($uploaded_image) && isset($uploaded_image['status']) && $uploaded_image['status'] === '2') {
-                echo json_encode([
+                echo json_encode(array(
                     'status' => 'false',
-                    'msg' => strip_tags($uploaded_image['msg'])
-                ]);
+                    'msg' => strip_tags($uploaded_image['msg']),
+                ));
                 return;
             }
 
             if (!empty($uploaded_image)) {
                 $data_arr['image'] = $uploaded_image;
             }
-        }
-        // Support image update via base64 "image" string
-        elseif (!empty($data['image']) && is_string($data['image'])) {
+        } elseif (!empty($data['image']) && is_string($data['image'])) {
             $raw_image = $data['image'];
             if (preg_match('/^data:image\/(\w+);base64,/', $raw_image, $matches)) {
                 $extension = strtolower($matches[1]);
-                if (!in_array($extension, ['jpg', 'jpeg', 'png'])) {
-                    echo json_encode([
+                if (!in_array($extension, array('jpg', 'jpeg', 'png'), true)) {
+                    echo json_encode(array(
                         'status' => 'false',
-                        'msg' => 'Only jpg, jpeg, png images are allowed'
-                    ]);
+                        'msg' => 'Only jpg, jpeg, png images are allowed',
+                    ));
                     return;
                 }
 
                 $base64_data = substr($raw_image, strpos($raw_image, ',') + 1);
                 $binary = base64_decode($base64_data, true);
                 if ($binary === false) {
-                    echo json_encode([
+                    echo json_encode(array(
                         'status' => 'false',
-                        'msg' => 'Invalid base64 image data'
-                    ]);
+                        'msg' => 'Invalid base64 image data',
+                    ));
                     return;
                 }
 
-                $upload_path = FCPATH.'uploads/students/';
+                $upload_path = FCPATH . 'uploads/students/';
                 if (!is_dir($upload_path)) {
                     @mkdir($upload_path, 0777, true);
                 }
 
-                $file_name = 'student_'.time().'_'.mt_rand(1000, 9999).'.'.$extension;
-                if (file_put_contents($upload_path.$file_name, $binary) === false) {
-                    echo json_encode([
+                $file_name = 'student_' . time() . '_' . mt_rand(1000, 9999) . '.' . $extension;
+                if (file_put_contents($upload_path . $file_name, $binary) === false) {
+                    echo json_encode(array(
                         'status' => 'false',
-                        'msg' => 'Unable to save profile image'
-                    ]);
+                        'msg' => 'Unable to save profile image',
+                    ));
                     return;
                 }
 
@@ -1119,82 +1126,232 @@ public function otherBatchData($data){
             }
         }
 
-        if (!empty($data_arr)) {
+        if (empty($data_arr)) {
+            echo json_encode(array('status' => 'false', 'msg' => 'No data to update'));
+            return;
+        }
 
-            $ins = $this->db_model->update_data_limit(
-                'students',
-                $data_arr,
-                ['id' => $student_id],
+        $ins = $this->db_model->update_data_limit(
+            'students',
+            $data_arr,
+            array('id' => $uid),
+            1
+        );
+
+        if (!$ins) {
+            echo json_encode(array('status' => 'false', 'msg' => 'Update failed'));
+            return;
+        }
+
+        $updated = $this->db_model->select_data('*', 'students', array('id' => $uid), 1);
+        if (empty($updated[0])) {
+            echo json_encode(array('status' => 'false', 'msg' => 'Unable to load updated profile'));
+            return;
+        }
+
+        $stu = $updated[0];
+        unset($stu['password']);
+
+        $access_token = trim((string) $this->get_access_token_from_request());
+        if ($access_token === '') {
+            $mint = $this->generate_access_token($uid, 'student');
+            $access_token = $mint['access_token'];
+            $this->db_model->update_data_limit(
+                'students use index (id)',
+                array('last_login_app' => date('Y-m-d H:i:s', $mint['iat'])),
+                array('id' => $uid),
                 1
             );
+        }
 
-            if ($ins) {
+        $now = date('Y-m-d H:i:s');
+        $dev_id = isset($stu['device_id']) ? $stu['device_id'] : '';
+        $dev_tok = isset($stu['device_token']) ? $stu['device_token'] : '';
+        $dev_type = isset($stu['device_type']) ? $stu['device_type'] : '';
 
-                $updated = $this->db_model->select_data(
-                    '*',
-                    'students',
-                    ['id' => $student_id],
-                    1
-                );
+        $response_data = $this->build_student_login_data_array(
+            $stu,
+            $dev_id,
+            $dev_tok,
+            $dev_type,
+            $now,
+            $access_token
+        );
 
-                if (!empty($updated[0])) {
-                    $stu = $updated[0];
-                    unset($stu['password']);
+        echo json_encode(array(
+            'status' => 'true',
+            'msg' => 'Profile updated successfully',
+            'data' => $response_data,
+        ), JSON_UNESCAPED_SLASHES);
+        return;
+    }
 
-                    $access_token = trim((string) $this->get_access_token_from_request());
-                    if ($access_token === '') {
-                        $access_token = $this->generate_access_token($student_id, 'student');
-                    }
+    if ($ut === 'teacher' || $ut === 'institute') {
+        $rows = $this->db_model->select_data('*', 'users', array('id' => $uid), 1);
+        if (empty($rows[0])) {
+            echo json_encode(array('status' => 'false', 'msg' => 'User not found'));
+            return;
+        }
+        $urow = $rows[0];
+        if (!empty($urow['user_type']) && strtolower(trim((string) $urow['user_type'])) !== $ut) {
+            echo json_encode(array('status' => 'false', 'msg' => 'Token does not match this account'));
+            return;
+        }
 
-                    $now = date('Y-m-d H:i:s');
-                    $dev_id = isset($stu['device_id']) ? $stu['device_id'] : '';
-                    $dev_tok = isset($stu['device_token']) ? $stu['device_token'] : '';
-                    $dev_type = isset($stu['device_type']) ? $stu['device_type'] : '';
+        $data_arr = array();
 
-                    $response_data = $this->build_student_login_data_array(
-                        $stu,
-                        $dev_id,
-                        $dev_tok,
-                        $dev_type,
-                        $now,
-                        $access_token
-                    );
+        $map = array(
+            'name' => 'name',
+            'email' => 'email',
+            'mobile' => 'mobile',
+            'address' => 'address',
+            'country' => 'country',
+            'state' => 'state',
+            'city' => 'city',
+            'pincode' => 'pincode',
+        );
+        foreach ($map as $in => $col) {
+            if (isset($data[$in]) && $data[$in] !== '') {
+                $data_arr[$col] = $data[$in];
+            }
+        }
 
+        if (isset($data['gender']) && $data['gender'] !== '') {
+            $data_arr['teach_gender'] = $data['gender'];
+        }
+        if (isset($data['teach_gender']) && $data['teach_gender'] !== '') {
+            $data_arr['teach_gender'] = $data['teach_gender'];
+        }
+        if (isset($data['school_college_name']) && $data['school_college_name'] !== '') {
+            $data_arr['teach_education'] = $data['school_college_name'];
+        }
+        if (isset($data['teach_education']) && $data['teach_education'] !== '') {
+            $data_arr['teach_education'] = $data['teach_education'];
+        }
+
+        $upload_path = FCPATH . 'uploads/users/';
+        if (!is_dir($upload_path)) {
+            @mkdir($upload_path, 0777, true);
+        }
+
+        if (isset($_FILES['image']) && !empty($_FILES['image']['name'])) {
+            $uploaded_image = $this->upload_media($_FILES, $upload_path, 'image');
+            if (is_array($uploaded_image) && isset($uploaded_image['status']) && $uploaded_image['status'] === '2') {
+                echo json_encode(array(
+                    'status' => 'false',
+                    'msg' => strip_tags($uploaded_image['msg']),
+                ));
+                return;
+            }
+            if (!empty($uploaded_image)) {
+                $data_arr['image'] = $uploaded_image;
+                $data_arr['teach_image'] = $uploaded_image;
+            }
+        } elseif (!empty($data['image']) && is_string($data['image'])) {
+            $raw_image = $data['image'];
+            if (preg_match('/^data:image\/(\w+);base64,/', $raw_image, $matches)) {
+                $extension = strtolower($matches[1]);
+                if (!in_array($extension, array('jpg', 'jpeg', 'png'), true)) {
                     echo json_encode(array(
-                        'status' => 'true',
-                        'msg' => 'Profile updated successfully',
-                        'data' => $response_data,
-                    ), JSON_UNESCAPED_SLASHES);
+                        'status' => 'false',
+                        'msg' => 'Only jpg, jpeg, png images are allowed',
+                    ));
                     return;
                 }
 
-                $arr = [
-                    'status' => 'false',
-                    'msg' => 'Unable to load updated profile',
-                ];
+                $base64_data = substr($raw_image, strpos($raw_image, ',') + 1);
+                $binary = base64_decode($base64_data, true);
+                if ($binary === false) {
+                    echo json_encode(array(
+                        'status' => 'false',
+                        'msg' => 'Invalid base64 image data',
+                    ));
+                    return;
+                }
 
-            } else {
-                $arr = [
-                    'status' => 'false',
-                    'msg' => 'Update failed'
-                ];
+                $file_name = 'user_' . $uid . '_' . time() . '_' . mt_rand(1000, 9999) . '.' . $extension;
+                if (file_put_contents($upload_path . $file_name, $binary) === false) {
+                    echo json_encode(array(
+                        'status' => 'false',
+                        'msg' => 'Unable to save profile image',
+                    ));
+                    return;
+                }
+                $data_arr['image'] = $file_name;
+                $data_arr['teach_image'] = $file_name;
             }
-
-        } else {
-            $arr = [
-                'status' => 'false',
-                'msg' => 'No data to update'
-            ];
         }
 
-    } else {
-        $arr = [
-            'status' => 'false',
-            'msg' => 'Invalid token user'
-        ];
+        if (empty($data_arr)) {
+            echo json_encode(array('status' => 'false', 'msg' => 'No data to update'));
+            return;
+        }
+
+        // Do not set users.updated_at here: JWT validation uses updated_at vs token iat for
+        // teacher/institute; bumping it on every profile save invalidates the access token.
+        $data_arr = $this->security->xss_clean($data_arr);
+
+        $ins = $this->db_model->update_data_limit(
+            'users',
+            $data_arr,
+            array('id' => $uid),
+            1
+        );
+
+        if (!$ins) {
+            echo json_encode(array('status' => 'false', 'msg' => 'Update failed'));
+            return;
+        }
+
+        $updated = $this->db_model->select_data('*', 'users', array('id' => $uid), 1);
+        if (empty($updated[0])) {
+            echo json_encode(array('status' => 'false', 'msg' => 'Unable to load updated profile'));
+            return;
+        }
+
+        $u = $updated[0];
+        unset($u['password']);
+
+        $access_token = trim((string) $this->get_access_token_from_request());
+        if ($access_token === '') {
+            $mint = $this->generate_access_token($uid, isset($u['user_type']) ? $u['user_type'] : $ut);
+            $access_token = $mint['access_token'];
+            $this->db_model->update_data_limit(
+                'users use index (id)',
+                array('updated_at' => date('Y-m-d H:i:s', $mint['iat'])),
+                array('id' => $uid),
+                1
+            );
+        }
+
+        $now = date('Y-m-d H:i:s');
+        $dev_id = isset($u['device_id']) ? $u['device_id'] : '';
+        $dev_tok = isset($u['device_token']) ? $u['device_token'] : '';
+        $dev_type = isset($u['device_type']) ? $u['device_type'] : '';
+        $profile_completed = (empty($u['city']) || trim((string) $u['city']) === '') ? 0 : 1;
+
+        $response_data = $this->build_non_student_login_data_array(
+            $u,
+            $dev_id,
+            $dev_tok,
+            $dev_type,
+            $now,
+            $access_token,
+            $profile_completed
+        );
+
+        echo json_encode(array(
+            'status' => 'true',
+            'msg' => 'Profile updated successfully',
+            'data' => $response_data,
+        ), JSON_UNESCAPED_SLASHES);
+        return;
     }
 
-    echo json_encode($arr);
+    echo json_encode(array(
+        'status' => 'false',
+        'msg' => 'Profile update is not available for this account type',
+    ));
 }
 	
     function upload_media($files,$path,$file){   
@@ -1923,34 +2080,138 @@ public function otherBatchData($data){
         echo json_encode($arr);
     }
 
+	/**
+	 * Normalize clock values to minutes since midnight for late comparison.
+	 * Accepts MySQL TIME strings (09:00:00), H:i, or dotted times (10.30).
+	 */
+	private function attendance_minutes_from_midnight($t)
+	{
+		$t = trim((string) $t);
+		if ($t === '') {
+			return null;
+		}
+		if (preg_match('/^\d{1,2}\.\d{2}$/', $t)) {
+			$t = preg_replace('/^(\d{1,2})\.(\d{2})$/', '$1:$2', $t);
+		} else {
+			$t = preg_replace('/^(\d{1,2}:\d{2}(?::\d{2})?)\.\d+$/', '$1', $t);
+		}
+		if (preg_match('/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/', $t, $m)) {
+			return (int) $m[1] * 60 + (int) $m[2];
+		}
+		$ts = strtotime('1970-01-01 ' . $t);
+		if ($ts) {
+			return ((int) date('G', $ts)) * 60 + (int) date('i', $ts);
+		}
+		return null;
+	}
+
+	/** Late if attendance time is after batch start_time (same calendar day). */
+	private function attendance_is_late($attendance_time, $batch_start_time)
+	{
+		$att = $this->attendance_minutes_from_midnight($attendance_time);
+		$start = $this->attendance_minutes_from_midnight($batch_start_time);
+		if ($att === null || $start === null) {
+			return 0;
+		}
+		return $att > $start ? 1 : 0;
+	}
+
+	/** True if student is linked to batch via sudent_batchs, students.batch_id, or multi_batch JSON. */
+	private function attendance_student_enrolled_in_batch($student_id, $batch_id)
+	{
+		$student_id = (int) $student_id;
+		$batch_id = (int) $batch_id;
+		if ($student_id < 1 || $batch_id < 1) {
+			return false;
+		}
+		if (!empty($this->db_model->select_data('id', 'sudent_batchs', array('student_id' => $student_id, 'batch_id' => $batch_id), 1))) {
+			return true;
+		}
+		$rows = $this->db_model->select_data('batch_id, multi_batch', 'students', array('id' => $student_id, 'status' => 1), 1);
+		if (empty($rows)) {
+			return false;
+		}
+		$r = $rows[0];
+		$sb = isset($r['batch_id']) ? trim((string) $r['batch_id']) : '';
+		if ($sb !== '' && ((int) $sb === $batch_id || preg_match('/\b' . $batch_id . '\b/', $sb))) {
+			return true;
+		}
+		$mb = isset($r['multi_batch']) ? trim((string) $r['multi_batch']) : '';
+		if ($mb !== '') {
+			$dec = json_decode($mb, true);
+			if (is_array($dec)) {
+				foreach ($dec as $v) {
+					if ((int) $v === $batch_id) {
+						return true;
+					}
+				}
+			}
+			if (strpos($mb, '"' . $batch_id . '"') !== false || strpos($mb, (string) $batch_id) !== false) {
+				return true;
+			}
+		}
+		return false;
+	}
+
     function attendanceList()
     {
-        $data = $_REQUEST;
-        $payload = $this->require_auth_payload();
+        $from_body = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($from_body)) {
+            $from_body = array();
+        }
+        $data = array_merge($_REQUEST, $from_body);
+        $payload = $this->require_auth_payload(array(), $from_body);
         if ($payload === false) {
             return;
         }
 
-        // STUDENT VIEW: own attendance for selected month/year.
-        if ($payload['ut'] === 'student') {
+        $ut = strtolower(trim((string) $payload['ut']));
+
+        // STUDENT VIEW: summary = selected month; attendance = whole year (calendar can show every month, e.g. March marks while viewing April).
+        if ($ut === 'student') {
             $student_id = (int) $payload['uid'];
-            $month = isset($data['month']) ? str_pad((int) $data['month'], 2, '0', STR_PAD_LEFT) : date('m');
-            $year = isset($data['year']) ? (int) $data['year'] : (int) date('Y');
-            $like = array('date', $year . '-' . $month);
+            $month_raw = isset($data['month']) ? $data['month'] : null;
+            $year_raw = isset($data['year']) ? $data['year'] : null;
+            $year = ($year_raw !== null && $year_raw !== '' && (int) $year_raw > 2000)
+                ? (int) $year_raw
+                : (int) date('Y');
+            $m = ($month_raw !== null && $month_raw !== '' && (int) $month_raw >= 1 && (int) $month_raw <= 12)
+                ? (int) $month_raw
+                : (int) date('m');
+            $month = str_pad((string) $m, 2, '0', STR_PAD_LEFT);
+            $month_prefix = $year . '-' . $month;
 
-            $attendance = $this->db_model->select_data(
-                'id,student_id as studentId,added_id as addedId,date,time',
-                'attendance use index (id)',
-                array('student_id' => $student_id),
-                '',
-                array('id', 'desc'),
-                $like,
-                '',
-                ''
-            );
+            $year_like = $year . '-%';
+            $sql_stu = "SELECT a.id, a.student_id AS studentId, a.added_id AS addedId, a.date, a.time,
+                    COALESCE(b.start_time, b2.start_time) AS batchStartTime
+                FROM attendance a
+                LEFT JOIN batches b ON b.id = a.batch_id AND IFNULL(a.batch_id, 0) > 0
+                LEFT JOIN students st ON st.id = a.student_id
+                LEFT JOIN batches b2 ON b2.id = st.batch_id
+                WHERE a.student_id = ?
+                  AND a.date LIKE ?
+                ORDER BY a.date DESC, a.id DESC";
+            $q_stu = $this->db->query($sql_stu, array($student_id, $year_like));
+            $att_rows = $q_stu->result_array();
 
-            $days_present = !empty($attendance) ? count($attendance) : 0;
-            $days_in_month = cal_days_in_month(CAL_GREGORIAN, (int) $month, (int) $year);
+            $attendance = array();
+            $days_present = 0;
+            foreach ($att_rows as $ar) {
+                $row_date = isset($ar['date']) ? (string) $ar['date'] : '';
+                if ($row_date !== '' && strncmp($row_date, $month_prefix, strlen($month_prefix)) === 0) {
+                    $days_present++;
+                }
+                $attendance[] = array(
+                    'id' => (int) $ar['id'],
+                    'studentId' => (int) $ar['studentId'],
+                    'addedId' => (int) $ar['addedId'],
+                    'date' => $ar['date'],
+                    'attendance_date' => $ar['date'],
+                    'time' => $ar['time'],
+                    'is_late' => $this->attendance_is_late($ar['time'], isset($ar['batchStartTime']) ? $ar['batchStartTime'] : '')
+                );
+            }
+            $days_in_month = cal_days_in_month(CAL_GREGORIAN, $m, (int) $year);
             $percentage = $days_in_month > 0 ? round(($days_present / $days_in_month) * 100, 2) : 0;
 
             echo json_encode(array(
@@ -1959,7 +2220,7 @@ public function otherBatchData($data){
                 'attendance' => !empty($attendance) ? $attendance : array(),
                 'summary' => array(
                     'year' => (int) $year,
-                    'month' => (int) $month,
+                    'month' => $m,
                     'daysPresent' => (int) $days_present,
                     'daysInMonth' => (int) $days_in_month,
                     'attendancePercent' => (float) $percentage
@@ -1969,54 +2230,120 @@ public function otherBatchData($data){
             return;
         }
 
-        // TEACHER VIEW: student list of a batch with today's/date-wise attendance state.
-        if ($payload['ut'] === 'teacher') {
-            if (empty($data['batch_id'])) {
+        // TEACHER VIEW: students enrolled in teacher's batch(es) with date-wise attendance (batch_id optional).
+        if ($ut === 'teacher') {
+            $teacher_id = (int) $payload['uid'];
+            if ($teacher_id < 1) {
+                echo json_encode(array('status' => 'false', 'msg' => 'Teacher not found'));
+                return;
+            }
+
+            // Date filter uses attendance.date (YYYY-MM-DD). Use date or attendance_date; omit => today.
+            $raw_date = isset($data['date']) ? trim((string) $data['date']) : '';
+            $raw_date = trim($raw_date, "\"' \t\n\r\0\x0B");
+            if ($raw_date === '' && isset($data['attendance_date'])) {
+                $raw_date = trim(trim((string) $data['attendance_date']), "\"' \t\n\r\0\x0B");
+            }
+            if ($raw_date === '') {
+                $date = date('Y-m-d');
+            } elseif (preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw_date)) {
+                $date = $raw_date;
+            } else {
+                $date = date('Y-m-d');
+            }
+
+            $assigned = $this->db_model->select_data('batch_id', 'batch_subjects', array('teacher_id' => $teacher_id), '');
+            $batch_ids = array();
+            if (!empty($assigned)) {
+                foreach ($assigned as $r) {
+                    $bid = isset($r['batch_id']) ? (int) $r['batch_id'] : 0;
+                    if ($bid > 0) {
+                        $batch_ids[] = $bid;
+                    }
+                }
+            }
+            $batch_ids = array_values(array_unique($batch_ids));
+
+            if (isset($data['batch_id']) && trim((string) $data['batch_id'], "\"' \t\n\r\0\x0B") !== '') {
+                $want = (int) trim(trim((string) $data['batch_id']), "\"' \t\n\r\0\x0B");
+                if ($want < 1) {
+                    echo json_encode(array('status' => 'false', 'msg' => 'Invalid batch_id'));
+                    return;
+                }
+                if (!in_array($want, $batch_ids, true)) {
+                    echo json_encode(array(
+                        'status' => 'false',
+                        'msg' => 'You are not assigned to this batch'
+                    ));
+                    return;
+                }
+                $batch_ids = array($want);
+            }
+
+            if (empty($batch_ids)) {
                 echo json_encode(array(
-                    'status' => 'false',
-                    'msg' => $this->lang->line('ltr_missing_parameters_msg')
+                    'status' => 'true',
+                    'userType' => 'teacher',
+                    'batchId' => 0,
+                    'batchIds' => array(),
+                    'date' => $date,
+                    'attendance_date' => $date,
+                    'students' => array(),
+                    'presentCount' => 0,
+                    'totalStudents' => 0,
+                    'msg' => $this->lang->line('ltr_fetch_successfully')
                 ));
                 return;
             }
 
-            $teacher_id = (int) $payload['uid'];
-            $batch_id = (int) $data['batch_id'];
-            $date = !empty($data['date']) ? $data['date'] : date('Y-m-d');
-
-            $query = $this->db->query(
-                "SELECT s.id AS studentId, s.name, s.image, s.batch_id AS batchId, 
-                        a.id AS attendanceId, a.date, a.time
-                 FROM students s
-                 LEFT JOIN attendance a
-                    ON a.student_id = s.id
-                   AND a.date = ?
-                   AND a.added_id = ?
-                 WHERE s.batch_id = ?
-                   AND s.status = 1
-                 ORDER BY s.name ASC",
-                array($date, $teacher_id, $batch_id)
-            );
+            $ph = implode(',', array_fill(0, count($batch_ids), '?'));
+            // Rows in attendance for this date and batch (teacher scoped via batch_subjects above).
+            // Do not require sudent_batchs: some students have attendance + batch_id but no enrollment row there.
+            // Do not filter by attendance.added_id (marker may differ from current teacher id).
+            $sql = "SELECT s.id AS studentId, s.name, s.image, a.batch_id AS batchId,
+                        a.id AS attendanceId, a.date, a.time,
+                        b.start_time AS batchStartTime
+                 FROM attendance a
+                 INNER JOIN students s ON s.id = a.student_id AND s.status = 1
+                 LEFT JOIN batches b ON b.id = a.batch_id AND IFNULL(a.batch_id, 0) > 0
+                 WHERE a.date = ?
+                   AND (a.batch_id IN (" . $ph . ") OR IFNULL(a.batch_id, 0) = 0)
+                 ORDER BY s.name ASC";
+            $bind = array_merge(array($date), $batch_ids);
+            $query = $this->db->query($sql, $bind);
             $rows = $query->result_array();
 
             $students = array();
             foreach ($rows as $row) {
+                $row_d = !empty($row['date']) ? $row['date'] : $date;
                 $students[] = array(
                     'studentId' => (int) $row['studentId'],
                     'name' => $row['name'],
                     'image' => $row['image'],
                     'batchId' => (int) $row['batchId'],
                     'isPresent' => !empty($row['attendanceId']) ? 1 : 0,
+                    'is_late' => !empty($row['attendanceId'])
+                        ? $this->attendance_is_late(
+                            isset($row['time']) ? $row['time'] : '',
+                            isset($row['batchStartTime']) ? $row['batchStartTime'] : ''
+                        )
+                        : 0,
                     'attendanceId' => !empty($row['attendanceId']) ? (int) $row['attendanceId'] : 0,
-                    'date' => !empty($row['date']) ? $row['date'] : $date,
+                    'date' => $row_d,
+                    'attendance_date' => $row_d,
                     'time' => !empty($row['time']) ? $row['time'] : ''
                 );
             }
 
+            $single_batch_id = count($batch_ids) === 1 ? (int) $batch_ids[0] : 0;
+
             echo json_encode(array(
                 'status' => 'true',
                 'userType' => 'teacher',
-                'batchId' => $batch_id,
+                'batchId' => $single_batch_id,
+                'batchIds' => $batch_ids,
                 'date' => $date,
+                'attendance_date' => $date,
                 'students' => $students,
                 'presentCount' => count(array_filter($students, function ($v) { return $v['isPresent'] == 1; })),
                 'totalStudents' => count($students),
@@ -2030,6 +2357,163 @@ public function otherBatchData($data){
             'msg' => 'Attendance list is currently available for student and teacher only'
         ));
     }
+
+	/**
+	 * POST/GET api/user/add-attendance
+	 * Auth: Bearer teacher. Body/JSON/form: batch_id (required), student_id or student_ids (required),
+	 * attendance_date (required, YYYY-MM-DD), time (required, e.g. 10.30 or 10:30).
+	 * Upserts on (student_id, date, batch_id). Response includes date (echo of attendance_date) and attendance_date.
+	 */
+	public function addAttendance()
+	{
+		$from_body = json_decode(file_get_contents('php://input'), true);
+		if (!is_array($from_body)) {
+			$from_body = array();
+		}
+		$data = array_merge($this->input->post(), $this->input->get(), $from_body);
+
+		$payload = $this->require_auth_payload(array('teacher'), $from_body);
+		if ($payload === false) {
+			return;
+		}
+		$teacher_id = (int) $payload['uid'];
+		if ($teacher_id < 1) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Teacher not found'));
+			return;
+		}
+
+		$batch_raw = isset($data['batch_id']) ? trim(trim((string) $data['batch_id']), "\"' \t\n\r\0\x0B") : '';
+		$batch_id = (int) $batch_raw;
+		if ($batch_id < 1) {
+			echo json_encode(array('status' => 'false', 'msg' => 'batch_id is required'));
+			return;
+		}
+
+		$assigned = $this->db_model->select_data('id', 'batch_subjects', array('teacher_id' => $teacher_id, 'batch_id' => $batch_id), 1);
+		if (empty($assigned)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'You are not assigned to this batch'));
+			return;
+		}
+
+		$batch_row = $this->db_model->select_data('id,admin_id', 'batches', array('id' => $batch_id, 'status' => 1), 1);
+		if (empty($batch_row)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Batch not found'));
+			return;
+		}
+		$admin_id = isset($batch_row[0]['admin_id']) ? (int) $batch_row[0]['admin_id'] : 0;
+
+		$raw_ad = isset($data['attendance_date']) ? trim(trim((string) $data['attendance_date']), "\"' \t\n\r\0\x0B") : '';
+		if ($raw_ad === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw_ad)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'attendance_date is required (use YYYY-MM-DD)'));
+			return;
+		}
+		$date = $raw_ad;
+
+		$time_raw = isset($data['time']) ? trim(trim((string) $data['time']), "\"' \t\n\r\0\x0B") : '';
+		if ($time_raw === '') {
+			echo json_encode(array('status' => 'false', 'msg' => 'time is required'));
+			return;
+		}
+		$time = $time_raw;
+
+		$student_ids = array();
+		if (!empty($data['student_ids']) && is_array($data['student_ids'])) {
+			foreach ($data['student_ids'] as $sid) {
+				$student_ids[] = (int) $sid;
+			}
+		} elseif (!empty($data['student_ids']) && is_string($data['student_ids'])) {
+			foreach (explode(',', $data['student_ids']) as $p) {
+				$p = (int) trim($p);
+				if ($p > 0) {
+					$student_ids[] = $p;
+				}
+			}
+		} elseif (isset($data['student_id']) && trim((string) $data['student_id'], "\"' \t\n\r\0\x0B") !== '') {
+			$student_ids[] = (int) trim(trim((string) $data['student_id']), "\"' \t\n\r\0\x0B");
+		}
+		$student_ids = array_values(array_unique(array_filter($student_ids, function ($v) { return (int) $v > 0; })));
+
+		if (empty($student_ids)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'student_id or student_ids is required'));
+			return;
+		}
+
+		$results = array();
+		$any_ok = false;
+		foreach ($student_ids as $student_id) {
+			$student = $this->db_model->select_data('id,admin_id', 'students', array('id' => $student_id, 'status' => 1), 1);
+			if (empty($student)) {
+				$results[] = array('studentId' => $student_id, 'status' => 'false', 'msg' => 'Student not found');
+				continue;
+			}
+			if (!$this->attendance_student_enrolled_in_batch($student_id, $batch_id)) {
+				$prior = $this->db_model->select_data('id', 'attendance', array('student_id' => $student_id, 'batch_id' => $batch_id), 1);
+				if (empty($prior)) {
+					$results[] = array('studentId' => $student_id, 'status' => 'false', 'msg' => 'Student is not enrolled in this batch');
+					continue;
+				}
+			}
+			$use_admin = $admin_id > 0 ? $admin_id : (int) $student[0]['admin_id'];
+
+			$existing = $this->db_model->select_data('id', 'attendance', array(
+				'student_id' => $student_id,
+				'date' => $date,
+				'batch_id' => $batch_id
+			), 1);
+
+			if (!empty($existing)) {
+				$att_id = (int) $existing[0]['id'];
+				$this->db_model->update_data_limit('attendance', array(
+					'time' => $time,
+					'added_id' => $teacher_id,
+					'admin_id' => $use_admin
+				), array('id' => $att_id), 1);
+				$results[] = array(
+					'studentId' => $student_id,
+					'status' => 'true',
+					'msg' => 'updated',
+					'attendanceId' => $att_id,
+					'date' => $date,
+					'attendance_date' => $date,
+					'time' => $time
+				);
+			} else {
+				$ins_row = $this->security->xss_clean(array(
+					'student_id' => $student_id,
+					'added_id' => $teacher_id,
+					'date' => $date,
+					'time' => $time,
+					'batch_id' => $batch_id,
+					'admin_id' => $use_admin > 0 ? $use_admin : 1
+				));
+				$this->db_model->insert_data('attendance', $ins_row);
+				$att_id = (int) $this->db->insert_id();
+				$results[] = array(
+					'studentId' => $student_id,
+					'status' => 'true',
+					'msg' => 'added',
+					'attendanceId' => $att_id,
+					'date' => $date,
+					'attendance_date' => $date,
+					'time' => $time
+				);
+			}
+			$any_ok = true;
+		}
+
+		$all_ok = count(array_filter($results, function ($r) { return isset($r['status']) && $r['status'] === 'true'; })) === count($results);
+
+		echo json_encode(array(
+			'status' => $any_ok ? 'true' : 'false',
+			'msg' => $all_ok
+				? 'Attendance saved successfully'
+				: ($any_ok ? 'Some attendance records could not be saved' : 'Attendance could not be saved'),
+			'batchId' => $batch_id,
+			'date' => $date,
+			'attendance_date' => $date,
+			'results' => $results
+		), JSON_UNESCAPED_SLASHES);
+	}
 
 
     function getTopScorer(){ 
@@ -4012,12 +4496,14 @@ public function otherBatchData($data){
 	        $device_id = isset($data['device_id']) ? trim($data['device_id']) : '';
 	        $device_token = isset($data['device_token']) ? trim($data['device_token']) : '';
 	        $device_type = isset($data['device_type']) ? trim($data['device_type']) : '';
-	        $now = date('Y-m-d H:i:s');
 
 	        if ($user_type === 'student') {
+	        	$tok = $this->generate_access_token($user->id, 'student');
+	        	$access_token = $tok['access_token'];
+	        	$session_time = date('Y-m-d H:i:s', $tok['iat']);
 	        	$this->db_model->update_data_limit('students', array(
 	        		'login_status' => 1,
-	        		'last_login_app' => $now,
+	        		'last_login_app' => $session_time,
 	        		'token' => $device_token,
 	        		'device_id' => $device_id,
 	        		'device_token' => $device_token,
@@ -4029,16 +4515,18 @@ public function otherBatchData($data){
 	        		echo json_encode(array('status' => 'false', 'msg' => 'Student not found'));
 	        		return;
 	        	}
-	        	$access_token = $this->generate_access_token($fresh[0]['id'], 'student');
-	        	$response_data = $this->build_student_login_data_array($fresh[0], $device_id, $device_token, $device_type, $now, $access_token);
+	        	$response_data = $this->build_student_login_data_array($fresh[0], $device_id, $device_token, $device_type, $session_time, $access_token);
 
 	        	$this->json_login_success_response($response_data);
 	        	return;
 	        }
 
+	        $tok = $this->generate_access_token($user->id, $user->user_type);
+	        $access_token = $tok['access_token'];
+	        $session_time = date('Y-m-d H:i:s', $tok['iat']);
 	        $this->db_model->update_data_limit('users', array(
 	        	'device_token' => $device_token,
-	        	'updated_at' => $now,
+	        	'updated_at' => $session_time,
 	        ), array('id' => $user->id), 1);
 
 	        $urow = $this->db_model->select_data('*', 'users', array('id' => $user->id), 1);
@@ -4047,7 +4535,6 @@ public function otherBatchData($data){
 	        	return;
 	        }
 	        $u = $urow[0];
-	        $access_token = $this->generate_access_token($u['id'], $u['user_type']);
 	        $profile_completed = (!isset($u['city']) || $u['city'] === '') ? 0 : 1;
 
 	        $this->json_login_success_response(array(

@@ -258,6 +258,7 @@ $route['api/user/delete-account'] = 'api/user/home/deleteAccount';
 $route['api/user/payment-history'] = 'api/user/home/paymentHistory';
 
 $route['api/user/attendance-list'] = 'api/user/home/attendanceList';
+$route['api/user/add-attendance'] = 'api/user/home/addAttendance';
 $route['api/main/site-details'] = 'api/main/main/site_details';
 $route['api/main/notifications-list'] = 'api/main/main/notifications_list';
 $route['api/main/pages'] = 'api/main/main/pages';

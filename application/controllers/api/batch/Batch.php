@@ -109,6 +109,73 @@ class Batch extends MY_Controller
 	}
 
 	/**
+	 * Enrolled student or teacher assigned in batch_subjects for this batch_id.
+	 */
+	private function assert_batch_access_student_or_teacher(array $payload, $batch_id)
+	{
+		$batch_id = (int) $batch_id;
+		if ($batch_id < 1) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Invalid batch'));
+			return false;
+		}
+		$ut = strtolower(trim((string) $payload['ut']));
+		$uid = (int) $payload['uid'];
+		if ($ut === 'student') {
+			if ($uid < 1 || $this->authorize_student_request($uid) === false) {
+				return false;
+			}
+			$enrollment = $this->db_model->select_data('id', 'sudent_batchs', array('student_id' => $uid, 'batch_id' => $batch_id), 1);
+			if (empty($enrollment)) {
+				echo json_encode(array('status' => 'false', 'msg' => 'You are not enrolled in this batch'));
+				return false;
+			}
+			return true;
+		}
+		if ($ut === 'teacher') {
+			if ($uid < 1) {
+				echo json_encode(array('status' => 'false', 'msg' => 'Teacher not found'));
+				return false;
+			}
+			$assigned = $this->db_model->select_data('id', 'batch_subjects', array('teacher_id' => $uid, 'batch_id' => $batch_id), 1);
+			if (empty($assigned)) {
+				echo json_encode(array('status' => 'false', 'msg' => 'You are not assigned to this batch'));
+				return false;
+			}
+			return true;
+		}
+		echo json_encode(array('status' => 'false', 'msg' => 'This action is available for student and teacher only'));
+		return false;
+	}
+
+	/** Video visible to teacher if it is mapped to any batch they teach. */
+	private function video_accessible_to_teacher($video_id, $teacher_id)
+	{
+		$video_id = (int) $video_id;
+		$teacher_id = (int) $teacher_id;
+		if ($video_id < 1 || $teacher_id < 1) {
+			return false;
+		}
+		$rows = $this->db_model->select_data('batch_id', 'batch_subjects', array('teacher_id' => $teacher_id), '');
+		if (empty($rows)) {
+			return false;
+		}
+		foreach ($rows as $r) {
+			$bid = isset($r['batch_id']) ? (int) $r['batch_id'] : 0;
+			if ($bid < 1) {
+				continue;
+			}
+			$this->db->from('video_lectures');
+			$this->db->where('id', $video_id);
+			$this->db->where('status', 1);
+			$this->apply_text_batch_filter('batch', $bid);
+			if ((int) $this->db->count_all_results() > 0) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
 	 * POST/GET api/batch/batch-list
 	 * Optional: search (filters batch_name)
 	 * Auth:
@@ -118,7 +185,7 @@ class Batch extends MY_Controller
 	public function batch_list()
 	{
 		$data = $this->read_request_data();
-		$payload = $this->require_auth_payload();
+		$payload = $this->require_auth_payload(array(), $data);
 		if ($payload === false) {
 			return;
 		}
@@ -237,19 +304,18 @@ class Batch extends MY_Controller
 	/**
 	 * POST/GET api/batch/batch-details
 	 * Required: batch_id
+	 * Auth: student (enrolled) or teacher (assigned via batch_subjects).
 	 */
 	public function batch_details()
 	{
 		$data = $this->read_request_data();
-		$payload = $this->require_auth_payload(array('student'));
+		$payload = $this->require_auth_payload(array(), $data);
 		if ($payload === false) {
 			return;
 		}
 
-		$student_id = (int) $payload['uid'];
-		if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
-			return;
-		}
+		$ut = strtolower(trim((string) $payload['ut']));
+		$uid = (int) $payload['uid'];
 
 		if (empty($data['batch_id'])) {
 			echo json_encode(array('status' => 'false', 'msg' => 'batch_id is required'));
@@ -257,14 +323,44 @@ class Batch extends MY_Controller
 		}
 
 		$batch_id = (int) $data['batch_id'];
-		$enrollment = $this->db_model->select_data(
-			'*',
-			'sudent_batchs',
-			array('student_id' => $student_id, 'batch_id' => $batch_id),
-			1
-		);
-		if (empty($enrollment)) {
-			echo json_encode(array('status' => 'false', 'msg' => 'You are not enrolled in this batch'));
+		$student_id = 0;
+		$enrollment = array();
+
+		if ($ut === 'student') {
+			$student_id = $uid;
+			if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
+				return;
+			}
+			$enrollment = $this->db_model->select_data(
+				'*',
+				'sudent_batchs',
+				array('student_id' => $student_id, 'batch_id' => $batch_id),
+				1
+			);
+			if (empty($enrollment)) {
+				echo json_encode(array('status' => 'false', 'msg' => 'You are not enrolled in this batch'));
+				return;
+			}
+		} elseif ($ut === 'teacher') {
+			if ($uid < 1) {
+				echo json_encode(array('status' => 'false', 'msg' => 'Teacher not found'));
+				return;
+			}
+			$assigned = $this->db_model->select_data('id', 'batch_subjects', array('teacher_id' => $uid, 'batch_id' => $batch_id), 1);
+			if (empty($assigned)) {
+				echo json_encode(array('status' => 'false', 'msg' => 'You are not assigned to this batch'));
+				return;
+			}
+			$enrollment = array(array(
+				'status' => 1,
+				'create_at' => '',
+				'added_by' => 'teacher',
+			));
+		} else {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'Batch details are available for student and teacher only'
+			));
 			return;
 		}
 
@@ -328,10 +424,17 @@ class Batch extends MY_Controller
 			array('batch', $batch_like)
 		);
 
-		$attendance_marked = (int) $this->db_model->countAll(
-			'attendance',
-			array('student_id' => $student_id, 'batch_id' => $batch_id)
-		);
+		if ($ut === 'student') {
+			$attendance_marked = (int) $this->db_model->countAll(
+				'attendance',
+				array('student_id' => $student_id, 'batch_id' => $batch_id)
+			);
+		} else {
+			$attendance_marked = (int) $this->db_model->countAll(
+				'attendance',
+				array('batch_id' => $batch_id)
+			);
+		}
 
 		$upcoming_exams = (int) $this->db_model->countAll(
 			'exams use index (id)',
@@ -419,18 +522,14 @@ class Batch extends MY_Controller
 	/**
 	 * POST/GET api/batch/library-list
 	 * Books (PDF) for a batch from book_pdf.
-	 * Auth: student (enrolled in batch). Optional: search, sort_by, sort_dir, page, limit.
+	 * Auth: student (enrolled) or teacher (assigned via batch_subjects).
+	 * Optional: search, sort_by, sort_dir, page, limit.
 	 */
 	public function library_list()
 	{
 		$data = $this->read_request_data();
-		$payload = $this->require_auth_payload(array('student'));
+		$payload = $this->require_auth_payload(array(), $data);
 		if ($payload === false) {
-			return;
-		}
-
-		$student_id = (int) $payload['uid'];
-		if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
 			return;
 		}
 
@@ -440,14 +539,7 @@ class Batch extends MY_Controller
 		}
 
 		$batch_id = (int) $data['batch_id'];
-		$enrollment = $this->db_model->select_data(
-			'*',
-			'sudent_batchs',
-			array('student_id' => $student_id, 'batch_id' => $batch_id),
-			1
-		);
-		if (empty($enrollment)) {
-			echo json_encode(array('status' => 'false', 'msg' => 'You are not enrolled in this batch'));
+		if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id)) {
 			return;
 		}
 
@@ -575,13 +667,8 @@ class Batch extends MY_Controller
 	public function live_class_list()
 	{
 		$data = $this->read_request_data();
-		$payload = $this->require_auth_payload(array('student'));
+		$payload = $this->require_auth_payload(array(), $data);
 		if ($payload === false) {
-			return;
-		}
-
-		$student_id = (int) $payload['uid'];
-		if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
 			return;
 		}
 
@@ -591,9 +678,7 @@ class Batch extends MY_Controller
 		}
 
 		$batch_id = (int) $data['batch_id'];
-		$enrollment = $this->db_model->select_data('*', 'sudent_batchs', array('student_id' => $student_id, 'batch_id' => $batch_id), 1);
-		if (empty($enrollment)) {
-			echo json_encode(array('status' => 'false', 'msg' => 'You are not enrolled in this batch'));
+		if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id)) {
 			return;
 		}
 
@@ -698,13 +783,8 @@ class Batch extends MY_Controller
 	public function live_class_details()
 	{
 		$data = $this->read_request_data();
-		$payload = $this->require_auth_payload(array('student'));
+		$payload = $this->require_auth_payload(array(), $data);
 		if ($payload === false) {
-			return;
-		}
-
-		$student_id = (int) $payload['uid'];
-		if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
 			return;
 		}
 
@@ -732,9 +812,7 @@ class Batch extends MY_Controller
 		}
 
 		$batch_id = (int) $row['batchId'];
-		$enrollment = $this->db_model->select_data('*', 'sudent_batchs', array('student_id' => $student_id, 'batch_id' => $batch_id), 1);
-		if (empty($enrollment)) {
-			echo json_encode(array('status' => 'false', 'msg' => 'You are not enrolled in this batch'));
+		if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id)) {
 			return;
 		}
 
@@ -781,13 +859,8 @@ class Batch extends MY_Controller
 	public function video_lecture_list()
 	{
 		$data = $this->read_request_data();
-		$payload = $this->require_auth_payload(array('student'));
+		$payload = $this->require_auth_payload(array(), $data);
 		if ($payload === false) {
-			return;
-		}
-
-		$student_id = (int) $payload['uid'];
-		if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
 			return;
 		}
 
@@ -796,10 +869,7 @@ class Batch extends MY_Controller
 			return;
 		}
 		$batch_id = (int) $data['batch_id'];
-
-		$enrollment = $this->db_model->select_data('*', 'sudent_batchs', array('student_id' => $student_id, 'batch_id' => $batch_id), 1);
-		if (empty($enrollment)) {
-			echo json_encode(array('status' => 'false', 'msg' => 'You are not enrolled in this batch'));
+		if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id)) {
 			return;
 		}
 
@@ -875,15 +945,11 @@ class Batch extends MY_Controller
 	public function video_lecture_details()
 	{
 		$data = $this->read_request_data();
-		$payload = $this->require_auth_payload(array('student'));
+		$payload = $this->require_auth_payload(array(), $data);
 		if ($payload === false) {
 			return;
 		}
 
-		$student_id = (int) $payload['uid'];
-		if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
-			return;
-		}
 		if (empty($data['video_lecture_id'])) {
 			echo json_encode(array('status' => 'false', 'msg' => 'video_lecture_id is required'));
 			return;
@@ -902,20 +968,39 @@ class Batch extends MY_Controller
 		}
 		$video = $row[0];
 
-		// Validate student enrollment with at least one batch mapped in this lecture.
-		$student = $this->db_model->select_data('batch_id', 'students use index (id)', array('id' => $student_id), 1);
-		$student_batch_id = !empty($student[0]['batch_id']) ? (int) $student[0]['batch_id'] : 0;
-		if ($student_batch_id < 1) {
-			echo json_encode(array('status' => 'false', 'msg' => 'You are not enrolled in any batch'));
-			return;
-		}
+		$ut = strtolower(trim((string) $payload['ut']));
+		$uid = (int) $payload['uid'];
+		if ($ut === 'student') {
+			if ($uid < 1 || $this->authorize_student_request($uid) === false) {
+				return;
+			}
+			// Validate student enrollment with at least one batch mapped in this lecture.
+			$student = $this->db_model->select_data('batch_id', 'students use index (id)', array('id' => $uid), 1);
+			$student_batch_id = !empty($student[0]['batch_id']) ? (int) $student[0]['batch_id'] : 0;
+			if ($student_batch_id < 1) {
+				echo json_encode(array('status' => 'false', 'msg' => 'You are not enrolled in any batch'));
+				return;
+			}
 
-		$this->db->from('video_lectures');
-		$this->db->where('id', $video_id);
-		$this->apply_text_batch_filter('batch', $student_batch_id);
-		$allowed = (int) $this->db->count_all_results();
-		if ($allowed < 1) {
-			echo json_encode(array('status' => 'false', 'msg' => 'You are not allowed to access this video'));
+			$this->db->from('video_lectures');
+			$this->db->where('id', $video_id);
+			$this->apply_text_batch_filter('batch', $student_batch_id);
+			$allowed = (int) $this->db->count_all_results();
+			if ($allowed < 1) {
+				echo json_encode(array('status' => 'false', 'msg' => 'You are not allowed to access this video'));
+				return;
+			}
+		} elseif ($ut === 'teacher') {
+			if ($uid < 1) {
+				echo json_encode(array('status' => 'false', 'msg' => 'Teacher not found'));
+				return;
+			}
+			if (!$this->video_accessible_to_teacher($video_id, $uid)) {
+				echo json_encode(array('status' => 'false', 'msg' => 'You are not allowed to access this video'));
+				return;
+			}
+		} else {
+			echo json_encode(array('status' => 'false', 'msg' => 'This action is available for student and teacher only'));
 			return;
 		}
 
@@ -934,12 +1019,8 @@ class Batch extends MY_Controller
 	public function upcoming_exam_list()
 	{
 		$data = $this->read_request_data();
-		$payload = $this->require_auth_payload(array('student'));
+		$payload = $this->require_auth_payload(array(), $data);
 		if ($payload === false) {
-			return;
-		}
-		$student_id = (int) $payload['uid'];
-		if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
 			return;
 		}
 
@@ -948,9 +1029,7 @@ class Batch extends MY_Controller
 			return;
 		}
 		$batch_id = (int) $data['batch_id'];
-		$enrollment = $this->db_model->select_data('*', 'sudent_batchs', array('student_id' => $student_id, 'batch_id' => $batch_id), 1);
-		if (empty($enrollment)) {
-			echo json_encode(array('status' => 'false', 'msg' => 'You are not enrolled in this batch'));
+		if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id)) {
 			return;
 		}
 
@@ -1036,12 +1115,8 @@ class Batch extends MY_Controller
 	public function upcoming_exam_details()
 	{
 		$data = $this->read_request_data();
-		$payload = $this->require_auth_payload(array('student'));
+		$payload = $this->require_auth_payload(array(), $data);
 		if ($payload === false) {
-			return;
-		}
-		$student_id = (int) $payload['uid'];
-		if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
 			return;
 		}
 
@@ -1063,9 +1138,7 @@ class Batch extends MY_Controller
 		}
 		$e = $exam[0];
 
-		$enrollment = $this->db_model->select_data('*', 'sudent_batchs', array('student_id' => $student_id, 'batch_id' => (int) $e['batchId']), 1);
-		if (empty($enrollment)) {
-			echo json_encode(array('status' => 'false', 'msg' => 'You are not enrolled in this batch'));
+		if (!$this->assert_batch_access_student_or_teacher($payload, (int) $e['batchId'])) {
 			return;
 		}
 

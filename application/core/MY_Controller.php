@@ -16,6 +16,9 @@ class MY_Controller extends CI_Controller
 		}
 	}
 
+	/**
+	 * @return array{access_token: string, iat: int}
+	 */
 	protected function generate_access_token($user_id, $user_type)
 	{
 		$secret = $this->config->item('encryption_key');
@@ -23,18 +26,22 @@ class MY_Controller extends CI_Controller
 			$secret = 'education_api_secret_key';
 		}
 
+		$iat = time();
 		$payload = array(
 			'uid' => (int) $user_id,
 			'ut' => (string) $user_type,
-			'iat' => time(),
-			'exp' => time() + (60 * 60 * 24 * 30)
+			'iat' => $iat,
+			'exp' => $iat + (60 * 60 * 24 * 30)
 		);
 
 		$payload_json = json_encode($payload);
 		$payload_b64 = rtrim(strtr(base64_encode($payload_json), '+/', '-_'), '=');
 		$signature = hash_hmac('sha256', $payload_b64, $secret);
 
-		return $payload_b64 . '.' . $signature;
+		return array(
+			'access_token' => $payload_b64 . '.' . $signature,
+			'iat' => $iat,
+		);
 	}
 
 	protected function parse_access_token($token)
@@ -88,11 +95,12 @@ class MY_Controller extends CI_Controller
 				return false;
 			}
 
-			// Reject tokens issued before the latest login.
+			// Only the token from the latest login: last_login_app is set from that token's iat on login.
+			// Reject any other token (e.g. after logging in again without logout). Slack covers DB/PHP second alignment.
 			$last_login = isset($rows[0]['last_login_app']) ? trim((string) $rows[0]['last_login_app']) : '';
 			if ($last_login !== '' && $last_login !== '0000-00-00 00:00:00') {
 				$last_login_ts = strtotime($last_login);
-				if ($last_login_ts && $iat < $last_login_ts) {
+				if ($last_login_ts && abs($iat - $last_login_ts) > 2) {
 					return false;
 				}
 			}
@@ -121,19 +129,40 @@ class MY_Controller extends CI_Controller
 		return $payload;
 	}
 
-	protected function get_access_token_from_request()
+	/**
+	 * Resolve bearer token without using $_REQUEST for access_token/token.
+	 * $_REQUEST merges cookies (per php.ini): an old access_token cookie would override
+	 * a new login when the client does not send Authorization — use GET/POST/JSON only after the header.
+	 *
+	 * @param array|null $json_body Decoded JSON body (e.g. attendance-list); may contain access_token.
+	 */
+	protected function get_access_token_from_request(array $json_body = null)
 	{
 		$auth_header = $this->input->get_request_header('Authorization', true);
 		if (!empty($auth_header) && preg_match('/Bearer\s*:?\s*(.+)/i', $auth_header, $matches)) {
 			return trim($matches[1]);
 		}
 
-		if (!empty($_REQUEST['access_token'])) {
-			return trim(preg_replace('/^Bearer\s*:?\s*/i', '', $_REQUEST['access_token']));
+		if (!empty($_POST['access_token'])) {
+			return trim(preg_replace('/^Bearer\s*:?\s*/i', '', (string) $_POST['access_token']));
+		}
+		if (!empty($_GET['access_token'])) {
+			return trim(preg_replace('/^Bearer\s*:?\s*/i', '', (string) $_GET['access_token']));
+		}
+		if (!empty($_POST['token'])) {
+			return trim(preg_replace('/^Bearer\s*:?\s*/i', '', (string) $_POST['token']));
+		}
+		if (!empty($_GET['token'])) {
+			return trim(preg_replace('/^Bearer\s*:?\s*/i', '', (string) $_GET['token']));
 		}
 
-		if (!empty($_REQUEST['token'])) {
-			return trim(preg_replace('/^Bearer\s*:?\s*/i', '', $_REQUEST['token']));
+		if (is_array($json_body)) {
+			if (!empty($json_body['access_token'])) {
+				return trim(preg_replace('/^Bearer\s*:?\s*/i', '', (string) $json_body['access_token']));
+			}
+			if (!empty($json_body['token'])) {
+				return trim(preg_replace('/^Bearer\s*:?\s*/i', '', (string) $json_body['token']));
+			}
 		}
 
 		return '';
@@ -147,7 +176,7 @@ class MY_Controller extends CI_Controller
 		if ($payload === false || $payload['ut'] !== 'student' || (int) $payload['uid'] !== (int) $student_id) {
 			echo json_encode(array(
 				'status' => 'false',
-				'msg' => 'Unauthorized: invalid or expired access token'
+				'msg' => 'Authentication failed. Please log in again.'
 			));
 			return false;
 		}
@@ -158,16 +187,17 @@ class MY_Controller extends CI_Controller
 	/**
 	 * Central auth helper to avoid repeating token parsing in every endpoint.
 	 * @param array|string $allowed_types Example: ['student'] or ['student','teacher']
+	 * @param array|null $json_body Optional decoded JSON body for access_token when using JSON POST without header.
 	 * @return array|false Payload array on success, false on failure (response already echoed).
 	 */
-	protected function require_auth_payload($allowed_types = array())
+	protected function require_auth_payload($allowed_types = array(), array $json_body = null)
 	{
-		$token = $this->get_access_token_from_request();
+		$token = $this->get_access_token_from_request($json_body);
 		$payload = $this->parse_access_token($token);
 		if ($payload === false) {
 			echo json_encode(array(
 				'status' => 'false',
-				'msg' => 'Unauthorized: invalid or expired access token'
+				'msg' => 'Authentication failed. Please log in again.'
 			));
 			return false;
 		}
