@@ -199,6 +199,24 @@ class Institute extends MY_Controller
 	}
 
 	/**
+	 * Restrict listing to users.user_type (case-insensitive, trimmed), if column exists.
+	 */
+	private function apply_institute_listing_user_type_filter($user_type, array $field_flip = null)
+	{
+		$user_type = strtolower(trim((string) $user_type));
+		if ($user_type === '') {
+			return;
+		}
+		if ($field_flip === null) {
+			$field_flip = $this->users_table_field_flip();
+		}
+		if (empty($field_flip) || !isset($field_flip['user_type'])) {
+			return;
+		}
+		$this->db->where('LOWER(TRIM(IFNULL(users.user_type,\'\'))) = ' . $this->db->escape($user_type), null, false);
+	}
+
+	/**
 	 * Prefer users.lat / users.long, then latitude/longitude.
 	 *
 	 * @return array|null [lat, lon] as floats
@@ -220,6 +238,7 @@ class Institute extends MY_Controller
 	 * POST/GET api/institute/listing — institutes (auth required).
 	 * Params: batch_id (optional; if set, student|teacher must be enrolled/assigned to that batch);
 	 * search (optional); city (optional, partial match on users.city);
+	 * user_type (optional, exact match on LOWER(TRIM(users.user_type)));
 	 * order_field name|distance; order_type asc|desc;
 	 * page (optional, default 1); limit or per_page (optional, default 20, max 100).
 	 * latitude/longitude required only when order_field=distance (distance uses stored coords only; no geocoding).
@@ -279,6 +298,7 @@ class Institute extends MY_Controller
 
 		$search = isset($data['search']) ? $data['search'] : '';
 		$city_filter = isset($data['city']) ? $data['city'] : '';
+		$user_type_filter = isset($data['user_type']) ? $data['user_type'] : '';
 
 		$pg = $this->parse_api_list_pagination($data);
 		$page = $pg['page'];
@@ -292,15 +312,18 @@ class Institute extends MY_Controller
 		$this->db->where("(users.role = 4 OR LOWER(IFNULL(users.user_type,'')) = 'institute')", null, false);
 		$this->apply_institute_listing_search($search, $users_flip);
 		$this->apply_institute_listing_city_filter($city_filter, $users_flip);
+		$this->apply_institute_listing_user_type_filter($user_type_filter, $users_flip);
 		$total_records = (int) $this->db->count_all_results();
 
 		$select = $this->institute_user_select_columns($users_flip);
 		$this->db->select($select, false);
 		$this->db->from('users users');
 		$this->db->where('users.status', 1);
-		$this->db->where("(users.role = 4 OR LOWER(IFNULL(users.user_type,'')) = 'institute')", null, false);
+		$this->db->where('users.role !=', 1);
+		//$this->db->where("(users.role = 4 OR LOWER(IFNULL(users.user_type,'')) = 'institute')", null, false);
 		$this->apply_institute_listing_search($search, $users_flip);
 		$this->apply_institute_listing_city_filter($city_filter, $users_flip);
+		$this->apply_institute_listing_user_type_filter($user_type_filter, $users_flip);
 		if ($order_field === 'name') {
 			$this->db->order_by('users.name', $order_type === 'desc' ? 'desc' : 'asc');
 			$this->db->limit($limit, $offset);
