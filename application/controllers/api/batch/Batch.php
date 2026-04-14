@@ -17,39 +17,6 @@ class Batch extends MY_Controller
 		return array_merge($data, $this->input->post(), $this->input->get());
 	}
 
-	private function format_time_range($start_time, $end_time)
-	{
-		$start_ts = strtotime($start_time);
-		$end_ts = strtotime($end_time);
-		if ($start_ts && $end_ts) {
-			return date('g:i a', $start_ts) . ' - ' . date('g:i a', $end_ts);
-		}
-		return trim($start_time . ' - ' . $end_time);
-	}
-
-	private function teacher_names_for_batch($batch_id)
-	{
-		$rows = $this->db_model->select_data(
-			'users.name',
-			'batch_subjects use index (id)',
-			array('batch_subjects.batch_id' => $batch_id),
-			'',
-			array('batch_subjects.id', 'asc'),
-			'',
-			array('users', 'users.id = batch_subjects.teacher_id')
-		);
-		if (empty($rows)) {
-			return '';
-		}
-		$names = array();
-		foreach ($rows as $r) {
-			if (!empty($r['name']) && !in_array($r['name'], $names, true)) {
-				$names[] = $r['name'];
-			}
-		}
-		return implode(', ', $names);
-	}
-
 	private function build_slider_banners()
 	{
 		$banners = array();
@@ -147,6 +114,70 @@ class Batch extends MY_Controller
 		return false;
 	}
 
+	/**
+	 * Teacher assigned to the batch, or institute that owns the batch (batches.admin_id).
+	 */
+	private function assert_batch_access_teacher_or_institute(array $payload, $batch_id)
+	{
+		$batch_id = (int) $batch_id;
+		if ($batch_id < 1) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Invalid batch'));
+			return false;
+		}
+		$ut = strtolower(trim((string) $payload['ut']));
+		$uid = (int) $payload['uid'];
+		if ($ut === 'teacher') {
+			if ($uid < 1) {
+				echo json_encode(array('status' => 'false', 'msg' => 'Teacher not found'));
+				return false;
+			}
+			$assigned = $this->db_model->select_data('id', 'batch_subjects', array('teacher_id' => $uid, 'batch_id' => $batch_id), 1);
+			if (empty($assigned)) {
+				echo json_encode(array('status' => 'false', 'msg' => 'You are not assigned to this batch'));
+				return false;
+			}
+			return true;
+		}
+		if ($ut === 'institute') {
+			if ($uid < 1) {
+				echo json_encode(array('status' => 'false', 'msg' => 'Institute not found'));
+				return false;
+			}
+			$batch = $this->db_model->select_data('id,admin_id', 'batches use index (id)', array('id' => $batch_id), 1);
+			if (empty($batch) || (int) $batch[0]['admin_id'] !== $uid) {
+				echo json_encode(array('status' => 'false', 'msg' => 'This batch does not belong to your institute'));
+				return false;
+			}
+			return true;
+		}
+		echo json_encode(array('status' => 'false', 'msg' => 'This action is available for teacher and institute only'));
+		return false;
+	}
+
+	/**
+	 * Single book_pdf row linked to batch_id (same matching rules as library list).
+	 *
+	 * @param bool $active_only If true, only status = 1.
+	 * @return array|null
+	 */
+	private function get_book_pdf_for_batch($book_id, $batch_id, $active_only = true)
+	{
+		$book_id = (int) $book_id;
+		$batch_id = (int) $batch_id;
+		if ($book_id < 1 || $batch_id < 1) {
+			return null;
+		}
+		$this->db->reset_query();
+		$this->db->from('book_pdf');
+		$this->db->where('id', $book_id);
+		if ($active_only) {
+			$this->db->where('status', 1);
+		}
+		$this->apply_book_pdf_batch_filter($batch_id);
+		$row = $this->db->get()->row_array();
+		return !empty($row) ? $row : null;
+	}
+
 	/** Video visible to teacher if it is mapped to any batch they teach. */
 	private function video_accessible_to_teacher($video_id, $teacher_id)
 	{
@@ -175,9 +206,10 @@ class Batch extends MY_Controller
 		return false;
 	}
 
+
 	/**
 	 * POST/GET api/batch/batch-list
-	 * Optional: search (filters batch_name)
+	 * Optional: search (filters batch_name); page (default 1); limit or per_page (default 20, max 100).
 	 * Auth:
 	 *   - student: enrolled batches from sudent_batchs
 	 *   - teacher: assigned batches from batch_subjects
@@ -191,7 +223,13 @@ class Batch extends MY_Controller
 		}
 
 		$search = isset($data['search']) ? trim($data['search']) : '';
-		$like = ($search !== '') ? array('batches.batch_name', $search) : '';
+
+		$pg = $this->parse_api_list_pagination($data);
+		$page = $pg['page'];
+		$limit = $pg['limit'];
+		$offset = $pg['offset'];
+
+		$total_records = 0;
 
 		// STUDENT FLOW: existing behavior (enrolled batches)
 		if ($payload['ut'] === 'student') {
@@ -211,15 +249,8 @@ class Batch extends MY_Controller
 				return;
 			}
 
-			$batches = $this->db_model->select_data(
-				'batches.*, sudent_batchs.status as enrollment_status, sudent_batchs.create_at as enrolled_at',
-				'batches use index (id)',
-				array('batches.status' => '1', 'sudent_batchs.student_id' => $student_id),
-				'',
-				array('batches.id', 'desc'),
-				$like,
-				array('sudent_batchs', 'sudent_batchs.batch_id = batches.id')
-			);
+			$total_records = $this->count_student_enrolled_batches_raw($student_id, $search);
+			$batches = $this->fetch_student_enrolled_batches_raw($student_id, $search, $limit, $offset);
 		}
 		// TEACHER FLOW: batches assigned via batch_subjects.teacher_id
 		elseif ($payload['ut'] === 'teacher') {
@@ -229,28 +260,8 @@ class Batch extends MY_Controller
 				return;
 			}
 
-			// Build LIKE manually for teacher since we're using a custom query.
-			$params = array($teacher_id);
-			$like_sql = '';
-			if ($search !== '') {
-				$like_sql = ' AND b.batch_name LIKE ? ';
-				$params[] = '%' . $search . '%';
-			}
-
-			$query = $this->db->query(
-				"SELECT DISTINCT 
-					b.*, 
-					1 AS enrollment_status, 
-					NULL AS enrolled_at
-				 FROM batch_subjects bs
-				 JOIN batches b ON b.id = bs.batch_id
-				 WHERE bs.teacher_id = ?
-				   AND b.status = 1
-				   $like_sql
-				 ORDER BY b.id DESC",
-				$params
-			);
-			$batches = $query->result_array();
+			$total_records = $this->count_teacher_assigned_batches_raw($teacher_id, $search);
+			$batches = $this->fetch_teacher_assigned_batches_raw($teacher_id, $search, $limit, $offset);
 		} else {
 			echo json_encode(array(
 				'status' => 'false',
@@ -259,46 +270,48 @@ class Batch extends MY_Controller
 			return;
 		}
 
-		$list = array();
-		if (!empty($batches)) {
-			foreach ($batches as $b) {
-				$bid = (int) $b['id'];
-				$logo = '';
-				if (!empty($b['batch_image'])) {
-					$logo = base_url('uploads/batch_image/') . $b['batch_image'];
-				}
-				$list[] = array(
-					'batch_id' => $bid,
-					'title' => $b['batch_name'],
-					'batchName' => $b['batch_name'],
-					'instructor' => $this->teacher_names_for_batch($bid),
-					'schedule' => $this->format_time_range($b['start_time'], $b['end_time']),
-					'start_time' => $b['start_time'],
-					'end_time' => $b['end_time'],
-					'start_date' => $b['start_date'],
-					'end_date' => $b['end_date'],
-					'logo' => $logo,
-					'batchImage' => $logo,
-					'batch_type' => (int) $b['batch_type'],
-					'description' => $b['description'],
-					'enrollment_status' => isset($b['enrollment_status']) ? (int) $b['enrollment_status'] : 0,
-					'enrolled_at' => isset($b['enrolled_at']) ? $b['enrolled_at'] : ''
-				);
-			}
-		}
+		$list = $this->map_batches_to_dashboard_list_cards(is_array($batches) ? $batches : array());
 
 		$arr = array(
 			'status' => 'true',
 			'message' => 'Success',
 			'data' => array(
-				'banners' => $this->build_slider_banners(),
-				'enrolled_batches' => $list
+				'enrolled_batches' => $list,
+				'pagination' => $this->build_api_list_pagination_meta($page, $limit, $total_records),
 			)
 		);
 
 		echo json_encode($arr,JSON_UNESCAPED_SLASHES);
         die;
 
+	}
+
+	/**
+	 * POST/GET api/batch/slider-list
+	 * Auth: any valid app token.
+	 */
+	public function slider_list()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array(), $data);
+		if ($payload === false) {
+			return;
+		}
+
+		$banners = $this->build_slider_banners();
+		$pg = $this->parse_api_list_pagination($data, 20, 100);
+		$total = is_array($banners) ? count($banners) : 0;
+		$banners_page = is_array($banners) ? array_slice($banners, $pg['offset'], $pg['limit']) : array();
+
+		echo json_encode(array(
+			'status' => 'true',
+			'message' => 'Success',
+			'data' => array(
+				'banners' => $banners_page,
+				'pagination' => $this->build_api_list_pagination_meta($pg['page'], $pg['limit'], $total),
+			)
+		), JSON_UNESCAPED_SLASHES);
+		die;
 	}
 
 	/**
@@ -568,18 +581,10 @@ class Batch extends MY_Controller
 		}
 		$order_col = $order_columns[$sort_by];
 
-		$limit = isset($data['limit']) ? (int) $data['limit'] : 20;
-		if ($limit < 1) {
-			$limit = 20;
-		}
-		if ($limit > 100) {
-			$limit = 100;
-		}
-		$page = isset($data['page']) ? (int) $data['page'] : 1;
-		if ($page < 1) {
-			$page = 1;
-		}
-		$offset = ($page - 1) * $limit;
+		$pg = $this->parse_api_list_pagination($data);
+		$page = $pg['page'];
+		$limit = $pg['limit'];
+		$offset = $pg['offset'];
 
 		$this->db->from('book_pdf');
 		$this->db->where('status', 1);
@@ -648,14 +653,265 @@ class Batch extends MY_Controller
 			'data' => array(
 				'batch_id' => $batch_id,
 				'library' => $items,
-				'pagination' => array(
-					'page' => $page,
-					'limit' => $limit,
-					'total' => $total
-				)
+				'pagination' => $this->build_api_list_pagination_meta($page, $limit, $total),
 			)
 		);
 		echo json_encode($arr, JSON_UNESCAPED_SLASHES);
+		die;
+	}
+
+	/**
+	 * POST api/batch/library-add-book (multipart recommended: pdf_file)
+	 * Auth: teacher | institute only.
+	 */
+	public function library_add_book()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		if (empty($data['batch_id']) || empty($data['title'])) {
+			echo json_encode(array('status' => 'false', 'msg' => 'batch_id and title are required'));
+			return;
+		}
+		$batch_id = (int) $data['batch_id'];
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		$batch = $this->db_model->select_data('admin_id', 'batches use index (id)', array('id' => $batch_id), 1);
+		if (empty($batch)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Batch not found'));
+			return;
+		}
+		$admin_id = (int) $batch[0]['admin_id'];
+		if (empty($_FILES['pdf_file']['name'])) {
+			echo json_encode(array('status' => 'false', 'msg' => 'pdf_file is required'));
+			return;
+		}
+		$config['upload_path'] = './uploads/book/';
+		$config['allowed_types'] = '*';
+		$config['max_size'] = '0';
+		$this->load->library('upload', $config);
+		if (!$this->upload->do_upload('pdf_file')) {
+			echo json_encode(array('status' => 'false', 'msg' => strip_tags($this->upload->display_errors('', ''))));
+			return;
+		}
+		$uploaddata = $this->upload->data();
+		$pic = $uploaddata['raw_name'];
+		$pic_ext = $uploaddata['file_ext'];
+		$image = $pic . date('ymdHis') . $pic_ext;
+		$old_path = './uploads/book/' . $pic . $pic_ext;
+		$new_path = './uploads/book/' . $image;
+		if (is_file($old_path)) {
+			@rename($old_path, $new_path);
+		} else {
+			$image = $uploaddata['file_name'];
+		}
+		$subject = isset($data['subject']) ? trim((string) $data['subject']) : '';
+		$topic = isset($data['topic']) ? trim((string) $data['topic']) : '';
+		$insert = $this->security->xss_clean(array(
+			'admin_id' => $admin_id,
+			'title' => trim((string) $data['title']),
+			'batch' => (string) $batch_id,
+			'topic' => $topic,
+			'subject' => $subject,
+			'file_name' => $image,
+			'status' => 1,
+			'added_by' => (int) $payload['uid'],
+			'added_at' => date('Y-m-d H:i:s'),
+		));
+		$new_id = $this->db_model->insert_data('book_pdf', $insert);
+		if (empty($new_id)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Failed to add book'));
+			return;
+		}
+		$download_url = $image !== '' ? base_url('uploads/book/') . $image : '';
+		echo json_encode(array(
+			'status' => 'true',
+			'message' => 'Success',
+			'data' => array(
+				'id' => (int) $new_id,
+				'batch_id' => $batch_id,
+				'title' => $insert['title'],
+				'topic' => $insert['topic'],
+				'subject' => $insert['subject'],
+				'fileName' => $image,
+				'downloadUrl' => $download_url,
+			),
+		), JSON_UNESCAPED_SLASHES);
+		die;
+	}
+
+	/**
+	 * POST api/batch/library-edit-book (optional multipart pdf_file to replace file)
+	 * Auth: teacher | institute only.
+	 */
+	public function library_edit_book()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		if (empty($data['book_id']) || empty($data['batch_id'])) {
+			echo json_encode(array('status' => 'false', 'msg' => 'book_id and batch_id are required'));
+			return;
+		}
+		$book_id = (int) $data['book_id'];
+		$batch_id = (int) $data['batch_id'];
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		$row = $this->get_book_pdf_for_batch($book_id, $batch_id, true);
+		if (empty($row)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Book not found'));
+			return;
+		}
+		$batch = $this->db_model->select_data('admin_id', 'batches use index (id)', array('id' => $batch_id), 1);
+		$admin_id = !empty($batch) ? (int) $batch[0]['admin_id'] : (int) $row['admin_id'];
+
+		$update = array(
+			'admin_id' => $admin_id,
+			'added_by' => (int) $payload['uid'],
+		);
+		if (isset($data['title']) && trim((string) $data['title']) !== '') {
+			$update['title'] = trim((string) $data['title']);
+		}
+		if (array_key_exists('subject', $data)) {
+			$update['subject'] = trim((string) $data['subject']);
+		}
+		if (array_key_exists('topic', $data)) {
+			$update['topic'] = trim((string) $data['topic']);
+		}
+		if (!empty($_FILES['pdf_file']['name'])) {
+			$config['upload_path'] = './uploads/book/';
+			$config['allowed_types'] = '*';
+			$config['max_size'] = '0';
+			$this->load->library('upload', $config);
+			if (!$this->upload->do_upload('pdf_file')) {
+				echo json_encode(array('status' => 'false', 'msg' => strip_tags($this->upload->display_errors('', ''))));
+				return;
+			}
+			$uploaddata = $this->upload->data();
+			$pic = $uploaddata['raw_name'];
+			$pic_ext = $uploaddata['file_ext'];
+			$image = $pic . date('ymdHis') . $pic_ext;
+			$old_path = './uploads/book/' . $pic . $pic_ext;
+			$new_path = './uploads/book/' . $image;
+			if (is_file($old_path)) {
+				@rename($old_path, $new_path);
+			} else {
+				$image = $uploaddata['file_name'];
+			}
+			$update['file_name'] = $image;
+		}
+		$update = $this->security->xss_clean($update);
+		$this->db_model->update_data_limit('book_pdf', $update, array('id' => $book_id), 1);
+		$updated = $this->get_book_pdf_for_batch($book_id, $batch_id, true);
+		$file = !empty($updated['file_name']) ? $updated['file_name'] : '';
+		echo json_encode(array(
+			'status' => 'true',
+			'message' => 'Success',
+			'data' => array(
+				'id' => $book_id,
+				'batch_id' => $batch_id,
+				'title' => isset($updated['title']) ? $updated['title'] : '',
+				'topic' => isset($updated['topic']) ? $updated['topic'] : '',
+				'subject' => isset($updated['subject']) ? $updated['subject'] : '',
+				'fileName' => $file,
+				'downloadUrl' => $file !== '' ? base_url('uploads/book/') . $file : '',
+			),
+		), JSON_UNESCAPED_SLASHES);
+		die;
+	}
+
+	/**
+	 * POST/GET api/batch/library-delete-book
+	 * Auth: teacher | institute only. Soft-delete: status = 0.
+	 */
+	public function library_delete_book()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		if (empty($data['book_id']) || empty($data['batch_id'])) {
+			echo json_encode(array('status' => 'false', 'msg' => 'book_id and batch_id are required'));
+			return;
+		}
+		$book_id = (int) $data['book_id'];
+		$batch_id = (int) $data['batch_id'];
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		$row = $this->get_book_pdf_for_batch($book_id, $batch_id, true);
+		if (empty($row)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Book not found'));
+			return;
+		}
+		$this->db_model->update_data_limit('book_pdf', array('status' => 0), array('id' => $book_id), 1);
+		echo json_encode(array('status' => 'true', 'message' => 'Success', 'msg' => 'Book removed'), JSON_UNESCAPED_SLASHES);
+		die;
+	}
+
+	/**
+	 * POST/GET api/batch/library-book-details
+	 * Auth: teacher | institute only.
+	 */
+	public function library_book_details()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		if (empty($data['book_id']) || empty($data['batch_id'])) {
+			echo json_encode(array('status' => 'false', 'msg' => 'book_id and batch_id are required'));
+			return;
+		}
+		$book_id = (int) $data['book_id'];
+		$batch_id = (int) $data['batch_id'];
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		$row = $this->get_book_pdf_for_batch($book_id, $batch_id, true);
+		if (empty($row)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Book not found'));
+			return;
+		}
+		$file = isset($row['file_name']) ? $row['file_name'] : '';
+		$base_path = rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'book' . DIRECTORY_SEPARATOR;
+		$file_size_bytes = null;
+		$file_size_label = '';
+		if ($file !== '' && is_file($base_path . $file)) {
+			$file_size_bytes = (int) filesize($base_path . $file);
+			if ($file_size_bytes >= 1048576) {
+				$file_size_label = round($file_size_bytes / 1048576, 2) . ' MB';
+			} elseif ($file_size_bytes >= 1024) {
+				$file_size_label = round($file_size_bytes / 1024) . ' KB';
+			} else {
+				$file_size_label = $file_size_bytes . ' B';
+			}
+		}
+		echo json_encode(array(
+			'status' => 'true',
+			'message' => 'Success',
+			'data' => array(
+				'id' => (int) $row['id'],
+				'batch_id' => $batch_id,
+				'title' => isset($row['title']) ? $row['title'] : '',
+				'topic' => isset($row['topic']) ? $row['topic'] : '',
+				'subject' => isset($row['subject']) ? $row['subject'] : '',
+				'fileName' => $file,
+				'downloadUrl' => $file !== '' ? base_url('uploads/book/') . $file : '',
+				'fileSizeBytes' => $file_size_bytes,
+				'fileSize' => $file_size_label,
+				'addedAt' => isset($row['added_at']) ? $row['added_at'] : '',
+				'addedBy' => isset($row['added_by']) ? (int) $row['added_by'] : 0,
+			),
+		), JSON_UNESCAPED_SLASHES);
 		die;
 	}
 
@@ -698,18 +954,10 @@ class Batch extends MY_Controller
 			$sort_by = 'entry_date_time';
 		}
 
-		$limit = isset($data['limit']) ? (int) $data['limit'] : 20;
-		if ($limit < 1) {
-			$limit = 20;
-		}
-		if ($limit > 100) {
-			$limit = 100;
-		}
-		$page = isset($data['page']) ? (int) $data['page'] : 1;
-		if ($page < 1) {
-			$page = 1;
-		}
-		$offset = ($page - 1) * $limit;
+		$pg = $this->parse_api_list_pagination($data);
+		$page = $pg['page'];
+		$limit = $pg['limit'];
+		$offset = $pg['offset'];
 
 		// Count query
 		$this->db->from('live_class_history lch');
@@ -766,11 +1014,7 @@ class Batch extends MY_Controller
 			'data' => array(
 				'batch_id' => $batch_id,
 				'liveClasses' => $list,
-				'pagination' => array(
-					'page' => $page,
-					'limit' => $limit,
-					'total' => $total
-				)
+				'pagination' => $this->build_api_list_pagination_meta($page, $limit, $total),
 			)
 		), JSON_UNESCAPED_SLASHES);
 		die;
@@ -890,12 +1134,10 @@ class Batch extends MY_Controller
 			$sort_by = 'added_at';
 		}
 
-		$limit = isset($data['limit']) ? (int) $data['limit'] : 20;
-		if ($limit < 1) $limit = 20;
-		if ($limit > 100) $limit = 100;
-		$page = isset($data['page']) ? (int) $data['page'] : 1;
-		if ($page < 1) $page = 1;
-		$offset = ($page - 1) * $limit;
+		$pg = $this->parse_api_list_pagination($data);
+		$page = $pg['page'];
+		$limit = $pg['limit'];
+		$offset = $pg['offset'];
 
 		$this->db->from('video_lectures');
 		$this->db->where('status', 1);
@@ -932,7 +1174,7 @@ class Batch extends MY_Controller
 			'data' => array(
 				'batch_id' => $batch_id,
 				'videoLectures' => !empty($list) ? $list : array(),
-				'pagination' => array('page' => $page, 'limit' => $limit, 'total' => $total)
+				'pagination' => $this->build_api_list_pagination_meta($page, $limit, $total),
 			)
 		), JSON_UNESCAPED_SLASHES);
 		die;
@@ -1050,12 +1292,10 @@ class Batch extends MY_Controller
 			$sort_by = 'mock_sheduled_date';
 		}
 
-		$limit = isset($data['limit']) ? (int) $data['limit'] : 20;
-		if ($limit < 1) $limit = 20;
-		if ($limit > 100) $limit = 100;
-		$page = isset($data['page']) ? (int) $data['page'] : 1;
-		if ($page < 1) $page = 1;
-		$offset = ($page - 1) * $limit;
+		$pg = $this->parse_api_list_pagination($data);
+		$page = $pg['page'];
+		$limit = $pg['limit'];
+		$offset = $pg['offset'];
 
 		$cond = array(
 			'batch_id' => $batch_id,
@@ -1102,7 +1342,7 @@ class Batch extends MY_Controller
 			'data' => array(
 				'batch_id' => $batch_id,
 				'upcomingExams' => !empty($list) ? $list : array(),
-				'pagination' => array('page' => $page, 'limit' => $limit, 'total' => $total)
+				'pagination' => $this->build_api_list_pagination_meta($page, $limit, $total),
 			)
 		), JSON_UNESCAPED_SLASHES);
 		die;
@@ -1150,6 +1390,316 @@ class Batch extends MY_Controller
 			'status' => 'true',
 			'message' => 'Success',
 			'exam' => $e
+		), JSON_UNESCAPED_SLASHES);
+		die;
+	}
+
+	/**
+	 * Tenant admin_id for a teacher (users.admin_id, stored as text in DB).
+	 */
+	private function teacher_tenant_admin_id($teacher_user_id)
+	{
+		$teacher_user_id = (int) $teacher_user_id;
+		if ($teacher_user_id < 1) {
+			return 0;
+		}
+		$rows = $this->db_model->select_data('admin_id', 'users use index (id)', array('id' => $teacher_user_id), 1);
+		if (empty($rows) || !isset($rows[0]['admin_id'])) {
+			return 0;
+		}
+		$raw = trim((string) $rows[0]['admin_id']);
+		if ($raw === '') {
+			return 0;
+		}
+		if (ctype_digit($raw)) {
+			return (int) $raw;
+		}
+		$parts = preg_split('/\s*,\s*/', $raw);
+		return isset($parts[0]) && ctype_digit($parts[0]) ? (int) $parts[0] : (int) $raw;
+	}
+
+	/**
+	 * Teacher must be assigned to this batch for this subject (batch_subjects).
+	 */
+	private function assert_teacher_batch_subject($teacher_id, $batch_id, $subject_id)
+	{
+		$teacher_id = (int) $teacher_id;
+		$batch_id = (int) $batch_id;
+		$subject_id = (int) $subject_id;
+		if ($teacher_id < 1 || $batch_id < 1 || $subject_id < 1) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Invalid batch or subject'));
+			return false;
+		}
+		$row = $this->db_model->select_data(
+			'id',
+			'batch_subjects',
+			array('teacher_id' => $teacher_id, 'batch_id' => $batch_id, 'subject_id' => $subject_id),
+			1
+		);
+		if (empty($row)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'You are not assigned to this subject for this batch'));
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Same behaviour as {@see Home::Homework()}: student + teacher, batch_id/admin_id resolution, joins, homeWork response.
+	 * POST/GET api/batch/homework-list
+	 */
+	public function homework_list()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('student', 'teacher'), $data);
+		if ($payload === false) {
+			return;
+		}
+
+		if (empty($data['batch_id'])) {
+			if ($payload['ut'] === 'student') {
+				$student_row = $this->db_model->select_data('id,batch_id,admin_id', 'students use index (id)', array('id' => (int) $payload['uid']), 1);
+				if (!empty($student_row[0]['batch_id'])) {
+					$data['batch_id'] = $student_row[0]['batch_id'];
+				}
+				if (empty($data['admin_id']) && !empty($student_row[0]['admin_id'])) {
+					$data['admin_id'] = $student_row[0]['admin_id'];
+				}
+			}
+		}
+
+		if ($payload['ut'] === 'teacher') {
+			$teacher_row = $this->db_model->select_data('id,admin_id', 'users use index (id)', array('id' => (int) $payload['uid']), 1);
+			if (!empty($teacher_row[0]['admin_id'])) {
+				$data['admin_id'] = $teacher_row[0]['admin_id'];
+			}
+		}
+
+		if (!isset($data['batch_id'])) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => $this->lang->line('ltr_missing_parameters_msg'),
+			), JSON_UNESCAPED_SLASHES);
+			die;
+		}
+
+		if ($payload['ut'] === 'student') {
+			$this->mark_homework_notification_viewed((int) $payload['uid']);
+		}
+
+		$cond = array(
+			'homeworks.admin_id' => $data['admin_id'],
+			'homeworks.batch_id' => $data['batch_id'],
+		);
+		if ($payload['ut'] === 'teacher') {
+			$cond['homeworks.teacher_id'] = (int) $payload['uid'];
+		}
+
+		$pg = $this->parse_api_list_pagination($data);
+		$hw_join = array('multiple', array(array('users', 'users.id = homeworks.teacher_id'), array('subjects', 'subjects.id = homeworks.subject_id')));
+		$total = (int) $this->db_model->countAll('homeworks use index (id)', $cond, '', '', '', $hw_join);
+
+		$homewrkData = $this->db_model->select_data(
+			'homeworks.id,homeworks.admin_id as adminId,homeworks.teacher_id as teacherId,homeworks.date,homeworks.subject_id as studentId,homeworks.batch_id as batchId,homeworks.description,homeworks.added_at as addedAt,users.name,users.teach_gender as teachGender,subjects.subject_name as subjectName',
+			'homeworks use index (id)',
+			$cond,
+			array($pg['limit'], $pg['offset']),
+			array('id', 'desc'),
+			'',
+			$hw_join,
+			''
+		);
+
+		$pagination = $this->build_api_list_pagination_meta($pg['page'], $pg['limit'], $total);
+		if (!empty($homewrkData)) {
+			$arr = array(
+				'homeWork' => $homewrkData,
+				'status' => 'true',
+				'msg' => $this->lang->line('ltr_fetch_successfully'),
+				'pagination' => $pagination,
+			);
+		} else {
+			$arr = array(
+				'status' => 'false',
+				'msg' => $this->lang->line('ltr_no_record_msg'),
+				'homeWork' => array(),
+				'pagination' => $pagination,
+			);
+		}
+		echo json_encode($arr, JSON_UNESCAPED_SLASHES);
+		die;
+	}
+
+	/**
+	 * Mirrors {@see Home::viewNotificationStatus()} for notice_type homeWork (student app).
+	 */
+	private function mark_homework_notification_viewed($student_id)
+	{
+		$student_id = (int) $student_id;
+		if ($student_id < 1) {
+			return;
+		}
+		$notice_type = 'homeWork';
+		$cu_date = date('Y-m-d H:i:s');
+		$noticeD = $this->db_model->select_data('*', 'views_notification_student', array('student_id' => $student_id, 'notice_type' => $notice_type), 1);
+		if (!empty($noticeD)) {
+			$this->db_model->update_data_limit('views_notification_student ', array('views_time' => $cu_date), array('n_id' => $noticeD[0]['n_id']), 1);
+		} else {
+			$data_arr = $this->security->xss_clean(array(
+				'student_id' => $student_id,
+				'notice_type' => $notice_type,
+			));
+			$this->db_model->insert_data('views_notification_student', $data_arr);
+		}
+	}
+
+	/**
+	 * POST api/batch/homework-add
+	 * Auth: teacher only. Required: batch_id, subject_id, date, description.
+	 */
+	public function homework_add()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$teacher_id = (int) $payload['uid'];
+		if ($teacher_id < 1) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Teacher not found'));
+			return;
+		}
+		if (empty($data['batch_id']) || empty($data['subject_id']) || empty($data['date']) || !isset($data['description']) || trim((string) $data['description']) === '') {
+			echo json_encode(array('status' => 'false', 'msg' => 'batch_id, subject_id, date, and description are required'));
+			return;
+		}
+		$batch_id = (int) $data['batch_id'];
+		$subject_id = (int) $data['subject_id'];
+		if (!$this->assert_teacher_batch_subject($teacher_id, $batch_id, $subject_id)) {
+			return;
+		}
+		$admin_id = $this->teacher_tenant_admin_id($teacher_id);
+		if ($admin_id < 1) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Could not resolve admin for this teacher account'));
+			return;
+		}
+		$date_ts = strtotime($data['date']);
+		if ($date_ts === false) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Invalid date'));
+			return;
+		}
+		$date = date('Y-m-d', $date_ts);
+		$insert = $this->security->xss_clean(array(
+			'admin_id' => $admin_id,
+			'teacher_id' => $teacher_id,
+			'date' => $date,
+			'subject_id' => $subject_id,
+			'batch_id' => (string) $batch_id,
+			'description' => trim((string) $data['description']),
+			'added_at' => date('Y-m-d H:i:s'),
+		));
+		$new_id = $this->db_model->insert_data('homeworks', $insert);
+		if (empty($new_id)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Failed to add homework'));
+			return;
+		}
+		echo json_encode(array(
+			'status' => 'true',
+			'message' => 'Success',
+			'msg' => $this->lang->line('ltr_homework_added_msg'),
+			'data' => array(
+				'id' => (int) $new_id,
+				'batchId' => $batch_id,
+				'subjectId' => $subject_id,
+				'date' => $date,
+			),
+		), JSON_UNESCAPED_SLASHES);
+		die;
+	}
+
+	/**
+	 * POST api/batch/homework-edit
+	 * Auth: teacher only. Required: homework_id. Optional: batch_id, subject_id, date, description (must still teach batch+subject if changed).
+	 */
+	public function homework_edit()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$teacher_id = (int) $payload['uid'];
+		if (empty($data['homework_id'])) {
+			echo json_encode(array('status' => 'false', 'msg' => 'homework_id is required'));
+			return;
+		}
+		$hid = (int) $data['homework_id'];
+		$existing = $this->db_model->select_data('*', 'homeworks use index (id)', array('id' => $hid, 'teacher_id' => $teacher_id), 1);
+		if (empty($existing)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Homework not found'));
+			return;
+		}
+		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : (int) $existing[0]['batch_id'];
+		$subject_id = isset($data['subject_id']) ? (int) $data['subject_id'] : (int) $existing[0]['subject_id'];
+		if (!$this->assert_teacher_batch_subject($teacher_id, $batch_id, $subject_id)) {
+			return;
+		}
+		$admin_id = $this->teacher_tenant_admin_id($teacher_id);
+		if ($admin_id < 1) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Could not resolve admin for this teacher account'));
+			return;
+		}
+		$update = array(
+			'admin_id' => $admin_id,
+			'batch_id' => (string) $batch_id,
+			'subject_id' => $subject_id,
+		);
+		if (isset($data['date']) && $data['date'] !== '') {
+			$dts = strtotime($data['date']);
+			if ($dts !== false) {
+				$update['date'] = date('Y-m-d', $dts);
+			}
+		}
+		if (isset($data['description'])) {
+			$update['description'] = trim((string) $data['description']);
+		}
+		if (isset($update['description']) && $update['description'] === '') {
+			echo json_encode(array('status' => 'false', 'msg' => 'description cannot be empty'));
+			return;
+		}
+		$update['added_at'] = date('Y-m-d H:i:s');
+		$update = $this->security->xss_clean($update);
+		$this->db_model->update_data_limit('homeworks', $update, array('id' => $hid, 'teacher_id' => $teacher_id), 1);
+		echo json_encode(array(
+			'status' => 'true',
+			'message' => 'Success',
+			'msg' => $this->lang->line('ltr_homework_updated_msg'),
+			'data' => array('id' => $hid),
+		), JSON_UNESCAPED_SLASHES);
+		die;
+	}
+
+	/**
+	 * POST/GET api/batch/homework-delete
+	 * Auth: teacher only. Required: homework_id.
+	 */
+	public function homework_delete()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$teacher_id = (int) $payload['uid'];
+		if (empty($data['homework_id'])) {
+			echo json_encode(array('status' => 'false', 'msg' => 'homework_id is required'));
+			return;
+		}
+		$hid = (int) $data['homework_id'];
+		$this->db_model->delete_data('homeworks', array('id' => $hid, 'teacher_id' => $teacher_id), 1);
+		echo json_encode(array(
+			'status' => 'true',
+			'message' => 'Success',
+			'msg' => 'Homework deleted',
 		), JSON_UNESCAPED_SLASHES);
 		die;
 	}

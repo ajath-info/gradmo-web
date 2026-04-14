@@ -216,6 +216,7 @@
         var ltr_batch_price_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_batch_price_msg')); ?>";
         var ltr_payment_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_payment_msg')); ?>";
         var ltr_something_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_something_msg')); ?>";
+        var ltr_contest_name_required_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_contest_name_required_msg')); ?>";
         var ltr_live_class_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_live_class_msg')); ?>";
         var ltr_add_blog  ="<?php echo html_escape($this->common->languageTranslator('ltr_add_blog')); ?>";
         var ltr_no_result  ="<?php echo html_escape($this->common->languageTranslator('ltr_no_result')); ?>";

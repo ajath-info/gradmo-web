@@ -10,6 +10,9 @@ class Db_model extends CI_Model {
 	
 	# function for select data from database , with condition , limit , order , like and join clause
 	function select_data($field , $table , $where = '' , $limit = '' , $order = '' , $like = '' , $join_array = '' , $group = '', $or_like = '',$where_in =''){ 
+		// Reset QB so this query is never merged with a half-built query on the same DB instance
+		// (e.g. api/main/notifications_list sets select/from then calls select_data for batch_subjects).
+		$this->db->reset_query();
 		$this->db->select($field);
 		$this->db->from($table);
 		if($where != ""){ 

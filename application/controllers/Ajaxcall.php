@@ -6545,7 +6545,7 @@ function subcategory_table(){
         
         
         if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
-            if(!empty($this->input->post('name',TRUE))){
+            if(trim((string) $this->input->post('name', TRUE)) !== ''){
                 $data_arr = $this->input->post(NULL,TRUE);
            
                 $question_marks = [];
@@ -6658,7 +6658,12 @@ function subcategory_table(){
                 }
                 
                 echo json_encode($resp,JSON_UNESCAPED_SLASHES);
-            } 
+            } else {
+                echo json_encode(array(
+                    'status' => 2,
+                    'msg' => $this->lang->line('ltr_contest_name_required_msg'),
+                ), JSON_UNESCAPED_SLASHES);
+            }
         }else{
             echo $this->lang->line('ltr_not_allowed_msg');
         } 
@@ -12961,7 +12966,18 @@ function themesOption(){
 	function update_paper(){
         if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
            
-            $data_arr = $this->input->post(NULL); 
+            $data_arr = $this->input->post(NULL);
+            if (!is_array($data_arr)) {
+                $data_arr = array();
+            }
+            $paper_name = isset($data_arr['name']) ? trim((string) $data_arr['name']) : '';
+            if ($paper_name === '') {
+                echo json_encode(array(
+                    'status' => 2,
+                    'msg' => $this->lang->line('ltr_contest_name_required_msg'),
+                ), JSON_UNESCAPED_SLASHES);
+                return;
+            }
              $admin_id = $this->session->userdata('uid'); 
             if($this->session->userdata('role') == 1){
                 $profile = 'admin';

@@ -261,21 +261,38 @@ $route['api/user/attendance-list'] = 'api/user/home/attendanceList';
 $route['api/user/add-attendance'] = 'api/user/home/addAttendance';
 $route['api/main/site-details'] = 'api/main/main/site_details';
 $route['api/main/notifications-list'] = 'api/main/main/notifications_list';
+$route['api/main/add-review'] = 'api/main/main/add_review';
+$route['api/main/approve-review'] = 'api/main/main/approve_review';
+$route['api/main/institute-reviews-list'] = 'api/main/main/institute_reviews_list';
+$route['api/main/reviews-list'] = 'api/main/main/reviews_list';
 $route['api/main/pages'] = 'api/main/main/pages';
 $route['api/main/post-enquiry'] = 'api/main/main/post_enquiry';
 $route['api/main/country-list'] = 'api/main/main/country_list';
 $route['api/main/state-list'] = 'api/main/main/state_list';
 $route['api/main/city-list'] = 'api/main/main/city_list';
 
-
 $route['api/courses/courses-list'] = 'api/courses/courses/courses_list';
-$route['api/institute/list'] = 'api/institute/institute/institute_list';
+$route['api/institute/listing'] = 'api/institute/institute/institute_listing';
 $route['api/institute/details'] = 'api/institute/institute/institute_details';
 
 // Batch Routes (third segment = Batch.php controller, same pattern as api/user/home/...)
+
 $route['api/batch/batch-list'] = 'api/batch/batch/batch_list';
+$route['api/batch/slider-list'] = 'api/batch/batch/slider_list';
 $route['api/batch/batch-details'] = 'api/batch/batch/batch_details';
+
+$route['api/batch/homework-list'] = 'api/batch/batch/homework_list';
+$route['api/batch/homework-add'] = 'api/batch/batch/homework_add';
+$route['api/batch/homework-edit'] = 'api/batch/batch/homework_edit';
+$route['api/batch/homework-delete'] = 'api/batch/batch/homework_delete';
+
+$route['api/batch/library-add-book'] = 'api/batch/batch/library_add_book';
 $route['api/batch/library-list'] = 'api/batch/batch/library_list';
+$route['api/batch/library-edit-book'] = 'api/batch/batch/library_edit_book';
+$route['api/batch/library-delete-book'] = 'api/batch/batch/library_delete_book';
+$route['api/batch/library-book-details'] = 'api/batch/batch/library_book_details';
+
+
 $route['api/batch/live-class-list'] = 'api/batch/batch/live_class_list';
 $route['api/batch/live-class-details'] = 'api/batch/batch/live_class_details';
 $route['api/batch/video-lecture-list'] = 'api/batch/batch/video_lecture_list';

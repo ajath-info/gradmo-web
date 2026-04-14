@@ -13,19 +13,10 @@ class Courses extends MY_Controller
 		$search = isset($data['search']) ? trim($data['search']) : '';
 		$admin_id = isset($data['admin_id']) ? (int) $data['admin_id'] : 0;
 
-		$limit = isset($data['limit']) ? (int) $data['limit'] : 20;
-		if ($limit < 1) {
-			$limit = 20;
-		}
-		if ($limit > 100) {
-			$limit = 100;
-		}
-
-		$page = isset($data['page']) ? (int) $data['page'] : 1;
-		if ($page < 1) {
-			$page = 1;
-		}
-		$offset = ($page - 1) * $limit;
+		$pg = $this->parse_api_list_pagination($data);
+		$page = $pg['page'];
+		$limit = $pg['limit'];
+		$offset = $pg['offset'];
 		$limit_arr = array($limit, $offset);
 
 		$cond = array('status' => 1);
@@ -55,11 +46,7 @@ class Courses extends MY_Controller
 		echo json_encode(array(
 			'status' => 'true',
 			'courses' => $list,
-			'pagination' => array(
-				'page' => $page,
-				'limit' => $limit,
-				'total' => $total
-			),
+			'pagination' => $this->build_api_list_pagination_meta($page, $limit, $total),
 			'msg' => !empty($list) ? $this->lang->line('ltr_fetch_successfully') : $this->lang->line('ltr_no_record_msg')
 		));
 	}

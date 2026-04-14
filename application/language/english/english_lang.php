@@ -637,6 +637,7 @@ $lang['ltr_select_month_year'] ="Select month and year to filter results";
 $lang['ltr_select_paper_f'] ="Select paper to filter results";
 $lang['ltr_select_paper'] ="Select paper";
 $lang['ltr_paper_name'] ="Paper Name";
+$lang['ltr_contest_name_required_msg'] ="Please enter the contest name.";
 $lang['ltr_submit_time'] ="Submit Time";
 $lang['ltr_attempted_question'] ="Attempted Question";
 $lang['ltr_time_taken'] ="Time Taken";

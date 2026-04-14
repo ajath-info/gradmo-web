@@ -2558,6 +2558,11 @@ $(document).on('click','.genrateMeetingId',function (){
         
      
         if (validchk == 'valid') {
+            var contestName = $.trim($(this).closest('form').find('input[name="name"]').val());
+            if (contestName === '') {
+                toastr.error(typeof ltr_contest_name_required_msg !== 'undefined' ? ltr_contest_name_required_msg : 'Please enter the contest name.');
+                return false;
+            }
             var formdata = new FormData($(this).closest('form')[0]);
             var question_ids = $.trim($('.quetionIdsArr').html());
             formdata.append('question_ids', question_ids);

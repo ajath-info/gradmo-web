@@ -85,6 +85,193 @@ class Home extends MY_Controller {
 		}
 		return '';
 	}
+
+	/**
+	 * Nominatim HTTP GET (HTTPS). cURL first — more reliable on Windows/XAMPP than file_get_contents.
+	 * User-Agent must identify the app (https://operations.osmfoundation.org/policies/nominatim/).
+	 *
+	 * @return string Raw JSON body or empty string on failure
+	 */
+	private function nominatim_http_get($search_query)
+	{
+		$search_query = trim((string) $search_query);
+		if ($search_query === '') {
+			return '';
+		}
+		$base = rtrim((string) base_url(), '/');
+		if ($base === '') {
+			$base = 'https://localhost';
+		}
+		$userAgent = 'GradmoEducation/1.0 (institute profile; +' . $base . ')';
+
+		$url = 'https://nominatim.openstreetmap.org/search?' . http_build_query(array(
+			'q' => $search_query,
+			'format' => 'json',
+			'limit' => 1,
+			'addressdetails' => 0,
+		), '', '&', PHP_QUERY_RFC3986);
+
+		if (function_exists('curl_init')) {
+			$headers = array(
+				'User-Agent: ' . $userAgent,
+				'Accept: application/json',
+				'Accept-Language: en',
+			);
+			$do = function ($verifySsl) use ($url, $headers) {
+				$ch = curl_init($url);
+				curl_setopt_array($ch, array(
+					CURLOPT_RETURNTRANSFER => true,
+					CURLOPT_TIMEOUT => 20,
+					CURLOPT_CONNECTTIMEOUT => 10,
+					CURLOPT_FOLLOWLOCATION => true,
+					CURLOPT_HTTPHEADER => $headers,
+					CURLOPT_SSL_VERIFYPEER => $verifySsl,
+					CURLOPT_SSL_VERIFYHOST => $verifySsl ? 2 : 0,
+				));
+				$body = curl_exec($ch);
+				$errno = curl_errno($ch);
+				curl_close($ch);
+				return array($body === false ? '' : (string) $body, $errno);
+			};
+
+			list($raw, $errno) = $do(true);
+			if ($raw === '' && in_array($errno, array(60, 77, 35, 51, 58, 59), true)) {
+				list($raw,) = $do(false);
+			}
+			if ($raw !== '') {
+				return $raw;
+			}
+		}
+
+		if (ini_get('allow_url_fopen')) {
+			$ctx = stream_context_create(array(
+				'http' => array(
+					'method' => 'GET',
+					'timeout' => 20,
+					'header' => 'User-Agent: ' . $userAgent . "\r\nAccept: application/json\r\nAccept-Language: en\r\n",
+					'ignore_errors' => true,
+				),
+				'ssl' => array(
+					'verify_peer' => true,
+					'verify_peer_name' => true,
+				),
+			));
+			$raw = @file_get_contents($url, false, $ctx);
+			if ($raw !== false && $raw !== '') {
+				return (string) $raw;
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * Geocode institute address for profile update (OpenStreetMap Nominatim; no API key).
+	 *
+	 * @return array{lat: string, long: string}|null
+	 */
+	private function geocode_institute_address($address, $city, $state, $country, $pincode)
+	{
+		$address = trim((string) $address);
+		$city = trim((string) $city);
+		$state = trim((string) $state);
+		$country = trim((string) $country);
+		$pincode = trim((string) $pincode);
+
+		$attempts = array();
+		$full = array_filter(array($address, $city, $state, $pincode, $country), function ($p) {
+			return $p !== '';
+		});
+		if (!empty($full)) {
+			$attempts[] = implode(', ', $full);
+		}
+		$attempts[] = trim(implode(', ', array_filter(array($city, $state, $pincode, $country))));
+		$attempts[] = trim(implode(', ', array_filter(array($city, $state, $country))));
+		$attempts[] = trim(implode(', ', array_filter(array($pincode, $country))));
+		$attempts = array_values(array_unique(array_filter(array_map('trim', $attempts))));
+
+		foreach ($attempts as $i => $query) {
+			if ($query === '') {
+				continue;
+			}
+			if ($i > 0) {
+				usleep(1100000);
+			}
+			$raw = $this->nominatim_http_get($query);
+			if ($raw === '') {
+				continue;
+			}
+			$decoded = json_decode($raw, true);
+			if (!is_array($decoded) || !isset($decoded[0]['lat'], $decoded[0]['lon'])) {
+				continue;
+			}
+			$lat = (float) $decoded[0]['lat'];
+			$lon = (float) $decoded[0]['lon'];
+			if ($lat < -90 || $lat > 90 || $lon < -180 || $lon > 180) {
+				continue;
+			}
+			return array('lat' => (string) $lat, 'long' => (string) $lon);
+		}
+
+		return null;
+	}
+
+	/**
+	 * multipart/form-data often uses mixed-case keys (City, Address). PHP keys are case-sensitive.
+	 * Also strips wrapping quotes from tools like curl --form 'name="value"'.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function normalize_multi_user_registration_data(array $data)
+	{
+		$out = array();
+		foreach ($data as $k => $v) {
+			if (!is_string($k) && !is_int($k)) {
+				continue;
+			}
+			$key = strtolower(trim((string) $k));
+			if ($key === '') {
+				continue;
+			}
+			if (is_string($v)) {
+				$v = trim($v);
+				$v = trim($v, "\"' \t\n\r\0\x0B");
+			}
+			$out[$key] = $v;
+		}
+		return $out;
+	}
+
+	/**
+	 * Email and mobile must be unique across users (teacher/institute) and students.
+	 *
+	 * @return string|null Error message or null if OK
+	 */
+	private function registration_duplicate_message($email, $mobile)
+	{
+		$email = trim((string) $email);
+		$mobile = trim((string) $mobile);
+		if ($email === '' || $mobile === '') {
+			return null;
+		}
+		if ($this->db->get_where('users', array('email' => $email), 1)->row_array()) {
+			return 'Email already exists';
+		}
+		if ($this->db->get_where('users', array('mobile' => $mobile), 1)->row_array()) {
+			return 'Mobile number already exists';
+		}
+		if ($this->db->get_where('students', array('email' => $email), 1)->row_array()) {
+			return 'Email already exists';
+		}
+		$this->db->group_start();
+		$this->db->where('mobile', $mobile);
+		$this->db->or_where('contact_no', $mobile);
+		$this->db->group_end();
+		if ($this->db->limit(1)->get('students')->row_array()) {
+			return 'Mobile number already exists';
+		}
+		return null;
+	}
 	
     function chekLogin(){
         $data = $_REQUEST;
@@ -183,7 +370,7 @@ class Home extends MY_Controller {
 	        }
 
 	        // Issue token first, then store last_login_app from token iat so only this session validates.
-	        $tok = $this->generate_access_token($student['id'], 'student');
+	        $tok = $this->mint_access_credentials($student['id'], 'student');
 	        $access_token = $tok['access_token'];
 	        $now = date('Y-m-d H:i:s', $tok['iat']);
 	        $this->db_model->update_data_limit('students', [
@@ -220,7 +407,7 @@ class Home extends MY_Controller {
 	            return;
 	        }
 
-	        $tok = $this->generate_access_token($user['id'], $user['user_type']);
+	        $tok = $this->mint_access_credentials($user['id'], $user['user_type']);
 	        $access_token = $tok['access_token'];
 	        $now = date('Y-m-d H:i:s', $tok['iat']);
 	        $this->db_model->update_data_limit('users', [
@@ -280,11 +467,12 @@ class Home extends MY_Controller {
 	
 	public function multi_user_registration()
 	{
-	    // Get JSON input
-	    $data = json_decode(file_get_contents("php://input"), true);
-	    if (empty($data)) {
-	        $data = $this->input->post();
+	    $raw = file_get_contents('php://input');
+	    $data = json_decode($raw, true);
+	    if (!is_array($data) || empty($data)) {
+	        $data = array_merge($this->input->get(), $this->input->post());
 	    }
+	    $data = $this->normalize_multi_user_registration_data($data);
 
 	    if (
 	        empty($data['name']) ||
@@ -300,7 +488,7 @@ class Home extends MY_Controller {
 	        return;
 	    }
 
-	    $user_type = strtolower(trim($data['user_type']));
+	    $user_type = strtolower(trim((string) $data['user_type']));
 
 	    if (!in_array($user_type, ['student', 'teacher', 'institute'])) {
 	        echo json_encode([
@@ -310,13 +498,22 @@ class Home extends MY_Controller {
 	        return;
 	    }
 
+	    $email = trim((string) $data['email']);
+	    $mobile = trim((string) $data['mobile']);
+	    $dupMsg = $this->registration_duplicate_message($email, $mobile);
+	    if ($dupMsg !== null) {
+	        echo json_encode(array(
+	            'status' => 'false',
+	            'msg' => $dupMsg,
+	        ));
+	        return;
+	    }
+
 	    // ==============================
 	    // 		 COMMON DATA
 	    // ==============================
-	    $name        = trim($data['name']);
-	    $email       = trim($data['email']);
-	    $mobile      = trim($data['mobile']);
-	    $password    = trim($data['password']);
+	    $name        = trim((string) $data['name']);
+	    $password    = trim((string) $data['password']);
 	    
 	    $device_id   = $data['device_id'] ?? '';
 	    $device_token= $data['device_token'] ?? '';
@@ -334,39 +531,10 @@ class Home extends MY_Controller {
 	    $otp = rand(1000, 9999);
 
 	    // =====================================================
-	    // 		 STUDENT TABLE (CHECK ONLY STUDENTS TABLE)
+	    // 		 STUDENT TABLE
 	    // =====================================================
 				if ($user_type == 'student') {
 
-					$existingStudent = $this->db_model->select_data(
-				'*',
-				'students',
-				"(email = '$email' OR mobile = '$mobile')",
-				1
-				);
-
-				if (!empty($existingStudent)) {
-
-				$existing = $existingStudent[0];
-				$existing_email = isset($existing['email']) ? $existing['email'] : '';
-				$existing_mobile = isset($existing['mobile']) ? $existing['mobile'] : '';
-
-				if ($existing_email === $email) {
-				$msg = 'Email already exists';
-				} elseif ($existing_mobile === $mobile) {
-				$msg = 'Mobile number already exists';
-				} else {
-				$msg = 'User already exists';
-				}
-
-				echo json_encode([
-				'status' => 'false',
-				'msg' => $msg
-				]);
-				return;
-				} else {
-
-	            // INSERT STUDENT (even if exists in users table)
 	            $isNewUser = true;
 
 	            //$batch = $this->db_model->select_data('*', 'batches', ['id' => $batch_id], 1);
@@ -399,7 +567,6 @@ class Home extends MY_Controller {
 	                'students',
 	                $this->security->xss_clean($studentData)
 	            );
-	        }
  
 	        $student = $this->db_model->select_data('*', 'students', ['id' => $insert_id], 1)[0];
 
@@ -416,22 +583,12 @@ class Home extends MY_Controller {
 	    }
 
 	    // =====================================================
-	    // 		 USERS TABLE (CHECK ONLY USERS TABLE)
+	    // 		 USERS TABLE (teacher / institute)
 	    // =====================================================
 	    else {
 
 	        $role = ($user_type == 'teacher') ? 3 : 4;
 
-	        $existingUser = $this->db_model->select_data('*', 'users', ['email' => $email], 1);
-
-	        if (!empty($existingUser)) {
-
-	        echo json_encode(['status' => 'true', 'msg' => 'User already exist']);
-	        return;
-
-	        } else {
-
-	            // INSERT USER (even if exists in students table)
 	            $isNewUser = true;
 
 	            $userData = [
@@ -455,7 +612,6 @@ class Home extends MY_Controller {
 	                'users',
 	                $this->security->xss_clean($userData)
 	            );
-	        }
 
 	        $user = $this->db_model->select_data('*', 'users', ['id' => $insert_id], 1)[0];
 
@@ -1037,6 +1193,10 @@ public function otherBatchData($data){
         $from_body = array();
     }
     $data = array_merge($_REQUEST, $from_body);
+    if (!is_array($data)) {
+        $data = array();
+    }
+    $data = $this->normalize_multi_user_registration_data($data);
 
     $payload = $this->require_auth_payload();
     if ($payload === false) {
@@ -1154,7 +1314,7 @@ public function otherBatchData($data){
 
         $access_token = trim((string) $this->get_access_token_from_request());
         if ($access_token === '') {
-            $mint = $this->generate_access_token($uid, 'student');
+            $mint = $this->mint_access_credentials($uid, 'student');
             $access_token = $mint['access_token'];
             $this->db_model->update_data_limit(
                 'students use index (id)',
@@ -1229,6 +1389,63 @@ public function otherBatchData($data){
             $data_arr['teach_education'] = $data['teach_education'];
         }
 
+        if ($ut === 'institute') {
+            $locKeys = array('address', 'city', 'state', 'country', 'pincode');
+            $locTouched = false;
+            foreach ($locKeys as $lk) {
+                if (isset($data[$lk]) && trim((string) $data[$lk]) !== '') {
+                    $locTouched = true;
+                    break;
+                }
+            }
+            if ($locTouched) {
+                $pickLoc = function ($key) use ($data_arr, $urow) {
+                    if (isset($data_arr[$key]) && trim((string) $data_arr[$key]) !== '') {
+                        return trim((string) $data_arr[$key]);
+                    }
+                    return isset($urow[$key]) ? trim((string) $urow[$key]) : '';
+                };
+                $ia = $pickLoc('address');
+                $ic = $pickLoc('city');
+                $is = $pickLoc('state');
+                $ico = $pickLoc('country');
+                $ip = $pickLoc('pincode');
+                if ($ia === '' || $ic === '' || $is === '' || $ico === '' || $ip === '') {
+                    echo json_encode(array(
+                        'status' => 'false',
+                        'msg' => 'To update location, address, city, state, country, and pincode must all be set (send missing fields or save them on your profile first).',
+                    ));
+                    return;
+                }
+                $coords = $this->geocode_institute_address($ia, $ic, $is, $ico, $ip);
+                if ($coords === null) {
+                    echo json_encode(array(
+                        'status' => 'false',
+                        'msg' => 'Could not determine latitude and longitude from the address. Please verify address, city, state, country, and pincode.',
+                    ));
+                    return;
+                }
+                try {
+                    $userColumns = $this->db->list_fields('users');
+                } catch (Exception $e) {
+                    $userColumns = array();
+                }
+                $haveCol = array_flip($userColumns);
+                if (isset($haveCol['lat'])) {
+                    $data_arr['lat'] = $coords['lat'];
+                }
+                if (isset($haveCol['long'])) {
+                    $data_arr['long'] = $coords['long'];
+                }
+                if (isset($haveCol['latitude'])) {
+                    $data_arr['latitude'] = $coords['lat'];
+                }
+                if (isset($haveCol['longitude'])) {
+                    $data_arr['longitude'] = $coords['long'];
+                }
+            }
+        }
+
         $upload_path = FCPATH . 'uploads/users/';
         if (!is_dir($upload_path)) {
             @mkdir($upload_path, 0777, true);
@@ -1289,14 +1506,21 @@ public function otherBatchData($data){
 
         // Do not set users.updated_at here: JWT validation uses updated_at vs token iat for
         // teacher/institute; bumping it on every profile save invalidates the access token.
+        $geoKeys = array('lat', 'long', 'latitude', 'longitude');
+        $geoVals = array();
+        foreach ($geoKeys as $gk) {
+            if (array_key_exists($gk, $data_arr)) {
+                $geoVals[$gk] = $data_arr[$gk];
+                unset($data_arr[$gk]);
+            }
+        }
         $data_arr = $this->security->xss_clean($data_arr);
+        $data_arr = array_merge($data_arr, $geoVals);
 
-        $ins = $this->db_model->update_data_limit(
-            'users',
-            $data_arr,
-            array('id' => $uid),
-            1
-        );
+        $this->db->reset_query();
+        $this->db->where('id', $uid);
+        $this->db->limit(1);
+        $ins = $this->db->update('users', $data_arr);
 
         if (!$ins) {
             echo json_encode(array('status' => 'false', 'msg' => 'Update failed'));
@@ -1314,7 +1538,7 @@ public function otherBatchData($data){
 
         $access_token = trim((string) $this->get_access_token_from_request());
         if ($access_token === '') {
-            $mint = $this->generate_access_token($uid, isset($u['user_type']) ? $u['user_type'] : $ut);
+            $mint = $this->mint_access_credentials($uid, isset($u['user_type']) ? $u['user_type'] : $ut);
             $access_token = $mint['access_token'];
             $this->db_model->update_data_limit(
                 'users use index (id)',
@@ -1504,7 +1728,7 @@ public function otherBatchData($data){
 
             $cond = array(
                 'homeworks.admin_id' => $data['admin_id'],
-                'homeworks.date' => $date,
+                //'homeworks.date' => $date,
                 'homeworks.batch_id' => $data['batch_id']
             );
 
@@ -2214,10 +2438,15 @@ public function otherBatchData($data){
             $days_in_month = cal_days_in_month(CAL_GREGORIAN, $m, (int) $year);
             $percentage = $days_in_month > 0 ? round(($days_present / $days_in_month) * 100, 2) : 0;
 
+            $pg = $this->parse_api_list_pagination($data);
+           	$total_att = count($attendance);
+           	$attendance_page = array_slice($attendance, $pg['offset'], $pg['limit']);
+
             echo json_encode(array(
                 'status' => 'true',
                 'userType' => 'student',
-                'attendance' => !empty($attendance) ? $attendance : array(),
+                'attendance' => !empty($attendance_page) ? $attendance_page : array(),
+               	'pagination' => $this->build_api_list_pagination_meta($pg['page'], $pg['limit'], $total_att),
                 'summary' => array(
                     'year' => (int) $year,
                     'month' => $m,
@@ -2337,6 +2566,11 @@ public function otherBatchData($data){
 
             $single_batch_id = count($batch_ids) === 1 ? (int) $batch_ids[0] : 0;
 
+            $present_count = count(array_filter($students, function ($v) { return $v['isPresent'] == 1; }));
+            $total_students = count($students);
+            $pg = $this->parse_api_list_pagination($data);
+            $students_page = array_slice($students, $pg['offset'], $pg['limit']);
+
             echo json_encode(array(
                 'status' => 'true',
                 'userType' => 'teacher',
@@ -2344,9 +2578,10 @@ public function otherBatchData($data){
                 'batchIds' => $batch_ids,
                 'date' => $date,
                 'attendance_date' => $date,
-                'students' => $students,
-                'presentCount' => count(array_filter($students, function ($v) { return $v['isPresent'] == 1; })),
-                'totalStudents' => count($students),
+                'students' => $students_page,
+                'presentCount' => $present_count,
+                'totalStudents' => $total_students,
+               	'pagination' => $this->build_api_list_pagination_meta($pg['page'], $pg['limit'], $total_students),
                 'msg' => $this->lang->line('ltr_fetch_successfully')
             ));
             return;
@@ -2956,37 +3191,108 @@ public function otherBatchData($data){
     }
 	
 	function get_payment_history(){
-        $data = $_REQUEST;
-		//$student_id = 0;
+		$from_body = json_decode(file_get_contents('php://input'), true);
+		if (!is_array($from_body)) {
+			$from_body = array();
+		}
+		$data = array_merge($_REQUEST, $from_body);
 
-		$payload = $this->parse_access_token($this->get_access_token_from_request());
-		if ($payload !== false && isset($payload['ut']) && $payload['ut'] === 'student') {
-			$student_id = (int) $payload['uid'];
-			if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
-				return;
-			}
-		} elseif (!empty($data['student_id'])) {
-			$student_id = (int) $data['student_id'];
+		$payload = $this->require_auth_payload(array('student', 'institute'), $from_body);
+		if ($payload === false) {
+			return;
 		}
 
-		if ($student_id < 1) {
-			$resp = array('status'=>'false','msg'=>$this->lang->line('ltr_missing_parameters_msg'));
+		$pg = $this->parse_api_list_pagination($data);
+		$user_type = isset($payload['ut']) ? strtolower(trim((string) $payload['ut'])) : '';
+		$total = 0;
+		$payData = array();
+
+		if ($user_type === 'student') {
+			$student_id = (int) $payload['uid'];
+			if ($student_id < 1) {
+				$resp = array('status' => 'false', 'msg' => $this->lang->line('ltr_missing_parameters_msg'));
+				echo json_encode($resp, JSON_UNESCAPED_SLASHES);
+				return;
+			}
+
+			$cond = array('student_id' => $student_id);
+			if (!empty($data['batch_id'])) {
+				$cond['batch_id'] = (int) $data['batch_id'];
+			}
+
+			$this->db->reset_query();
+			$this->db->from('student_payment_history');
+			$this->db->where($cond);
+			$total = (int) $this->db->count_all_results();
+
+			$payData = $this->db_model->select_data(
+				'id,batch_id as batchId,transaction_id as transactionId,mode,amount,create_at as createAt,admin_id as adminId',
+				'student_payment_history',
+				$cond,
+				array($pg['limit'], $pg['offset']),
+				array('id', 'desc')
+			);
+		} elseif ($user_type === 'institute') {
+			$institute_id = (int) $payload['uid'];
+			if ($institute_id < 1) {
+				$resp = array('status' => 'false', 'msg' => $this->lang->line('ltr_missing_parameters_msg'));
+				echo json_encode($resp, JSON_UNESCAPED_SLASHES);
+				return;
+			}
+
+			$batchRows = $this->db_model->select_data('id', 'batches', array('admin_id' => $institute_id));
+			$batchIds = array();
+			if (!empty($batchRows)) {
+				foreach ($batchRows as $br) {
+					$batchIds[] = (int) $br['id'];
+				}
+			}
+			if (empty($batchIds)) {
+				$resp = array('status' => 'false', 'msg' => $this->lang->line('ltr_no_record_msg'));
+				echo json_encode($resp, JSON_UNESCAPED_SLASHES);
+				return;
+			}
+
+			if (!empty($data['batch_id'])) {
+				$bid = (int) $data['batch_id'];
+				if (!in_array($bid, $batchIds, true)) {
+					$resp = array('status' => 'false', 'msg' => $this->lang->line('ltr_no_record_msg'));
+					echo json_encode($resp, JSON_UNESCAPED_SLASHES);
+					return;
+				}
+				$hist_cond = array('batch_id' => $bid);
+				$this->db->reset_query();
+				$this->db->from('student_payment_history');
+				$this->db->where($hist_cond);
+				$total = (int) $this->db->count_all_results();
+
+				$payData = $this->db_model->select_data(
+					'id,student_id as studentId,batch_id as batchId,transaction_id as transactionId,mode,amount,create_at as createAt,admin_id as adminId',
+					'student_payment_history',
+					$hist_cond,
+					array($pg['limit'], $pg['offset']),
+					array('id', 'desc')
+				);
+			} else {
+				$this->db->reset_query();
+				$this->db->from('student_payment_history');
+				$this->db->where_in('batch_id', $batchIds);
+				$total = (int) $this->db->count_all_results();
+
+				$this->db->reset_query();
+				$this->db->select('id,student_id as studentId,batch_id as batchId,transaction_id as transactionId,mode,amount,create_at as createAt,admin_id as adminId', false);
+				$this->db->from('student_payment_history');
+				$this->db->where_in('batch_id', $batchIds);
+				$this->db->order_by('id', 'desc');
+				$this->db->limit($pg['limit'], $pg['offset']);
+				$payData = $this->db->get()->result_array();
+			}
+		} else {
+			$resp = array('status' => 'false', 'msg' => 'Unauthorized: invalid token user');
 			echo json_encode($resp, JSON_UNESCAPED_SLASHES);
 			return;
 		}
 
-		$cond = array('student_id' => $student_id);
-		if (!empty($data['batch_id'])) {
-			$cond['batch_id'] = (int) $data['batch_id'];
-		}
-
-		$payData = $this->db_model->select_data(
-			'id,batch_id as batchId,transaction_id as transactionId,mode,amount,create_at as createAt,admin_id as adminId',
-			'student_payment_history',
-			$cond,
-			'',
-			array('id', 'desc')
-		);
 		if (!empty($payData)) {
 			foreach ($payData as $key => $value) {
 				$batchData = $this->db_model->select_data('*', 'batches use index (id)', array('id' => $value['batchId']), 1);
@@ -3003,10 +3309,34 @@ public function otherBatchData($data){
 				$payData[$key]['batchOfferPrice'] = !empty($batchData) ? $batchData[0]['batch_offer_price'] : '';
 				$payData[$key]['currencyCode'] = $this->general_settings('currency_code');
 				$payData[$key]['currencyDecimalCode'] = $this->general_settings('currency_decimal_code');
+
+				if ($user_type === 'institute' && isset($value['studentId'])) {
+					$stu = $this->db_model->select_data(
+						'name,email,contact_no,image',
+						'students use index (id)',
+						array('id' => (int) $value['studentId']),
+						1
+					);
+					$payData[$key]['studentName'] = !empty($stu) ? $stu[0]['name'] : '';
+					$payData[$key]['studentEmail'] = !empty($stu) ? $stu[0]['email'] : '';
+					$payData[$key]['studentMobile'] = !empty($stu) ? $stu[0]['contact_no'] : '';
+					$img = !empty($stu) ? $stu[0]['image'] : '';
+					$payData[$key]['studentImage'] = $img !== '' ? base_url('uploads/students/') . $img : '';
+				}
 			}
-			$resp = array('status' => 'true', 'msg' => $this->lang->line('ltr_fetch_successfully'), 'paymentData' => $payData);
+			$resp = array(
+				'status' => 'true',
+				'msg' => $this->lang->line('ltr_fetch_successfully'),
+				'paymentData' => $payData,
+				'pagination' => $this->build_api_list_pagination_meta($pg['page'], $pg['limit'], $total),
+			);
 		} else {
-			$resp = array('status' => 'false', 'msg' => $this->lang->line('ltr_no_record_msg'));
+			$resp = array(
+				'status' => 'false',
+				'msg' => $this->lang->line('ltr_no_record_msg'),
+				'paymentData' => array(),
+				'pagination' => $this->build_api_list_pagination_meta($pg['page'], $pg['limit'], isset($total) ? $total : 0),
+			);
 		}
 		echo json_encode($resp, JSON_UNESCAPED_SLASHES);
     }
@@ -4438,10 +4768,14 @@ public function otherBatchData($data){
 	    if (empty($data)) {
 	        $data = $this->input->post();
 	    }
+	    if (!is_array($data)) {
+	        $data = array();
+	    }
+	    $data = $this->normalize_multi_user_registration_data($data);
 
-	    $mobile    = isset($data['mobile']) ? trim($data['mobile']) : '';
-	    $otp       = isset($data['otp']) ? trim($data['otp']) : '';
-	    $user_type = isset($data['user_type']) ? strtolower(trim($data['user_type'])) : '';
+	    $mobile    = isset($data['mobile']) ? trim((string) $data['mobile']) : '';
+	    $otp       = isset($data['otp']) ? trim((string) $data['otp']) : '';
+	    $user_type = isset($data['user_type']) ? strtolower(trim((string) $data['user_type'])) : '';
 
 	    // Validation
 	    if (empty($mobile) || empty($otp)) {
@@ -4498,7 +4832,7 @@ public function otherBatchData($data){
 	        $device_type = isset($data['device_type']) ? trim($data['device_type']) : '';
 
 	        if ($user_type === 'student') {
-	        	$tok = $this->generate_access_token($user->id, 'student');
+	        	$tok = $this->mint_access_credentials($user->id, 'student');
 	        	$access_token = $tok['access_token'];
 	        	$session_time = date('Y-m-d H:i:s', $tok['iat']);
 	        	$this->db_model->update_data_limit('students', array(
@@ -4521,11 +4855,15 @@ public function otherBatchData($data){
 	        	return;
 	        }
 
-	        $tok = $this->generate_access_token($user->id, $user->user_type);
+	        $utoken = isset($user->user_type) ? strtolower(trim((string) $user->user_type)) : $user_type;
+	        $tok = $this->mint_access_credentials((int) $user->id, $utoken);
 	        $access_token = $tok['access_token'];
 	        $session_time = date('Y-m-d H:i:s', $tok['iat']);
 	        $this->db_model->update_data_limit('users', array(
+	        	'login_status' => 1,
+	        	'device_id' => $device_id,
 	        	'device_token' => $device_token,
+	        	'device_type' => $device_type,
 	        	'updated_at' => $session_time,
 	        ), array('id' => $user->id), 1);
 
@@ -4535,20 +4873,18 @@ public function otherBatchData($data){
 	        	return;
 	        }
 	        $u = $urow[0];
-	        $profile_completed = (!isset($u['city']) || $u['city'] === '') ? 0 : 1;
+	        $profile_completed = (empty($u['city']) || trim((string) $u['city']) === '') ? 0 : 1;
 
-	        $this->json_login_success_response(array(
-	        	'userType' => $u['user_type'],
-	        	'userId' => $u['id'],
-	        	'name' => $u['name'],
-	        	'email' => $u['email'],
-	        	'mobile' => $u['mobile'],
-	        	'image' => base_url('uploads/users/') . $u['image'],
-	        	'role' => $u['role'],
-	        	'is_profile_completed' => $profile_completed,
-	        	'access_token' => $access_token,
-	        	'token_type' => 'Bearer'
-	        ));
+	        $response_data = $this->build_non_student_login_data_array(
+	        	$u,
+	        	$device_id,
+	        	$device_token,
+	        	$device_type,
+	        	$session_time,
+	        	$access_token,
+	        	$profile_completed
+	        );
+	        $this->json_login_success_response($response_data);
 	        return;
 
 	    } else {
