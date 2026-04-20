@@ -1,4 +1,3 @@
-<?php print_r($batchData);?>
 <section class="edu_admin_content">
     <div class="edu_admin_right sectionHolder edu_add_users">
         <div class="edu_admin_informationdiv edu_main_wrapper">
@@ -46,7 +45,33 @@
     						<input type="text" class="form-control require"  placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_batch_name'));?>" name="batch_name"  id="batchName" value="<?php echo (isset($batchData['batch_name']) && !empty($batchData['batch_name']))?$batchData['batch_name']:'';?>">			
     					</div>
     				</div>
+    				
+                    <div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
+    					<div class="form-group">
+    						<label>Institute <sup>*</sup></label>
+    						<select class="form-control require edu_selectbox_with_search" id="institute_id" name="institute_id" data-placeholder="Select institute">
+    							<option value="">Select institute</option>
+    							<?php if (!empty($institute_list)) {
+    								foreach ($institute_list as $ins) { ?>
+    									<option value="<?php echo (int) $ins['id']; ?>"<?php if (!empty($batchData['institute_id']) && (int) $batchData['institute_id'] === (int) $ins['id']) { echo ' selected'; } ?>><?php echo html_escape($ins['name']); ?></option>
+    								<?php }
+    							} ?>
+    						</select>
+    					</div>
+    				</div>
     				<div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
+    					<div class="form-group">
+    						<label>Batch mode (Online / Offline) <sup>*</sup></label>
+    						<select class="form-control require" id="batch_mode" name="batch_mode">
+    							<option value="Online"<?php echo (empty($batchData['batch_mode']) || strtolower((string) $batchData['batch_mode']) === 'online') ? ' selected' : ''; ?>>Online</option>
+    							<option value="Offline"<?php echo (!empty($batchData['batch_mode']) && strtolower((string) $batchData['batch_mode']) === 'offline') ? ' selected' : ''; ?>>Offline</option>
+    						</select>
+    					</div>
+    				</div>
+
+                    
+                    
+                    <div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
     					<div class="form-group">
     						<label><?php echo html_escape($this->common->languageTranslator('ltr_start_date'));?><sup>*</sup></label>
     						<input type="text" class="form-control require"  placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_start_date'));?>"  name="start_date"  id="b_startDate" value="<?php echo (isset($batchData['start_date']) && !empty($batchData['start_date']))?date('d-m-Y',strtotime($batchData['start_date'])):'';?>">	

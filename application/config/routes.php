@@ -49,12 +49,17 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 | Examples:	my-controller/index	-> my_controller/index
 |		my-controller/my-method	-> my_controller/my_method
 */
-$route['default_controller'] = 'admin_profile';
+//$route['default_controller'] = 'admin_profile';
+$route['default_controller'] = 'website';
 $route['404_override'] = '';
 $route['translate_uri_dashes'] = FALSE;
 
 /* Admin routes */
+
 $route['admin/dashboard'] = 'admin_profile/index';
+// Admin panel sign-in (views/admin/login.php) — not the public site login.
+$route['admin/login'] = 'admin_profile/login';
+$route['admin/register'] = 'admin_profile/register';
 $route['admin/change-password'] = 'admin_profile/profile';
 $route['admin/course-manage'] = 'admin_profile/course_manage';
 $route['admin/add-batch'] = 'admin_profile/add_batch';
@@ -215,11 +220,26 @@ $route['student/syllabus/(:any)'] = 'student_profile/all_syllabus/$1';
 $route['student/select-dashboard'] = 'student_profile/select_dashboard';
 $route['student/student-certificate/(:any)'] = 'student_profile/certificate_view/$1';
 
+/* Front End website Routes */
+$route['index'] = 'website/index';
+// Public website login (views/frontend/login.php) — separate from admin/login above.
+$route['login'] = 'website/login';
+$route['login-otp-send'] = 'website/login_otp_send';
+$route['login-otp-verify'] = 'website/login_otp_verify';
+$route['login-password'] = 'website/login_password';
+$route['register'] = 'website/register';
+$route['forgot-password'] = 'website/forgot_password';
+$route['logout'] = 'website/logout';
+$route['update-profile'] = 'website/update_profile';
+$route['update-password'] = 'website/update_password';
+$route['change-password'] = 'website/change_password_page';
+$route['delete-account'] = 'website/delete_account_page';
+$route['update-profile-submit'] = 'website/update_profile_submit';
+$route['update-password-submit'] = 'website/update_password_submit';
+$route['change-password-submit'] = 'website/change_password_submit';
+$route['delete-account-submit'] = 'website/delete_account_submit';
 
-/* Front End Routes */
-$route['login'] = 'home/login';
-$route['register'] = 'home/register';
-$route['forgot-password'] = 'home/forgot_password';
+
 $route['about-us'] = 'home/about';
 $route['courses-offered'] = 'home/courses';
 $route['courses-details/(:any)'] = 'home/courses_details/$1';
@@ -257,6 +277,8 @@ $route['api/user/change-password'] = 'api/user/home/change_password';
 $route['api/user/delete-account'] = 'api/user/home/deleteAccount';
 $route['api/user/payment-history'] = 'api/user/home/paymentHistory';
 
+
+
 $route['api/user/attendance-list'] = 'api/user/home/attendanceList';
 $route['api/user/add-attendance'] = 'api/user/home/addAttendance';
 $route['api/main/site-details'] = 'api/main/main/site_details';
@@ -271,9 +293,19 @@ $route['api/main/country-list'] = 'api/main/main/country_list';
 $route['api/main/state-list'] = 'api/main/main/state_list';
 $route['api/main/city-list'] = 'api/main/main/city_list';
 
+
+
 $route['api/courses/courses-list'] = 'api/courses/courses/courses_list';
 $route['api/institute/listing'] = 'api/institute/institute/institute_listing';
 $route['api/institute/details'] = 'api/institute/institute/institute_details';
+$route['api/institute/city-list'] = 'api/institute/institute/institute_city_list';
+
+/* Razorpay payment APIs (backend) — keys from Admin payment settings or application/config/razorpay.php */
+$route['api/payment/razorpay/create-order'] = 'api/payment/razorpay/create_order';
+$route['api/payment/razorpay/verify-payment'] = 'api/payment/razorpay/verify_payment';
+$route['api/payment/razorpay/fetch-payment'] = 'api/payment/razorpay/fetch_payment';
+$route['api/payment/razorpay/order-status'] = 'api/payment/razorpay/order_status';
+$route['api/payment/razorpay/webhook'] = 'api/payment/razorpay/webhook';
 
 // Batch Routes (third segment = Batch.php controller, same pattern as api/user/home/...)
 

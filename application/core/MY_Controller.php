@@ -17,6 +17,38 @@ class MY_Controller extends CI_Controller
 	}
 
 	/**
+	 * Public site pages: common/front_header + content + common/front_footer.
+	 *
+	 * @param string $content_view Path under views/ (e.g. frontend/home)
+	 * @param array  $data         Passed to header, content, and footer
+	 */
+	protected function render_frontend_layout($content_view, $data = array())
+	{
+		if (!is_array($data)) {
+			$data = array();
+		}
+		$this->load->view('common/front_header', $data);
+		$this->load->view($content_view, $data);
+		$this->load->view('common/front_footer', $data);
+	}
+
+	/**
+	 * Auth pages: common/auth_header + content + common/auth_footer.
+	 *
+	 * @param string $content_view e.g. frontend/login
+	 * @param array  $header_data  Passed to auth_header (content view unchanged from original pattern)
+	 */
+	protected function render_auth_layout($content_view, $header_data = array())
+	{
+		if (!is_array($header_data)) {
+			$header_data = array();
+		}
+		$this->load->view('common/auth_header', $header_data);
+		$this->load->view($content_view);
+		$this->load->view('common/auth_footer');
+	}
+
+	/**
 	 * Core token builder (used when {@see generate_access_token()} returns an unexpected type).
 	 *
 	 * @return array{access_token: string, iat: int}
@@ -611,39 +643,23 @@ class MY_Controller extends CI_Controller
 	 *   - active_only (bool, default true) — status 1 or '1'
 	 * @return list<array> formatted batch rows
 	 */
-	protected function fetch_institute_batches_for_api($institute_user_id, array $options = array())
+	protected function fetch_institute_batches_for_api($institute_user_id)
 	{
-		$institute_user_id = (int) $institute_user_id;
-		if (!empty($options['owner_ids']) && is_array($options['owner_ids'])) {
-			$owner_ids = array_values(array_filter(array_map('intval', $options['owner_ids']), function ($v) {
-				return $v > 0;
-			}));
-		} else {
-			$owner_ids = $institute_user_id > 0 ? array($institute_user_id) : array();
-		}
+		$owner_ids = (int) $institute_user_id;
+		
 		if (empty($owner_ids)) {
 			return array();
 		}
-		$active_only = !array_key_exists('active_only', $options) || $options['active_only'];
 		$this->db->reset_query();
 		$this->db->from('batches');
-		$this->db->where_in('admin_id', $owner_ids);
-		if ($active_only) {
-			$this->db->group_start();
-			$this->db->where('status', 1);
-			$this->db->or_where('status', '1');
-			$this->db->group_end();
-		}
+		$this->db->where('institute_id', $owner_ids);
 		$this->db->order_by('id', 'desc');
 		$rows = $this->db->get()->result_array();
 		if (empty($rows)) {
 			return array();
 		}
-		$out = array();
-		foreach ($rows as $b) {
-			$out[] = $this->format_batch_row_for_api($b);
-		}
-		return $out;
+		
+		return $rows;
 	}
 
 	/**
@@ -690,7 +706,7 @@ class MY_Controller extends CI_Controller
 		$this->db->select('AVG(rating) as avgRating, COUNT(id) as totalReviews', false);
 		$this->db->from('review');
 		$this->db->where('institute_id', $institute_id);
-		$this->db->where('status', 1);
+		//$this->db->where('status', 1);
 		$agg = $this->db->get()->row_array();
 		$avg = 0.0;
 		$total = 0;
@@ -703,7 +719,7 @@ class MY_Controller extends CI_Controller
 		$this->db->select('id,user_id,user_type,institute_id,rating,msg,approved_by,status,created_at', false);
 		$this->db->from('review');
 		$this->db->where('institute_id', $institute_id);
-		$this->db->where('status', 1);
+		//$this->db->where('status', 1);
 		$this->db->order_by('id', 'desc');
 		if ($limit !== null) {
 			$this->db->limit($limit, $offset);

@@ -447,7 +447,7 @@ header {
 }
 
 .edu_header_top {
-    background-color: var(--Primary-Color);
+    background-color: rgba(49, 75, 166, 1);
     color: var(--Secondary-Color);
 }
 
@@ -533,6 +533,17 @@ header {
 .edu_header_info ul li a>span {
     margin-right: 4px;
     font-weight: 700;
+}
+
+/* Keep topbar links white, but dropdown menu items dark/readable. */
+.edu_header_info .dropdown-menu .dropdown-item {
+    color: #212529 !important;
+    display: block;
+}
+
+.edu_header_info .dropdown-menu .dropdown-item:hover,
+.edu_header_info .dropdown-menu .dropdown-item:focus {
+    color: #16181b !important;
 }
 
 .edu_header_wrapper .edu_btn {

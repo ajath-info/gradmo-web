@@ -120,7 +120,7 @@ class Institute extends MY_Controller
 			'id', 'name', 'email', 'mobile', 'role', 'user_type', 'teach_image', 'pincode',
 			'country', 'state', 'city', 'address',
 			'school_college_name', 'teach_education', 'institute_code', 'institude_code',
-			'lat', 'long', 'latitude', 'longitude',
+			'lat', 'long', 'latitude', 'longitude', 'pay_mode',
 		);
 		if ($field_flip === null) {
 			$field_flip = $this->users_table_field_flip();
@@ -355,6 +355,7 @@ class Institute extends MY_Controller
 				}
 
 				$img = isset($r['teach_image']) ? trim((string) $r['teach_image']) : '';
+				$review_data = $this->fetch_institute_approved_reviews_for_api((int) $r['id'], array('reviews_limit' => 1));
 				$out[] = array(
 					'instituteId' => (int) $r['id'],
 					'name' => isset($r['name']) ? $r['name'] : '',
@@ -370,11 +371,16 @@ class Institute extends MY_Controller
 					'instituteCode' => $institute_code,
 					'role' => isset($r['role']) ? (int) $r['role'] : 0,
 					'userType' => isset($r['user_type']) ? $r['user_type'] : '',
+					'pay_mode' => isset($r['pay_mode']) ? $r['pay_mode'] : '',
 					'image' => $img,
 					'imageUrl' => $img !== '' ? base_url('uploads/users/') . $img : '',
 					'instituteLatitude' => $ilat,
 					'instituteLongitude' => $ilon,
 					'distanceKm' => $compute_distance ? $dist_km : null,
+					'rating' => array(
+						'averageRating' => isset($review_data['averageRating']) ? $review_data['averageRating'] : 0,
+						'totalReviews' => isset($review_data['totalReviews']) ? $review_data['totalReviews'] : 0,
+					),
 				);
 			}
 		}
@@ -485,4 +491,24 @@ class Institute extends MY_Controller
 			'msg' => $this->lang->line('ltr_fetch_successfully')
 		), JSON_UNESCAPED_SLASHES);
 	}
+
+	function institute_city_list()
+	{
+		$this->db->reset_query();
+		$this->db->select('city');
+		$this->db->from('users');
+		$this->institute_where_active();
+		$this->db->where("CHAR_LENGTH(TRIM(IFNULL(users.city,''))) >", 0, false);
+		$this->db->group_by('city');
+		$this->db->order_by('city', 'asc');
+		$rows = $this->db->get()->result_array();
+
+		echo json_encode(array(
+			'status' => 'true',
+			'cities' => $rows,
+			'msg' => $this->lang->line('ltr_fetch_successfully'),
+		), JSON_UNESCAPED_SLASHES);
+	}
+
+
 }

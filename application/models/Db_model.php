@@ -419,4 +419,44 @@ class Db_model extends CI_Model {
 		}
 	}
 
+	/**
+	 * Resolve 10-digit mobile stored on the account for OTP APIs when the client sends email only.
+	 *
+	 * @param string $email
+	 * @param string $user_type student|teacher|institute
+	 * @return string|null 10-digit mobile or null
+	 */
+	public function resolve_otp_mobile_from_email($email, $user_type)
+	{
+		$email = trim((string) $email);
+		$user_type = strtolower(trim((string) $user_type));
+		if ($email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+			return null;
+		}
+		if ($user_type === 'student') {
+			$row = $this->db->where('email', $email)->get('students', 1)->row_array();
+			if (empty($row)) {
+				return null;
+			}
+			$raw = isset($row['mobile']) ? trim((string) $row['mobile']) : '';
+			if ($raw === '' && ! empty($row['contact_no'])) {
+				$raw = trim((string) $row['contact_no']);
+			}
+		} else {
+			$row = $this->db->where('email', $email)->where('user_type', $user_type)->get('users', 1)->row_array();
+			if (empty($row)) {
+				return null;
+			}
+			$raw = isset($row['mobile']) ? trim((string) $row['mobile']) : '';
+		}
+		$digits = preg_replace('/\D/', '', $raw);
+		if (strlen($digits) > 10) {
+			$digits = substr($digits, -10);
+		}
+		if (strlen($digits) === 11 && $digits[0] === '0') {
+			$digits = substr($digits, 1);
+		}
+		return strlen($digits) === 10 ? $digits : null;
+	}
+
 }

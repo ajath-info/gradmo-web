@@ -568,6 +568,29 @@ class Ajaxcall extends CI_Controller{
     //  die;
         if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
             if(!empty($this->input->post('batch_name',TRUE))){
+                $institute_id = (int) $this->input->post('institute_id', TRUE);
+                if ($institute_id < 1) {
+                    echo json_encode(array('status' => '0', 'msg' => 'Please select an institute.'), JSON_UNESCAPED_SLASHES);
+                    return;
+                }
+                $this->db->reset_query();
+                $this->db->select('id');
+                $this->db->from('users');
+                $this->db->where('id', $institute_id);
+                $this->db->where('admin_id', (int) $this->session->userdata('uid'));
+                $this->db->where('status', 1);
+                $this->db->group_start();
+                $this->db->where('role', 4);
+                $this->db->or_where("LOWER(TRIM(IFNULL(user_type,''))) = 'institute'", null, false);
+                $this->db->group_end();
+                $inst_ok = $this->db->get()->row_array();
+                if (empty($inst_ok)) {
+                    echo json_encode(array('status' => '0', 'msg' => 'Invalid institute selected.'), JSON_UNESCAPED_SLASHES);
+                    return;
+                }
+                $bm = strtolower(trim((string) $this->input->post('batch_mode', TRUE)));
+                $batch_mode = ($bm === 'offline') ? 'Offline' : 'Online';
+
                 $prevdata =  $this->db_model->select_data('id','batches use index (id)',array('batch_name'=>$this->input->post('batch_name',TRUE)),1);
                 if($this->input->post('type',TRUE) == 'edit'){
                     if(empty($prevdata) || ($prevdata[0]['id'] == $this->input->post('batch_id',TRUE))){
@@ -577,6 +600,8 @@ class Ajaxcall extends CI_Controller{
                             'end_date'	=>	date('Y-m-d',strtotime($this->input->post('end_date',TRUE))),
                             'start_time'	=>	date('H:i:s',strtotime($this->input->post('start_time',TRUE))),
                             'end_time'	=>	date('H:i:s',strtotime($this->input->post('end_time',TRUE))),
+                            'institute_id'	=>	$institute_id,
+                            'batch_mode'	=>	$batch_mode,
                         ); 
                         //  print_r($_POST['batch_subject']);
                         // die();
@@ -703,7 +728,9 @@ class Ajaxcall extends CI_Controller{
                             'start_time'	=>	date('H:i:s',strtotime($this->input->post('start_time',TRUE))),
                             'end_time'	=>	date('H:i:s',strtotime($this->input->post('end_time',TRUE))),
                             'status'	=>	1,
-                            'admin_id' => $this->session->userdata('uid')
+                            'admin_id' => $this->session->userdata('uid'),
+                            'institute_id'	=>	$institute_id,
+                            'batch_mode'	=>	$batch_mode,
                         );
 						if(!empty($this->input->post('batchType',TRUE))){
 							$data_arr['batch_type']=$this->input->post('batchType',TRUE);

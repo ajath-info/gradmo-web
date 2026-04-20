@@ -210,28 +210,42 @@ if(isset($timezoneDB[0]['timezone']) && !empty($timezoneDB[0]['timezone'])){
 	date_default_timezone_set($timezoneDB[0]['timezone']);
 } 
 
-$admin_id = $this->session->userdata('admin_id');
-$teacher_id = $this->session->userdata('uid');
-$condN = "admin_id = $admin_id AND teacher_id = $teacher_id AND status = 1 AND read_status = 0";
-$notice_count = $this->db_model->countAll('notices use index(id)',$condN);
-
-
-$cur_arr = explode('/',$_SERVER['REQUEST_URI']);
-$timezoneDB = $this->db_model->select_data('timezone','site_details',array('id'=>1));
-
-if(isset($timezoneDB[0]['timezone']) && !empty($timezoneDB[0]['timezone'])){
-    date_default_timezone_set($timezoneDB[0]['timezone']);
-} 
-
-$admin_id = $this->session->userdata('admin_id');
-$teacher_id = $this->session->userdata('uid');
-$condN = "admin_id = $admin_id AND teacher_id = $teacher_id AND status = 1 AND read_status = 0";
-$notice_count = $this->db_model->countAll('notices use index(id)',$condN);
-$logo = current($this->db_model->select_data('*','users use index (id)',array('id'=>$admin_id)));
-    $lastrecord = current($this->db_model->select_data('access','users',array('id' => $this->session->userdata('uid')),1,array('id','desc')));
-    if(isset($lastrecord['access']))
-    $access = json_decode($lastrecord['access']);
-    
+$admin_id = (int) $this->session->userdata('admin_id');
+$teacher_id = (int) $this->session->userdata('uid');
+if ($admin_id < 1) {
+	$admin_id = $teacher_id;
+}
+$notice_count = 0;
+if ($admin_id > 0 && $teacher_id > 0) {
+	$condN = 'admin_id = ' . $admin_id . ' AND teacher_id = ' . $teacher_id . ' AND status = 1 AND read_status = 0';
+	$notice_count = $this->db_model->countAll('notices use index(id)', $condN);
+}
+$logo = array();
+if ($admin_id > 0) {
+	$logo_row = $this->db_model->select_data('*', 'users use index (id)', array('id' => $admin_id), 1);
+	$logo = is_array($logo_row) && ! empty($logo_row) ? current($logo_row) : array();
+}
+if ( ! is_array($logo)) {
+	$logo = array();
+}
+$uid_for_access = (int) $this->session->userdata('uid');
+$lastrecord = array();
+if ($uid_for_access > 0) {
+	$lr = $this->db_model->select_data('access', 'users', array('id' => $uid_for_access), 1, array('id', 'desc'));
+	if (is_array($lr) && ! empty($lr)) {
+		$lastrecord = current($lr);
+	}
+}
+if ( ! is_array($lastrecord)) {
+	$lastrecord = array();
+}
+$access = new stdClass();
+if ( ! empty($lastrecord['access'])) {
+	$decoded = json_decode($lastrecord['access']);
+	if (is_object($decoded)) {
+		$access = $decoded;
+	}
+}
 ?>
 <div class="edu_header_sidebar">
     <header class="edu_left_header">

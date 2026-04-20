@@ -71,7 +71,9 @@ CREATE TABLE `batches` (
   `batch_image` varchar(200) NOT NULL,
   `no_of_student` int(11) NOT NULL,
   `status` int(11) NOT NULL,
-  `pay_mode` text NOT NULL
+  `pay_mode` text NOT NULL,
+  `institute_id` int(11) NOT NULL DEFAULT 0,
+  `batch_mode` varchar(20) NOT NULL DEFAULT 'Online'
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1;
 
 -- --------------------------------------------------------
@@ -495,7 +497,8 @@ INSERT INTO `general_settings` (`id`, `title`, `key_text`, `velue_text`) VALUES
 (14, 'smtp host mails', 'smtp_port', '587'),
 (15, 'smtp smtp encryption', 'smtp_encryption', 'tlc'),
 (16, 'sandbox accounts', 'sandbox_accounts', 'sb-jk4dj23946335@business.example.com'),
-(17, 'Firebase Accounts', 'firebase_key', 'AAAAFU0Nyks:APA91bFWu1zpzRasM60cqJjMvfcL5Uc667MP38b5CaYd5O3g-ioRYGtVSvBCdFUt5ea4H8eIDbPKNs98z5W0RxFfRsswy07p1EbSKRRlQkUA1b9sb_fBC2sHvFJZWhpILlZlOqz0_M4u');
+(17, 'Firebase Accounts', 'firebase_key', 'AAAAFU0Nyks:APA91bFWu1zpzRasM60cqJjMvfcL5Uc667MP38b5CaYd5O3g-ioRYGtVSvBCdFUt5ea4H8eIDbPKNs98z5W0RxFfRsswy07p1EbSKRRlQkUA1b9sb_fBC2sHvFJZWhpILlZlOqz0_M4u'),
+(18, 'Razorpay webhook signing secret (Dashboard → Webhooks)', 'razorpay_webhook_secret', '');
 
 -- --------------------------------------------------------
 

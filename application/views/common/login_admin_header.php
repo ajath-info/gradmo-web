@@ -1,52 +1,68 @@
 <!DOCTYPE html>
 <html <?php if($this->common->language_name=='arabic'){echo 'lang="ar" dir="rtl"';}else if($this->common->language_name=='french'){echo 'lang="fr" dir="ltr"';}else if($this->common->language_name=='english'){echo 'lang="en" dir="ltr"';} ?> >
-<!-- Begin Head -->
-  <head>
-    <!----- Required MetaTags ----->
+<head>
+    <title><?php echo  $this->common->siteTitle.((isset($title) && !empty($title)) ? ' | '.$title:'');?></title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <meta name="keywords" content="<?php echo html_escape($this->common->siteKeywords); ?>">
-    <meta name="description" content="<?php echo html_escape($this->common->siteDescription); ?>">
-    <meta name="author" content="<?php echo html_escape($this->common->siteAuthorName); ?>">
-    <!----- Style css ----->
     <link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/bootstrap.min.css">
-    <link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/animate.css">
-	<link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/fontawesome.min.css">
-	<link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/icofont.css">
-	<link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/font.css">
-	<link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/magnific-popup.css">
-    <link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/swiper.min.css">
-	<link rel="stylesheet" type="text/css" href="<?php echo base_url().'assets/css/toastr.min.css';?>"/>
-	<link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/frontend-rtl.css?<?php echo time();?>">
+    <link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/fontawesome.min.css">
+    <link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/toastr.min.css">
+	<link rel="stylesheet" type="text/css" href="<?php echo base_url().'assets/css/magnific-popup.css';?>"/>
     <link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/frontend-style.css?<?php echo time();?>">
-    
-	<!----- Favicon ----->
-	<link rel="shortcut icon" type="image/ico" href="<?php echo html_escape($this->common->siteFavicon); ?>" />
-	<?php 
-    $colorsData =$this->common->theme_colors;
-    $admin_themes = json_decode($colorsData[0]['admin_themes'],true);
-    $teacher_themes = json_decode($colorsData[0]['teacher_themes'],true);
-    $student_themes = json_decode($colorsData[0]['student_themes'],true);
-    $frontend_themes = json_decode($colorsData[0]['frontend_themes'],true);
-    // print_r($frontend_themes);die;
+    <link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/font.css"/>
+    <link rel="stylesheet" type="text/css" href="<?php echo base_url().'assets/css/frontend-style.css?'.time();?>"/>
+    <!------ Include the above in your HEAD tag ---------->
+    <link rel="shortcut icon" type="image/x-icon" href="<?php echo base_url();?>assets/images/favicon.png" />
+      <!-- google Recaptcha v2 API  -->
+     <script src='https://www.google.com/recaptcha/api.js'></script>
+        <?php 
+        $colorsData =$this->common->theme_colors;
+        $login_themes = json_decode($colorsData[0]['login_themes'],true);
+
+        // print_r($frontend_themes);die;
     ?>
     <style>
-    :root {
-    --Primary-Color:<?php echo isset($frontend_themes['frontend_primary'])?$frontend_themes['frontend_primary']:'#4d4a81';?>;
-    --Secondary-Color:<?php echo isset($frontend_themes['frontend_secondary'])?$frontend_themes['frontend_secondary']:'#f7f7fb';?> ;
-    --delete-Color:<?php echo isset($frontend_themes['frontend_accent'])?$frontend_themes['frontend_accent']:'#f62d51';?> ;
-    --Alternate-Text-Color:<?php echo isset($frontend_themes['frontend_text'])?$frontend_themes['frontend_text']:'#ffffff';?> ;
-    --Active-icon-Color:<?php echo isset($frontend_themes['frontend_alternate'])?$frontend_themes['frontend_alternate']:'#3ac0da';?>;
-     --edit-icon-Color:<?php echo isset($frontend_themes['frontend_header'])?$frontend_themes['frontend_header']:'#5fc5ff';?>;
-     }
+        :root {
+        --Primary-Color:<?php echo isset($login_themes['login_primary'])?$login_themes['login_primary']:'#4d4a81';?>;
+        --Secondary-Color:<?php echo isset($login_themes['login_secondary'])?$login_themes['login_secondary']:'#f7f7fb';?> ;
+        --Alternate-Text-Color:<?php echo isset($login_themes['login_text'])?$login_themes['login_text']:'#ffffff';?> ;
+         
+        }
     </style>
-	<!----- Title ----->
-    <title><?php echo html_escape($this->common->siteTitle).((isset($title) && !empty($title)) ? ' | '.$title:'');?></title>
-    
 	<script>
+	    // login 
+        var login_primary = "<?php echo isset($login_themes['login_primary'])?$login_themes['login_primary']:'#4d4a81';?>";
+        var login_secondary = "<?php echo isset($login_themes['login_secondary'])?$login_themes['login_secondary']:'#f7f7fb';?>";
+        var login_alternate = "<?php echo isset($login_themes['login_alternate'])?$login_themes['login_alternate']:'#ffffff';?>";
+		// themes.js expects these globals on all admin-side pages.
+		var admin_primary = '#4d4a81';
+		var admin_secondary = '#f7f7fb';
+		var admin_text = '#f62d51';
+		var admin_alternate = '#ffffff';
+		var admin_header = '#3ac0da';
+		var admin_accent = '#f62d51';
+		var teacher_primary = '#4d4a81';
+		var teacher_secondary = '#f7f7fb';
+		var teacher_text = '#f62d51';
+		var teacher_alternate = '#ffffff';
+		var teacher_header = '#3ac0da';
+		var teacher_accent = '#f62d51';
+		var student_primary = '#4d4a81';
+		var student_secondary = '#f7f7fb';
+		var student_text = '#f62d51';
+		var student_alternate = '#ffffff';
+		var student_header = '#3ac0da';
+		var student_accent = '#f62d51';
+		var frontend_primary = '#4d4a81';
+		var frontend_secondary = '#f7f7fb';
+		var frontend_accent = '#f62d51';
+		var frontend_text = '#f62d51';
+		var frontend_alternate = '#ffffff';
+		var frontend_header = '#3ac0da';
+        
+        
 		var base_url = "<?php echo base_url();?>";
 		var site_logo = "<?php echo base_url();?>assets/images/favicon.png";
-		var rzp_key ="<?php echo $this->common->rzp_key ?>";
         var ltr_status_msg = "<?php echo html_escape($this->common->languageTranslator('ltr_status_msg')); ?>";
 		var ltr_matching_msg = "<?php echo html_escape($this->common->languageTranslator('ltr_matching_msg')); ?>";
 		var ltr_select_chapter ="<?php echo html_escape($this->common->languageTranslator('ltr_select_chapter')); ?>";
@@ -165,161 +181,23 @@
         var ltr_batch_price_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_batch_price_msg')); ?>";
         var ltr_payment_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_payment_msg')); ?>";
         var ltr_something_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_something_msg')); ?>";
-        var ltr_enter_your_name="<?php echo html_escape($this->common->languageTranslator('ltr_enter_your_name')); ?>";
-        var ltr_enter_your_email="<?php echo html_escape($this->common->languageTranslator('ltr_enter_your_email')); ?>";
-        var ltr_valid_enter_your_email="<?php echo html_escape($this->common->languageTranslator('ltr_valid_enter_your_email')); ?>";
-        var ltr_enter_your_phone="<?php echo html_escape($this->common->languageTranslator('ltr_enter_your_phone')); ?>";
-        var ltr_valid_enter_your_phone="<?php echo html_escape($this->common->languageTranslator('ltr_valid_enter_your_phone')); ?>";
-        var ltr_enter_your_message="<?php echo html_escape($this->common->languageTranslator('ltr_enter_your_message')); ?>";
-        var ltr_send="<?php echo html_escape($this->common->languageTranslator('ltr_send')); ?>";
-        var ltr_no_result="<?php echo html_escape($this->common->languageTranslator('ltr_no_result')); ?>";
-
+		// Prevent backend.js ReferenceError on pages that don't inject chart configs.
+		var mock_config;
+		var graph_count = 0;
 	</script>
-  </head>
-  <body class="<?php if($this->common->language_name=='arabic'){ echo 'rtl' ;}?>">
-	<!----- Preloader Box ----->
-	<div class="edu_preloader">
-		<div class="edu_status">
-			<img src="<?php echo html_escape($this->common->siteLoader); ?>" alt="loader">
-		</div>
+</head>
+<body class="<?php if($this->common->language_name=='arabic'){ echo 'rtl' ;}?>">
+<!----- Preloader Box ----->
+<div class="edu_preloader">
+	<div class="edu_status">
+		<img src="<?php echo html_escape($this->common->siteLoader); ?>" alt="loader">
 	</div>
-	<!----- Preloader Box ----->
-	<?php
-	$timezoneDB = $this->db_model->select_data('timezone','site_details',array('id'=>1));
+</div>
+<!----- Preloader Box ----->
+<?php
+$timezoneDB = $this->db_model->select_data('timezone','site_details',array('id'=>1));
 
-	if(isset($timezoneDB[0]['timezone']) && !empty($timezoneDB[0]['timezone'])){
-		date_default_timezone_set($timezoneDB[0]['timezone']);
-	}
-	?>
-	<!----- Main Wraapper ----->
-	<section class="main_wrapper">
-		<!----- Header Start ----->
-		<header>
-			<div class="edu_header_top edu_header_top1">
-				<div class="container-fluid">
-					<div class="row">
-						<div class="col-xl-4 col-lg-4 col-md-4 col-sm-12 col-12">
-							<div class="edu_social_wrapper edu_social_wrapper_preheader">
-								<ul>
-									<li><?php echo html_escape($this->common->languageTranslator('ltr_follow_us_on')); ?></li>
-									<?php 
-									if(!empty($frontend_details[0]['facebook']))
-										echo ' <li><a href="'.$frontend_details[0]['facebook'].'" class="edu_social_icon" target="_blank"><i class="fab fa-facebook-f"></i></a></li>';
-									
-									if(!empty($frontend_details[0]['youtube']))
-										echo ' <li><a href="'.$frontend_details[0]['youtube'].'" class="edu_social_icon" target="_blank"><i class="fab fa-youtube"></i></a></li>';
-
-									if(!empty($frontend_details[0]['twitter']))
-										echo ' <li><a href="'.$frontend_details[0]['twitter'].'" class="edu_social_icon" target="_blank"><i class="fab fa-twitter"></i></a></li>';
-
-									if(!empty($frontend_details[0]['instagram']))
-										echo ' <li><a href="'.$frontend_details[0]['instagram'].'" class="edu_social_icon" target="_blank"><i class="fab fa-instagram"></i></a></li>';
-
-									if(!empty($frontend_details[0]['linkedin']))
-										echo ' <li><a href="'.$frontend_details[0]['linkedin'].'" class="edu_social_icon" target="_blank"><i class="fab fa-linkedin"></i></a></li>';
-									?>
-                                </ul>
-							</div>
-						</div>
-						<div class="col-xl-8 col-lg-8 col-md-8 col-sm-12 col-12">
-							<div class="edu_header_info">
-								<ul>
-									<li>
-										<?php
-										if(!empty($frontend_details[0]['email']))
-											echo '<a href="mailto:'.$frontend_details[0]['email'].'"><i class="fas fa-envelope"></i>'.$frontend_details[0]['email'].'</a>';
-										else
-											echo '<a href="mailto:example@email.com"><i class="fas fa-envelope"></i>example@email.com</a>';
-										?>
-									</li>
-									<li>
-										<?php
-										if(!empty($frontend_details[0]['mobile']))
-											echo '<a href="tel:+'.$frontend_details[0]['mobile'].'"><i class="fas fa-phone-volume"></i>'.$frontend_details[0]['mobile'].'</a>';
-										else
-											echo '<a href="tel:+91 9999999999"><i class="fas fa-phone-volume"></i>+91 9999999999</a>';
-										?>
-									</li>
-									<li>
-									  <?php if(!empty($_SESSION['role'])){ ?>
-										<?php
-											$front_user_name = trim((string) $this->session->userdata('name'));
-											if ($front_user_name === '') {
-												$front_user_name = 'User';
-											}
-										?>
-										<div class="dropdown d-inline-block">
-											<a href="javascript:void(0);" class="dropdown-toggle" id="frontUserMenu" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-												<i class="fas fa-user"></i><span><?php echo html_escape($front_user_name); ?></span>
-											</a>
-											<div class="dropdown-menu dropdown-menu-right" aria-labelledby="frontUserMenu">
-											    <a class="dropdown-item" href="<?php echo base_url('update-profile'); ?>">
-													<i class="fas fa-user-cog mr-2"></i>Update Profile
-												</a>
-												<a class="dropdown-item" href="<?php echo base_url('update-password'); ?>">
-													<i class="fas fa-user-cog mr-2"></i>Update Password
-												</a>
-												<a class="dropdown-item" href="<?php echo base_url('delete-account'); ?>">
-													<i class="fas fa-user-cog mr-2"></i>Delete Account
-												</a>
-												<a class="dropdown-item cnfmlogOutBtn" href="javascript:void(0);" title="<?php echo html_escape($this->common->languageTranslator('ltr_logout')); ?>">
-													<i class="icofont-logout mr-2"></i><?php echo html_escape($this->common->languageTranslator('ltr_logout')); ?>
-												</a>
-											</div>
-										</div>
-									  <?php }else{ ?>
-										<a href="<?php echo base_url('login');?>"><i class="fas fa-sign-in-alt"></i><?php echo html_escape($this->common->languageTranslator('ltr_login')); ?></a>
-									<?php } ?>
-									</li>
-								</ul>
-							</div>
-						</div>
-					</div>
-				</div>
-			</div>
-			<div class="edu_header_wrapper">
-				<div class="container-fluid">
-					<div class="row align-items-center">
-						<div class="col-lg-3 col-md-4 col-sm-4 col-10">
-							<div class="edu_logo">
-								<a href="<?php echo base_url();?>"><img class="front_logo" src="<?php echo html_escape($this->common->siteLogo); ?>" alt="logo" /></a>
-							</div>
-						</div>
-						<div class="col-lg-9 col-md-8 col-sm-8 col-2">
-							<div class="edu_main_menu main_menu_parent">
-								<!----- Header Menus ----->
-								<div class="edu_nav_items main_menu_wrapper text-right">
-									<ul>
-										<li><a href="<?php echo base_url();?>"><?php echo html_escape($this->common->languageTranslator('ltr_home')); ?></a></li>
-										<li><a href="<?php echo base_url('about-us');?>"><?php echo html_escape($this->common->languageTranslator('ltr_about_us')); ?></a></li>
-										<li><a href="<?php echo base_url('courses-offered');?>"><?php echo html_escape($this->common->languageTranslator('ltr_courses_offered')); ?></a></li>
-										<li><a href="<?php echo base_url('blog');?>"><?php echo html_escape($this->common->languageTranslator('ltr_blog')); ?></a></li>
-										<li class="has_submenu">
-											<a href="javascript:void(0);"><?php echo html_escape($this->common->languageTranslator('ltr_gallery')); ?></a>
-											<ul class="sub_menu">
-												<li><a href="<?php echo base_url('gallery');?>"><?php echo html_escape($this->common->languageTranslator('ltr_image')); ?></a></li>
-												<li><a href="<?php echo base_url('video-gallery');?>"><?php echo html_escape($this->common->languageTranslator('ltr_video')); ?></a></li>
-											</ul>
-										</li>
-										<li><a href="<?php echo base_url('facilities');?>"><?php echo html_escape($this->common->languageTranslator('ltr_facilities')); ?></a></li>
-										<li><a href="<?php echo base_url('contact-us');?>"><?php echo html_escape($this->common->languageTranslator('ltr_contact_us')); ?></a></li>
-									</ul>
-								</div>
-								<div class="menu_btn_wrap">
-								<?php 
-								if(!empty($frontend_details[0]['header_btn_txt']) && !empty($frontend_details[0]['header_btn_url'])){
-									echo '<a class="edu_btn" href="'.$frontend_details[0]['header_btn_url'].'">'.$frontend_details[0]['header_btn_txt'].'</a>';
-								}
-								?>
-									<a href="javascript:void(0);" class="menu_btn">
-										<span></span>
-										<span></span>
-										<span></span>
-									</a>
-								</div>
-							</div>
-						</div>
-					</div>
-				</div>
-			</div>
-		</header>
+if(isset($timezoneDB[0]['timezone']) && !empty($timezoneDB[0]['timezone'])){
+	date_default_timezone_set($timezoneDB[0]['timezone']);
+}
+?>

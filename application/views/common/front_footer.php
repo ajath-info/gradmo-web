@@ -143,5 +143,23 @@
 	<script src="<?php echo base_url();?>assets/js/tilt.js"></script>
 	<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 	<script src="<?php echo base_url();?>assets/js/front-custom.js?<?php echo time();?>"></script>
+	<?php if (!empty($load_auth_form_assets)): ?>
+	<!-- Student re-login popup (used by login.js after AJAX login) -->
+	<div id="studentLogin" class="edu_popup_container mfp-hide">
+		<div class="edu_popup_wrapper">
+			<div class="edu_popup_inner text-center">
+				<h4 class="edu_admin_title edu_logt_title"></h4>
+				<h6 class="edu_admin_sub_title edu_logt_title"><?php echo html_escape($this->common->languageTranslator('ltr_already_logout'));?></h6>
+				<input type="hidden" value="<?php echo base_url();?>" id="base_url">
+				<button type="button" class="edu_btn changeStudentLogin mb-2" data-id=""><?php echo html_escape($this->common->languageTranslator('ltr_yes'));?></button>
+				<button type="button" class="edu_btn edu_btn_black PopupCancelBtn ml-2 mb-2"><?php echo html_escape($this->common->languageTranslator('ltr_cancel'));?></button>
+			</div>
+		</div>
+	</div>
+	<script src="<?php echo base_url();?>assets/js/login.js?<?php echo time();?>"></script>
+	<script src="<?php echo base_url();?>assets/js/valid.js?<?php echo time();?>"></script>
+	<?php endif; ?>
+	<?php if (!empty($load_register_otp_script)) { $this->load->view('frontend/register_otp_script'); } ?>
+	<?php if (!empty($load_login_otp_script)) { $this->load->view('frontend/login_otp_script'); } ?>
   </body>
 </html>

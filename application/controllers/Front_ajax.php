@@ -49,167 +49,10 @@ class Front_ajax extends CI_Controller {
                        0, $length_of_string); 
     } 
     
-    // function login(){
-    //     if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
-    //         if($this->input->post('subAdminId',false)  && !empty($this->input->post('subAdminId',false))){
-    //           $userCheckInfo = $this->db_model->select_data('*','users use index (id)',array('id'=>$this->input->post('subAdminId',false)),1);
-    //           $userDetails = $this->db_model->select_data('id,name,role,status,parent_id,teach_image,email,teach_batch,teach_subject,super_admin','users use index (id)',array('email'=>$userCheckInfo[0]['email'],'password'=>$userCheckInfo[0]['password']),1);
-              
-    //              if($userDetails[0]['status']=='1'){
-    //                 $brewers_strings = $this->random_strings(10);
-    //                 $sess_arr = array(
-    //                             'uid'=> $userDetails[0]['id'],
-    //                             'name'=> $userDetails[0]['name'],
-    //                             'role'=> $userDetails[0]['role'],
-    //                             'status'=> $userDetails[0]['status'],
-    //                             'admin_id' => $userDetails[0]['parent_id'],
-    //                             'profile_img' => $userDetails[0]['teach_image'],
-    //                             'email' => $userDetails[0]['email'],
-    //                             // 'mobile' => $userDetails[0]['contact_no'],
-    //                             'brewers_check' => $brewers_strings,
-    //                             'super_admin' => $userDetails[0]['super_admin'],
-                               
-    //                         );
-                        
-    //                 $url = '';
-    //                 if($userDetails[0]['role']=='1'){
-    //                     $url = base_url().'admin/dashboard';
-    //                 }
-
-    //                 $this->session->set_userdata($sess_arr);
-                    
-    //                 $this->db_model->update_data_limit('courses use index (id)',$this->security->xss_clean(array('status'=>0)),array('admin_id'=>$userDetails[0]['id'],'end_date <= '=>date('Y-m-d')));
-                   
-    //                 if($this->input->post('remember_me',TRUE)){	
-    //                     $cookie = setcookie("UML", base64_encode(urlencode(base64_encode($email))), time() + 86400, '/');
-    //                     $cookie =setcookie("SSD", base64_encode(urlencode(base64_encode($this->input->post('password',TRUE)))), time() + 86400,'/');
-    //                  }
-    //                  else{
-    //                     $cookie =setcookie("UML", base64_encode(urlencode(base64_encode($email))), time() - 86400, '/');
-    //                     $cookie =setcookie("SSD", base64_encode(urlencode(base64_encode($this->input->post('password',TRUE)))), time() - 86400, '/');
-    //                 }
-
-    //                 $resp = array('status'=>'1','msg'=>$this->lang->line('ltr_logged_msg_sub'),'url'=>$url,'otp'=>'');
-                    
-    //                 $this->db_model->update_data_limit('users use index (id)',$this->security->xss_clean(array('token'=>1,'brewers_check'=>$brewers_strings)),array('id'=>$userDetails[0]['id']),1);
-    //               }else{
-    //                 $resp = array('status' => '0','msg' =>$this->lang->line('ltr_contact_to_admin_msg'));
-    //             }
-    //         }
-    //         else{
-    //             if(!empty($this->input->post('email',false)) && !empty($this->input->post('password',false))){			
-    //                 $email = trim($this->input->post('email',TRUE));
-    //                 $pass = md5(trim($this->input->post('password',TRUE)));		
-    //                 if(!filter_var($email, FILTER_VALIDATE_EMAIL)){
-    //                     $stud_cond = array('enrollment_id'=>$email,'password'=>$pass);
-    //                 }else{
-    //                     $stud_cond = array('email'=>$email,'password'=>$pass);
-    //                 }
-    //                 $userDetails = $this->db_model->select_data('id,name,role,status,parent_id,teach_image,email,teach_batch,teach_subject,super_admin','users use index (id)',array('email'=>$email,'password'=>$pass),1);
-    //                 $studentDetails = $this->db_model->select_data('id,name,contact_no,batch_id,admin_id,enrollment_id,image,email,status,login_status','students use index (id)',$stud_cond,1);          
-                      
-    //                 if(!empty($userDetails)){
-    //                       if($userDetails[0]['status']=='1'){
-    //                         $brewers_strings = $this->random_strings(10);
-    //                         $sess_arr = array(
-    //                                     'uid'=> $userDetails[0]['id'],
-    //                                     'name'=> $userDetails[0]['name'],
-    //                                     'role'=> $userDetails[0]['role'],
-    //                                     'status'=> $userDetails[0]['status'],
-    //                                     'admin_id' => $userDetails[0]['parent_id'],
-    //                                     'profile_img' => $userDetails[0]['teach_image'],
-    //                                     'email' => $userDetails[0]['email'],
-    //                                     // 'mobile' => $userDetails[0]['contact_no'],
-    //                                     'brewers_check' => $brewers_strings,
-    //                                     'super_admin' => $userDetails[0]['super_admin'],
-                                       
-    //                                 );
-                                
-    //                         $url = '';
-    //                         if($userDetails[0]['role']=='1'){
-    //                             $url = base_url().'admin/dashboard';
-    //                         }else if($userDetails[0]['role']=='3'){
-    //                             $url = base_url().'teacher/dashboard';
-    //                             $sess_arr['subject_id'] =implode(",",json_decode($userDetails[0]['teach_subject'])) ;
-    //                             $sess_arr['batch_id'] = $userDetails[0]['teach_batch'];
-    //                         }
-        
-    //                         $this->session->set_userdata($sess_arr);
-                            
-    //                         $this->db_model->update_data_limit('courses use index (id)',$this->security->xss_clean(array('status'=>0)),array('admin_id'=>$userDetails[0]['id'],'end_date <= '=>date('Y-m-d')));
-                           
-    //                         if($this->input->post('remember_me',TRUE)){	
-    //                             $cookie = setcookie("UML", base64_encode(urlencode(base64_encode($email))), time() + 86400, '/');
-    //                             $cookie =setcookie("SSD", base64_encode(urlencode(base64_encode($this->input->post('password',TRUE)))), time() + 86400,'/');
-    //                          }
-    //                          else{
-    //                             $cookie =setcookie("UML", base64_encode(urlencode(base64_encode($email))), time() - 86400, '/');
-    //                             $cookie =setcookie("SSD", base64_encode(urlencode(base64_encode($this->input->post('password',TRUE)))), time() - 86400, '/');
-    //                         }
-        
-    //                         $resp = array('status'=>'1','msg'=>$this->lang->line('ltr_logged_msg'),'url'=>$url,'otp'=>'');
-                            
-    //                         $this->db_model->update_data_limit('users use index (id)',$this->security->xss_clean(array('token'=>1,'brewers_check'=>$brewers_strings)),array('id'=>$userDetails[0]['id']),1);
-    //                       }else{
-    //                         $resp = array('status' => '0','msg' =>$this->lang->line('ltr_contact_to_admin_msg'));
-    //                     }
-                      
-    //                 }
-    //                 else if(!empty($studentDetails)){
-    //                     if($studentDetails[0]['status']=='1'){
-    //                         $batch_details = $this->db_model->select_data('id,batch_name','batches use index (id)',array('status'=>1,'id'=>$studentDetails[0]['batch_id']),1);
-                      
-    //                         if($studentDetails[0]['login_status'] == 1){
-    //                             $resp = array('status' => '2','student_id' => $studentDetails[0]['id']);
-    //                         }else{
-    //                             $brewers_strings = $this->random_strings(10);
-    //                             $sess_arr = array(
-    //                                 'uid'=> $studentDetails[0]['id'],
-    //                                 'name'=> $studentDetails[0]['name'],
-    //                                 'role'=> 'student',
-    //                                 'mobile' => $studentDetails[0]['contact_no'],
-    //                                 'admin_id' => $studentDetails[0]['admin_id'],
-    //                                 'profile_img' => $studentDetails[0]['image'],
-    //                                 'email' => $studentDetails[0]['email'],
-    //                                 'batch_id' => $studentDetails[0]['batch_id'],
-    //                                 'enrollment_id' => $studentDetails[0]['enrollment_id'],
-    //                                 'brewers_check' => $brewers_strings,
-    //                             );
-        
-    //                             $this->session->set_userdata($sess_arr);
-                                
-    //                             if($this->input->post('remember_me',TRUE)){	
-    //                                 $cookie = setcookie("email", base64_encode($email), time() + 86400, '/');
-    //                                 $cookie =setcookie("password", base64_encode($this->input->post('password',TRUE)), time() + 86400,'/');
-    //                             }
-    //                             else{
-    //                                 $cookie =setcookie("email", base64_encode($email), time() - 86400, '/');
-    //                                 $cookie =setcookie("password", base64_encode($this->input->post('password',TRUE)), time() - 86400, '/');
-    //                             }
-                                
-    //                             $this->db_model->update_data_limit('students use index (id)',$this->security->xss_clean(array('login_status'=>1,'token'=>1,'brewers_check'=>$brewers_strings)),array('id'=>$studentDetails[0]['id']),1);
-        
-    //                             $resp = array('status'=>'1','msg'=>$this->lang->line('ltr_logged_msg'),'url'=>base_url().'student/my-course','otp'=>'0310');
-    //                         }                   
-        
-    //                       }else{
-    //                         $resp = array('status' => '0','msg' =>$this->lang->line('ltr_contact_to_admin_msg'));
-    //                     }
-    //                 }
-    //                 else{
-    //                     $resp = array('status' => '0','msg' =>$this->lang->line('ltr_wrong_credentials_msg'));
-    //                 }
-    //             }else{
-    //                 $resp = array('status' => '0','msg' =>$this->lang->line('ltr_wrong_credentials_msg'));
-    //             }
-    //         }
-    //         echo json_encode($resp,JSON_UNESCAPED_SLASHES);
-    //     }else{
-    //         echo $this->lang->line('ltr_not_allowed_msg');
-    //     } 
-    // }
     function login(){
         if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
+            $login_redirect_home = in_array(trim((string) $this->input->post('login_redirect', TRUE)), array('index', 'home'), TRUE);
+            $front_home_url = rtrim(base_url(), '/') . '/';
             if($this->input->post('subAdminId',false)  && !empty($this->input->post('subAdminId',false))){
               $userCheckInfo = $this->db_model->select_data('*','users use index (id)',array('id'=>$this->input->post('subAdminId',false)),1);
               $userDetails = $this->db_model->select_data('id,name,role,status,parent_id,teach_image,email,teach_batch,teach_subject,super_admin','users use index (id)',array('email'=>$userCheckInfo[0]['email'],'password'=>$userCheckInfo[0]['password']),1);
@@ -248,7 +91,7 @@ class Front_ajax extends CI_Controller {
                         $cookie =setcookie("SSD", base64_encode(urlencode(base64_encode($this->input->post('password',TRUE)))), time() - 86400, '/');
                     }
 
-                    $resp = array('status'=>'1','msg'=>$this->lang->line('ltr_logged_msg_sub'),'url'=>$url,'otp'=>'');
+                    $resp = array('status'=>'1','msg'=>$this->lang->line('ltr_logged_msg_sub'),'url'=>($login_redirect_home ? $front_home_url : $url),'otp'=>'');
                     
                     $this->db_model->update_data_limit('users use index (id)',$this->security->xss_clean(array('token'=>1,'brewers_check'=>$brewers_strings)),array('id'=>$userDetails[0]['id']),1);
                   }else{
@@ -257,18 +100,61 @@ class Front_ajax extends CI_Controller {
             }else{
                 if(!empty($this->input->post('email',false)) && !empty($this->input->post('password',false))){			
                     $email = trim($this->input->post('email',TRUE));
-                    $pass = md5(trim($this->input->post('password',TRUE)));		
+                    $pass = md5(trim($this->input->post('password',TRUE)));
+                    $user_type_pw = strtolower(trim((string) $this->input->post('user_type', TRUE)));
+                    if (! in_array($user_type_pw, array('student', 'teacher', 'institute'), true)) {
+                        $user_type_pw = '';
+                    }
                     if(!filter_var($email, FILTER_VALIDATE_EMAIL)){
                         $stud_cond = array('enrollment_id'=>$email,'password'=>$pass);
                     }else{
                         $stud_cond = array('email'=>$email,'password'=>$pass);
                     }
-                        
-                   
-                            $userDetails = $this->db_model->select_data('id,name,role,status,parent_id,teach_image,email,teach_batch,teach_subject,super_admin','users use index (id)',array('email'=>$email,'password'=>$pass),1);
-                            $studentDetails = $this->db_model->select_data('id,name,contact_no,batch_id,admin_id,enrollment_id,image,email,status,login_status','students use index (id)',$stud_cond,1);          
-                            
-                            if(!empty($userDetails)){
+
+                    $userDetails = array();
+                    $studentDetails = array();
+                    $userFields = 'id,name,role,status,parent_id,teach_image,email,teach_batch,teach_subject,super_admin';
+                    if ($user_type_pw === '' || $user_type_pw === 'teacher' || $user_type_pw === 'institute') {
+                        if ($user_type_pw === 'teacher') {
+                            $userDetails = $this->db_model->select_data($userFields,'users use index (id)',array('email'=>$email,'password'=>$pass,'role'=>'3'),1);
+                        } elseif ($user_type_pw === 'institute') {
+                            $userDetails = $this->db_model->select_data($userFields.',user_type','users use index (id)',array('email'=>$email,'password'=>$pass),1);
+                            if (! empty($userDetails)) {
+                                $r0 = $userDetails[0];
+                                $isInstitute = (isset($r0['role']) && (string) $r0['role'] === '4');
+                                if (! $isInstitute && ! empty($r0['user_type'])) {
+                                    $isInstitute = (strtolower(trim((string) $r0['user_type'])) === 'institute');
+                                }
+                                if (! $isInstitute) {
+                                    $userDetails = array();
+                                }
+                            }
+                        } else {
+                            $userDetails = $this->db_model->select_data($userFields,'users use index (id)',array('email'=>$email,'password'=>$pass),1);
+                        }
+                    }
+                    if ($user_type_pw === '' || $user_type_pw === 'student') {
+                        $studentDetails = $this->db_model->select_data('id,name,contact_no,batch_id,admin_id,enrollment_id,image,email,status,login_status','students use index (id)',$stud_cond,1);
+                        if (empty($studentDetails)) {
+                            $plainStudentPass = trim((string) $this->input->post('password', TRUE));
+                            if ($plainStudentPass !== '') {
+                                $lookupCol = filter_var($email, FILTER_VALIDATE_EMAIL) ? array('email' => $email) : array('enrollment_id' => $email);
+                                $studentRow = $this->db_model->select_data('id,name,contact_no,batch_id,admin_id,enrollment_id,image,email,status,login_status,password','students use index (id)', $lookupCol, 1);
+                                if (!empty($studentRow) && isset($studentRow[0]['password']) && $studentRow[0]['password'] !== '') {
+                                    $storedHash = $studentRow[0]['password'];
+                                    $md5Plain = md5($plainStudentPass);
+                                    $legacyOk = (strcasecmp($md5Plain, $storedHash) === 0 || $plainStudentPass === $storedHash);
+                                    $modernOk = password_verify($plainStudentPass, $storedHash);
+                                    if ($modernOk || $legacyOk) {
+                                        unset($studentRow[0]['password']);
+                                        $studentDetails = $studentRow;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if(!empty($userDetails)){
                                   if($userDetails[0]['status']=='1'){
                                     $brewers_strings = $this->random_strings(10);
                                     $sess_arr = array(
@@ -307,7 +193,7 @@ class Front_ajax extends CI_Controller {
                                         $cookie =setcookie("SSD", base64_encode(urlencode(base64_encode($this->input->post('password',TRUE)))), time() - 86400, '/');
                                     }
                 
-                                    $resp = array('status'=>'1','msg'=>$this->lang->line('ltr_logged_msg'),'url'=>$url,'otp'=>'');
+                                    $resp = array('status'=>'1','msg'=>$this->lang->line('ltr_logged_msg'),'url'=>($login_redirect_home ? $front_home_url : $url),'otp'=>'');
                                     
                                     $this->db_model->update_data_limit('users use index (id)',$this->security->xss_clean(array('token'=>1,'brewers_check'=>$brewers_strings)),array('id'=>$userDetails[0]['id']),1);
                                   }else{
@@ -349,7 +235,7 @@ class Front_ajax extends CI_Controller {
                                         
                                         $this->db_model->update_data_limit('students use index (id)',$this->security->xss_clean(array('login_status'=>1,'token'=>1,'brewers_check'=>$brewers_strings)),array('id'=>$studentDetails[0]['id']),1);
                 
-                                        $resp = array('status'=>'1','msg'=>$this->lang->line('ltr_logged_msg'),'url'=>base_url().'student/my-course','otp'=>'0310');
+                                        $resp = array('status'=>'1','msg'=>$this->lang->line('ltr_logged_msg'),'url'=>($login_redirect_home ? $front_home_url : base_url().'student/my-course'),'otp'=>'0310');
                                     }                   
                 
                                   }else{
@@ -905,6 +791,11 @@ function change_student_status(){
 					$data_arrs['velue_text'] = trim($_POST['razorpay_secret_key']);
 					$data_arr = $this->security->xss_clean($data_arrs);
 					$ins = $this->db_model->update_data_limit('general_settings',$data_arr,array('key_text'=>'razorpay_secret_key'),1);
+				}
+				if (isset($_POST['razorpay_webhook_secret'])) {
+					$data_arrwh = array('velue_text' => trim((string) $_POST['razorpay_webhook_secret']));
+					$data_arrwh = $this->security->xss_clean($data_arrwh);
+					$this->db_model->update_data_limit('general_settings', $data_arrwh, array('key_text' => 'razorpay_webhook_secret'), 1);
 				}
 				if(!empty($this->input->post('paypal_client_id'))){
 					$data_arpr['velue_text'] = trim($_POST['paypal_client_id']);

@@ -16,7 +16,12 @@ class Admin_profile extends CI_Controller {
 	            redirect(base_url('teacher/dashboard')); 
 	        }
 	    }else{
-	        redirect(base_url('login'));
+			// Guest: only public admin auth URLs; anything else → admin login (site login stays at `/login` → `website/login`).
+			$uri_path = strtolower(trim((string) $this->uri->uri_string(), '/'));
+			$allowed_guest_paths = array('admin/login', 'admin/register');
+			if (! in_array($uri_path, $allowed_guest_paths, true)) {
+				redirect(base_url('admin/login'));
+			}
 	    }
 		
 		// check select language
@@ -68,7 +73,7 @@ class Admin_profile extends CI_Controller {
 		   $or_like = array(array('students.admin_id',0));
 		}	
 
-// 		$data['currSin'] = $this->db_model->select_data('*','general_settings',$condd);
+		// 		$data['currSin'] = $this->db_model->select_data('*','general_settings',$condd);
 		$data['currSin'] = $this->db_model->select_data('*','general_settings');
 		$data['Amount'] = $this->db_model->aggregate_data('student_payment_history','amount','sum',$condd);
 	    $data['offline'] =	$this->db_model->countAll('student_payment_history',$cnd);
@@ -80,6 +85,35 @@ class Admin_profile extends CI_Controller {
 		$this->load->view('admin/dashboard',$data);
 		$this->load->view('common/admin_footer');
 	}
+	
+    function login(){
+		if(isset($this->session->userdata['role']))
+		{
+		  $role = $this->session->userdata['role'];
+		  if($role==1){
+			redirect(base_url().'admin/dashboard');
+		  }elseif($role==3){
+			redirect(base_url().'teacher/dashboard');
+		  }else if($role=='student'){
+			redirect(base_url().'student/my_course');
+		  }
+		}
+		$header['title'] = $this->lang->line('ltr_login');
+		$this->load->view('common/login_admin_header', $header);
+		$this->load->view('admin/login');
+		$this->load->view('common/admin_footer');
+	  }
+  
+	  function register(){
+	   
+		$header['title']=$this->lang->line('ltr_register'); 
+		$this->load->view('common/auth_header',$header);
+		$this->load->view('frontend/register');
+		$this->load->view('common/auth_footer');
+	  }
+  
+
+
 	function student_doubts_class(){
 		$header['title']=$this->lang->line('ltr_doubts_class');
 		$admin_id = $this->session->userdata('uid');
@@ -260,6 +294,18 @@ class Admin_profile extends CI_Controller {
 		$data['subject'] = $this->db_model->select_data('id,subject_name,no_of_questions','subjects use index (id)',$cond,'',array('id','desc'));
 	    $data['category_data'] = $this->db_model->select_data('*','batch_category use index (id)',$cond,'',array('id','desc'));
 		$data['subcat_data'] = $this->db_model->select_data('*','batch_subcategory use index (id)',$cond,'',array('id','desc'));
+
+		$this->db->reset_query();
+		$this->db->select('id,name');
+		$this->db->from('users');
+		$this->db->where('admin_id', (int) $this->session->userdata('uid'));
+		$this->db->where('status', 1);
+		$this->db->group_start();
+		$this->db->where('role', 4);
+		$this->db->or_where("LOWER(TRIM(IFNULL(user_type,''))) = 'institute'", null, false);
+		$this->db->group_end();
+		$this->db->order_by('id', 'desc');
+		$data['institute_list'] = $this->db->get()->result_array();
 
 		$this->load->view("common/admin_header",$header);
 		$this->load->view("admin/add_batch",$data); 
@@ -1200,6 +1246,8 @@ class Admin_profile extends CI_Controller {
 		$data['payment_type'] = $this->general_settings('payment_type');
 		$data['razorpay_key_id'] = $this->general_settings('razorpay_key_id');
 		$data['razorpay_secret_key'] = $this->general_settings('razorpay_secret_key');
+		$wh = $this->db_model->select_data('velue_text', 'general_settings', array('key_text' => 'razorpay_webhook_secret'), 1);
+		$data['razorpay_webhook_secret'] = !empty($wh[0]['velue_text']) ? $wh[0]['velue_text'] : '';
 		$data['paypal_client_id'] = $this->general_settings('paypal_client_id');
 		$data['paypal_secret_key'] = $this->general_settings('paypal_secret_key');
 		$data['currency_converter_api'] = $this->general_settings('currency_converter_api');

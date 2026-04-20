@@ -27,7 +27,13 @@
 									<label><?php echo html_escape($this->common->languageTranslator('ltr_razorpay_secret_key'));?><sup>*</sup></label>
 									<input type="text" name="razorpay_secret_key" value="<?php if(!empty($razorpay_secret_key)){echo $razorpay_secret_key ;} ?>" class="form-control " placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_secret_key'));?>">
 								</div>
-							</div> 
+							</div>
+							<div class="col-lg-12 col-md-12 col-sm-12 col-12 edu_bottom_20">
+							    <div class="form-group">
+									<label><?php echo html_escape($this->common->languageTranslator('ltr_razorpay_webhook_secret'));?></label>
+									<input type="text" name="razorpay_webhook_secret" value="<?php echo isset($razorpay_webhook_secret) ? html_escape($razorpay_webhook_secret) : ''; ?>" class="form-control" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_razorpay_webhook_secret_placeholder'));?>">
+								</div>
+							</div>
 							<div class="col-lg-6 col-md-6 col-sm-12 col-12 edu_bottom_20">
 							    <div class="form-group">
 									<label><?php echo html_escape($this->common->languageTranslator('ltr_paypal_client_id'));?><sup>*</sup></label>

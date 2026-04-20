@@ -190,10 +190,16 @@
 		date_default_timezone_set($timezoneDB[0]['timezone']);
 	}
 	
-	$admin_id = $this->session->userdata('admin_id');
-	$student_id = $this->session->userdata('uid');
-	$condN = "admin_id = $admin_id AND student_id = $student_id AND status = 1 AND read_status = 0";
-	$notice_count = $this->db_model->countAll('notices use index(id)',$condN);
+	$admin_id = (int) $this->session->userdata('admin_id');
+	$student_id = (int) $this->session->userdata('uid');
+	if ($admin_id < 1) {
+		$admin_id = $student_id;
+	}
+	$notice_count = 0;
+	if ($admin_id > 0 && $student_id > 0) {
+		$condN = 'admin_id = ' . $admin_id . ' AND student_id = ' . $student_id . ' AND status = 1 AND read_status = 0';
+		$notice_count = $this->db_model->countAll('notices use index(id)', $condN);
+	}
 	
 ?>
 <div class="edu_header_sidebar">
