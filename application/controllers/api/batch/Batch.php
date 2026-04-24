@@ -75,6 +75,37 @@ class Batch extends MY_Controller
 		$this->db->group_end();
 	}
 
+	private function zoom_signature($sdk_key, $sdk_secret, $meeting_number, $role)
+	{
+		$sdk_key = trim((string) $sdk_key);
+		$sdk_secret = trim((string) $sdk_secret);
+		$meeting_number = trim((string) $meeting_number);
+		$role = (int) $role;
+		if ($sdk_key === '' || $sdk_secret === '' || $meeting_number === '') {
+			return '';
+		}
+		$time = (time() - 5 * 60) * 1000;
+		$data = base64_encode($sdk_key . $meeting_number . $time . $role);
+		$hash = hash_hmac('sha256', $data, $sdk_secret, true);
+		$_sig = $sdk_key . "." . $meeting_number . "." . $time . "." . $role . "." . base64_encode($hash);
+		return rtrim(strtr(base64_encode($_sig), '+/', '-_'), '=');
+	}
+
+	private function zoom_display_name_from_payload(array $payload)
+	{
+		$uid = isset($payload['uid']) ? (int) $payload['uid'] : 0;
+		$ut = strtolower(trim((string) (isset($payload['ut']) ? $payload['ut'] : '')));
+		if ($uid < 1) {
+			return '';
+		}
+		if ($ut === 'student') {
+			$s = $this->db_model->select_data('name', 'students', array('id' => $uid), 1);
+			return !empty($s[0]['name']) ? (string) $s[0]['name'] : '';
+		}
+		$u = $this->db_model->select_data('name', 'users', array('id' => $uid), 1);
+		return !empty($u[0]['name']) ? (string) $u[0]['name'] : '';
+	}
+
 	/**
 	 * Enrolled student or teacher assigned in batch_subjects for this batch_id.
 	 */
@@ -91,7 +122,7 @@ class Batch extends MY_Controller
 			if ($uid < 1 || $this->authorize_student_request($uid) === false) {
 				return false;
 			}
-			$enrollment = $this->db_model->select_data('id', 'sudent_batchs', array('student_id' => $uid, 'batch_id' => $batch_id), 1);
+			$enrollment = $this->db_model->select_data('id', 'student_batchs', array('student_id' => $uid, 'batch_id' => $batch_id), 1);
 			if (empty($enrollment)) {
 				echo json_encode(array('status' => 'false', 'msg' => 'You are not enrolled in this batch'));
 				return false;
@@ -210,9 +241,9 @@ class Batch extends MY_Controller
 	/**
 	 * POST/GET api/batch/batch-list
 	 * Optional: search (filters batch_name); page (default 1); limit or per_page (default 20, max 100).
-	 * Auth:
-	 *   - student: enrolled batches from sudent_batchs
-	 *   - teacher: assigned batches from batch_subjects
+	 * Optional: list — when set to "All" (case-insensitive), returns all active batches (status = 1) for any valid token.
+	 * When set to "my" (case-insensitive), same as empty/absent: student = enrolled batches only; teacher = assigned batches only.
+	 * When list is empty/absent: student = enrolled batches; teacher = assigned batches; other roles get an error.
 	 */
 	public function batch_list()
 	{
@@ -223,6 +254,8 @@ class Batch extends MY_Controller
 		}
 
 		$search = isset($data['search']) ? trim($data['search']) : '';
+		$list_flag = isset($data['list']) ? trim((string) $data['list']) : '';
+		$want_all_active = (strcasecmp($list_flag, 'All') === 0);
 
 		$pg = $this->parse_api_list_pagination($data);
 		$page = $pg['page'];
@@ -230,9 +263,14 @@ class Batch extends MY_Controller
 		$offset = $pg['offset'];
 
 		$total_records = 0;
+		$batches = array();
 
+		if ($want_all_active) {
+			$total_records = $this->count_all_active_batches_raw($search);
+			$batches = $this->fetch_all_active_batches_raw($search, $limit, $offset);
+		}
 		// STUDENT FLOW: existing behavior (enrolled batches)
-		if ($payload['ut'] === 'student') {
+		elseif ($payload['ut'] === 'student') {
 			$student_id = (int) $payload['uid'];
 			if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
 				return;
@@ -265,7 +303,7 @@ class Batch extends MY_Controller
 		} else {
 			echo json_encode(array(
 				'status' => 'false',
-				'msg' => 'Batch list is available for student and teacher only'
+				'msg' => 'Batch list is available for student and teacher only (or pass list=All for all active batches)'
 			));
 			return;
 		}
@@ -346,13 +384,18 @@ class Batch extends MY_Controller
 			}
 			$enrollment = $this->db_model->select_data(
 				'*',
-				'sudent_batchs',
+				'student_batchs',
 				array('student_id' => $student_id, 'batch_id' => $batch_id),
 				1
 			);
+			// For web "all active batches" flow, allow opening details even if not enrolled yet.
+			// Client can then show "Enroll to Unlock" and continue to payment.
 			if (empty($enrollment)) {
-				echo json_encode(array('status' => 'false', 'msg' => 'You are not enrolled in this batch'));
-				return;
+				$enrollment = array(array(
+					'status' => 0,
+					'create_at' => '',
+					'added_by' => ''
+				));
 			}
 		} elseif ($ut === 'teacher') {
 			if ($uid < 1) {
@@ -497,6 +540,7 @@ class Batch extends MY_Controller
 				'create_at' => isset($enrollment[0]['create_at']) ? $enrollment[0]['create_at'] : '',
 				'added_by' => isset($enrollment[0]['added_by']) ? $enrollment[0]['added_by'] : ''
 			),
+			'canEnroll' => ($ut === 'student' && (int) $enrollment[0]['status'] !== 1),
 			'modules' => array(
 				'live_classes' => array(
 					'is_live' => $is_live,
@@ -1086,6 +1130,27 @@ class Batch extends MY_Controller
 				'meetingNumber' => !empty($meeting[0]['meetingNumber']) ? $meeting[0]['meetingNumber'] : '',
 				'password' => !empty($meeting[0]['password']) ? $meeting[0]['password'] : ''
 			);
+
+			$meeting_number = (string) $row['meeting']['meetingNumber'];
+			$meeting_pwd = (string) $row['meeting']['password'];
+			$zoom_keys = $this->db_model->select_data(
+				'zoom_api_key,zoom_api_secret',
+				'live_class_setting',
+				array('batch' => $batch_id, 'status' => 1),
+				1,
+				array('id', 'desc')
+			);
+			$sdk_key = !empty($zoom_keys[0]['zoom_api_key']) ? trim((string) $zoom_keys[0]['zoom_api_key']) : '';
+			$sdk_secret = !empty($zoom_keys[0]['zoom_api_secret']) ? trim((string) $zoom_keys[0]['zoom_api_secret']) : '';
+			$role = (strtolower(trim((string) $payload['ut'])) === 'teacher') ? 1 : 0;
+			$signature = $this->zoom_signature($sdk_key, $sdk_secret, $meeting_number, $role);
+			$display_name = $this->zoom_display_name_from_payload($payload);
+			$row['meeting']['sdkKey'] = $sdk_key;
+			$row['meeting']['signature'] = $signature;
+			$row['meeting']['role'] = $role;
+			$row['meeting']['displayName'] = $display_name;
+			$row['meeting']['webJoinUrl'] = ($meeting_number !== '') ? ('https://zoom.us/wc/join/' . rawurlencode($meeting_number)) : '';
+			$row['meeting']['mobileJoinUrl'] = ($meeting_number !== '') ? ('zoomus://zoom.us/join?confno=' . rawurlencode($meeting_number) . ($meeting_pwd !== '' ? ('&pwd=' . rawurlencode($meeting_pwd)) : '')) : '';
 		}
 
 		echo json_encode(array(

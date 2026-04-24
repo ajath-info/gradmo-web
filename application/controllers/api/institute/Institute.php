@@ -58,7 +58,7 @@ class Institute extends MY_Controller
 			if ($uid < 1 || $this->authorize_student_request($uid) === false) {
 				return false;
 			}
-			$enrollment = $this->db_model->select_data('id', 'sudent_batchs', array('student_id' => $uid, 'batch_id' => $batch_id), 1);
+			$enrollment = $this->db_model->select_data('id', 'student_batchs', array('student_id' => $uid, 'batch_id' => $batch_id), 1);
 			if (empty($enrollment)) {
 				echo json_encode(array('status' => 'false', 'msg' => 'You are not enrolled in this batch'));
 				return false;
@@ -235,8 +235,69 @@ class Institute extends MY_Controller
 	}
 
 	/**
+	 * Distinct institute user ids (batches.admin_id) for batches the logged-in user is tied to.
+	 * Used when list=my on institute listing: student = enrolled batches; teacher = assigned batches; institute = self only.
+	 *
+	 * @return int[]
+	 */
+	private function institute_listing_my_institute_user_ids(array $payload)
+	{
+		$ut = strtolower(trim((string) (isset($payload['ut']) ? $payload['ut'] : '')));
+		$uid = (int) (isset($payload['uid']) ? $payload['uid'] : 0);
+		if ($uid < 1) {
+			return array();
+		}
+		if ($ut === 'institute') {
+			return array($uid);
+		}
+		if ($ut === 'student') {
+			if ($this->authorize_student_request($uid) === false) {
+				return array();
+			}
+			$this->db->distinct();
+			$this->db->select('b.admin_id');
+			$this->db->from('student_batchs sb');
+			$this->db->join('batches b', 'b.id = sb.batch_id', 'inner');
+			$this->db->where('sb.student_id', $uid);
+			$this->db->where('b.admin_id >', 0);
+			$rows = $this->db->get()->result_array();
+			$ids = array();
+			if (!empty($rows)) {
+				foreach ($rows as $r) {
+					$aid = isset($r['admin_id']) ? (int) $r['admin_id'] : 0;
+					if ($aid > 0) {
+						$ids[] = $aid;
+					}
+				}
+			}
+			return array_values(array_unique($ids));
+		}
+		if ($ut === 'teacher') {
+			$this->db->distinct();
+			$this->db->select('b.admin_id');
+			$this->db->from('batch_subjects bs');
+			$this->db->join('batches b', 'b.id = bs.batch_id', 'inner');
+			$this->db->where('bs.teacher_id', $uid);
+			$this->db->where('b.admin_id >', 0);
+			$rows = $this->db->get()->result_array();
+			$ids = array();
+			if (!empty($rows)) {
+				foreach ($rows as $r) {
+					$aid = isset($r['admin_id']) ? (int) $r['admin_id'] : 0;
+					if ($aid > 0) {
+						$ids[] = $aid;
+					}
+				}
+			}
+			return array_values(array_unique($ids));
+		}
+		return array();
+	}
+
+	/**
 	 * POST/GET api/institute/listing — institutes (auth required).
 	 * Params: batch_id (optional; if set, student|teacher must be enrolled/assigned to that batch);
+	 * list (optional) — when "my" (case-insensitive), return only institutes linked to the logged-in user's batch enrollments (student) or assignments (teacher), or self for institute accounts;
 	 * search (optional); city (optional, partial match on users.city);
 	 * user_type (optional, exact match on LOWER(TRIM(users.user_type)));
 	 * order_field name|distance; order_type asc|desc;
@@ -260,6 +321,13 @@ class Institute extends MY_Controller
 					return;
 				}
 			}
+		}
+
+		$list_flag = isset($data['list']) ? trim((string) $data['list']) : '';
+		$want_my_institutes = (strcasecmp($list_flag, 'my') === 0);
+		$my_institute_ids = array();
+		if ($want_my_institutes) {
+			$my_institute_ids = $this->institute_listing_my_institute_user_ids($payload);
 		}
 
 		$order_field = isset($data['order_field']) ? strtolower(trim(trim((string) $data['order_field']), "\"' \t\n\r\0\x0B")) : 'distance';
@@ -305,11 +373,27 @@ class Institute extends MY_Controller
 		$limit = $pg['limit'];
 		$offset = $pg['offset'];
 
+		if ($want_my_institutes && empty($my_institute_ids)) {
+			echo json_encode(array(
+				'status' => 'true',
+				'batchId' => ($batch_id >= 1 ? $batch_id : null),
+				'orderField' => isset($order_field) ? $order_field : 'distance',
+				'orderType' => strtoupper(isset($order_type) ? $order_type : 'asc'),
+				'institutes' => array(),
+				'pagination' => $this->build_api_list_pagination_meta($page, $limit, 0),
+				'msg' => 'No institutes found for your enrollments',
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
+
 		$users_flip = $this->users_table_field_flip();
 
 		$this->db->from('users users');
 		$this->db->where('users.status', 1);
 		$this->db->where("(users.role = 4 OR LOWER(IFNULL(users.user_type,'')) = 'institute')", null, false);
+		if ($want_my_institutes) {
+			$this->db->where_in('users.id', $my_institute_ids);
+		}
 		$this->apply_institute_listing_search($search, $users_flip);
 		$this->apply_institute_listing_city_filter($city_filter, $users_flip);
 		$this->apply_institute_listing_user_type_filter($user_type_filter, $users_flip);
@@ -321,6 +405,9 @@ class Institute extends MY_Controller
 		$this->db->where('users.status', 1);
 		$this->db->where('users.role !=', 1);
 		//$this->db->where("(users.role = 4 OR LOWER(IFNULL(users.user_type,'')) = 'institute')", null, false);
+		if ($want_my_institutes) {
+			$this->db->where_in('users.id', $my_institute_ids);
+		}
 		$this->apply_institute_listing_search($search, $users_flip);
 		$this->apply_institute_listing_city_filter($city_filter, $users_flip);
 		$this->apply_institute_listing_user_type_filter($user_type_filter, $users_flip);

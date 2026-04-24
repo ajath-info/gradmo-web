@@ -60,8 +60,8 @@ class Student_profile extends CI_Controller {
 		$uid = $this->session->userdata('uid');
 		$batch_id = $this->session->userdata('batch_id');
 		$batch_id_like = '"'.$this->session->userdata('batch_id').'"';
-		$data['batch_details'] = $this->db_model->custom_slect_query("sudent_batchs.student_id,batches.*  FROM `sudent_batchs` JOIN `batches` ON `batches`.`id`=`sudent_batchs`.`batch_id` WHERE `sudent_batchs`.`student_id` = '".$uid."' ");
-		// $data['batch_details'] = $this->db_model->select_data('*', 'sudent_batchs',array('student_id' => $uid));
+		$data['batch_details'] = $this->db_model->custom_slect_query("student_batchs.student_id,batches.*  FROM `student_batchs` JOIN `batches` ON `batches`.`id`=`student_batchs`.`batch_id` WHERE `student_batchs`.`student_id` = '".$uid."' ");
+		// $data['batch_details'] = $this->db_model->select_data('*', 'student_batchs',array('student_id' => $uid));
         $data['total_mock_test']=$this->db_model->countAll('exams use index (id)',array('admin_id'=>$admin_id,'status'=>1,'type'=>1,'mock_sheduled_date'=>date('Y-m-d'),'batch_id'=>$batch_id));
         $data['upcoming_mock_test']=$this->db_model->countAll('exams use index (id)',array('admin_id'=>$admin_id,'status'=>1,'type'=>1,'mock_sheduled_date >'=>date('Y-m-d'),'batch_id'=>$batch_id));
         
@@ -780,7 +780,7 @@ class Student_profile extends CI_Controller {
 
 	public function check_batch(){
 		if(empty($_SESSION['batch_id'])){
-		    $batches = $this->db_model->select_data('*','batches use index (id)',array('batches.status'=>'1','batches.admin_id'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('sudent_batchs','sudent_batchs.batch_id=batches.id'));
+		    $batches = $this->db_model->select_data('*','batches use index (id)',array('batches.status'=>'1','batches.admin_id'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('student_batchs','student_batchs.batch_id=batches.id'));
 		    if(!empty($batches)){
     		  redirect(base_url('student/my-course')); 
         	  }else{
@@ -801,8 +801,8 @@ class Student_profile extends CI_Controller {
 	function my_course(){
 	    
 		$header['title'] = $this->lang->line('ltr_my_course');
-        // $batches = $this->db_model->select_data('*','batches use index (id)',array('batches.status'=>'1','admin_id'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('sudent_batchs','sudent_batchs.batch_id=batches.id'));
-        $batches = $this->db_model->select_data('*','batches use index (id)',array('batches.status'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('sudent_batchs','sudent_batchs.batch_id=batches.id'));
+        // $batches = $this->db_model->select_data('*','batches use index (id)',array('batches.status'=>'1','admin_id'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('student_batchs','student_batchs.batch_id=batches.id'));
+        $batches = $this->db_model->select_data('*','batches use index (id)',array('batches.status'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('student_batchs','student_batchs.batch_id=batches.id'));
 	  if(!empty($batches)){
 	  	
 		  foreach($batches as $key =>$value){
@@ -825,7 +825,7 @@ class Student_profile extends CI_Controller {
 		}
 		$header['title'] = $this->lang->line('ltr_courses');
 		if(!empty($this->session->userdata('uid'))){
-    		$batchs_id =$this->db_model->select_data('batch_id','sudent_batchs',array('student_id'=>$this->session->userdata('uid')));
+    		$batchs_id =$this->db_model->select_data('batch_id','student_batchs',array('student_id'=>$this->session->userdata('uid')));
     		
     	    if(!empty($batchs_id)){
     	        $batchId=array();
@@ -999,7 +999,7 @@ class Student_profile extends CI_Controller {
 	function check_batch_dashboard(){
 	   
 	  	    	if(empty($_SESSION['batch_id'])){
-		    $batches = $this->db_model->select_data('*','batches use index (id)',array('batches.status'=>'1','admin_id'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('sudent_batchs','sudent_batchs.batch_id=batches.id'));
+		    $batches = $this->db_model->select_data('*','batches use index (id)',array('batches.status'=>'1','admin_id'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('student_batchs','student_batchs.batch_id=batches.id'));
 		  	if(is_array($batches)){
     		  redirect(base_url('student/select-dashboard')); 
         	  }else{

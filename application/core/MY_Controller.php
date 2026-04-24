@@ -451,9 +451,9 @@ class MY_Controller extends CI_Controller
 		$this->db->reset_query();
 		$this->db->select('COUNT(DISTINCT batches.id) AS c', false);
 		$this->db->from('batches');
-		$this->db->join('sudent_batchs', 'sudent_batchs.batch_id = batches.id');
+		$this->db->join('student_batchs', 'student_batchs.batch_id = batches.id');
 		$this->db->where('batches.status', '1');
-		$this->db->where('sudent_batchs.student_id', $student_id);
+		$this->db->where('student_batchs.student_id', $student_id);
 		if ($search !== '') {
 			$this->db->like('batches.batch_name', $search);
 		}
@@ -462,7 +462,7 @@ class MY_Controller extends CI_Controller
 	}
 
 	/**
-	 * Raw enrolled batches for a student (batches + sudent_batchs fields).
+	 * Raw enrolled batches for a student (batches + student_batchs fields).
 	 *
 	 * @param string $search Optional filter on batches.batch_name
 	 * @param int|null $limit null = no limit; positive = max rows
@@ -482,13 +482,13 @@ class MY_Controller extends CI_Controller
 			$db_limit = array((int) $limit, (int) $offset);
 		}
 		$batches = $this->db_model->select_data(
-			'batches.*, sudent_batchs.status as enrollment_status, sudent_batchs.create_at as enrolled_at',
+			'batches.*, student_batchs.status as enrollment_status, student_batchs.create_at as enrolled_at',
 			'batches use index (id)',
-			array('batches.status' => '1', 'sudent_batchs.student_id' => $student_id),
+			array('batches.status' => '1', 'student_batchs.student_id' => $student_id),
 			$db_limit,
 			array('batches.id', 'desc'),
 			$like,
-			array('sudent_batchs', 'sudent_batchs.batch_id = batches.id')
+			array('student_batchs', 'student_batchs.batch_id = batches.id')
 		);
 		return is_array($batches) ? $batches : array();
 	}
@@ -558,9 +558,51 @@ class MY_Controller extends CI_Controller
 	}
 
 	/**
+	 * Count active batches (status = 1), optional filter on batch_name.
+	 */
+	protected function count_all_active_batches_raw($search = '')
+	{
+		$search = trim((string) $search);
+		$this->db->reset_query();
+		$this->db->from('batches');
+		$this->db->where('status', '1');
+		if ($search !== '') {
+			$this->db->like('batch_name', $search);
+		}
+		return (int) $this->db->count_all_results();
+	}
+
+	/**
+	 * Active batches only (status = 1), ordered by id desc, with optional name search.
+	 *
+	 * @param string   $search
+	 * @param int|null $limit  null = no limit
+	 * @param int      $offset
+	 * @return array<int, array>
+	 */
+	protected function fetch_all_active_batches_raw($search = '', $limit = null, $offset = 0)
+	{
+		$search = trim((string) $search);
+		$like = ($search !== '') ? array('batch_name', $search) : '';
+		$db_limit = '';
+		if ($limit !== null && (int) $limit > 0) {
+			$db_limit = array((int) $limit, (int) $offset);
+		}
+		$batches = $this->db_model->select_data(
+			'*',
+			'batches use index (id)',
+			array('status' => '1'),
+			$db_limit,
+			array('id', 'desc'),
+			$like
+		);
+		return is_array($batches) ? $batches : array();
+	}
+
+	/**
 	 * Map raw batch rows to batch_list card objects (instructor + schedule filled).
 	 *
-	 * @param array $batches Raw rows from {@see fetch_student_enrolled_batches_raw()} or {@see fetch_teacher_assigned_batches_raw()}
+	 * @param array $batches Raw rows from {@see fetch_student_enrolled_batches_raw()}, {@see fetch_teacher_assigned_batches_raw()}, or {@see fetch_all_active_batches_raw()}
 	 * @return array<int, array>
 	 */
 	protected function map_batches_to_dashboard_list_cards(array $batches)
@@ -643,23 +685,36 @@ class MY_Controller extends CI_Controller
 	 *   - active_only (bool, default true) — status 1 or '1'
 	 * @return list<array> formatted batch rows
 	 */
-	protected function fetch_institute_batches_for_api($institute_user_id)
+	protected function fetch_institute_batches_for_api($institute_user_id, array $options = null)
 	{
-		$owner_ids = (int) $institute_user_id;
-		
-		if (empty($owner_ids)) {
+		$uid = (int) $institute_user_id;
+		if ($uid < 1) {
 			return array();
 		}
+		$opts = is_array($options) ? $options : array();
+		$active_only = !array_key_exists('active_only', $opts) || $opts['active_only'];
+		$owner_ids = isset($opts['owner_ids']) && is_array($opts['owner_ids']) ? $opts['owner_ids'] : array();
+		$owner_ids = array_values(array_unique(array_map('intval', $owner_ids)));
+		$owner_ids = array_values(array_filter($owner_ids, function ($x) {
+			return $x > 0;
+		}));
 		$this->db->reset_query();
 		$this->db->from('batches');
-		$this->db->where('institute_id', $owner_ids);
+		$this->db->group_start();
+		$this->db->where('institute_id', $uid);
+		if (!empty($owner_ids)) {
+			$this->db->or_where_in('admin_id', $owner_ids);
+		}
+		$this->db->group_end();
+		if ($active_only) {
+			$this->db->group_start();
+			$this->db->where('status', 1);
+			$this->db->or_where('status', '1');
+			$this->db->group_end();
+		}
 		$this->db->order_by('id', 'desc');
 		$rows = $this->db->get()->result_array();
-		if (empty($rows)) {
-			return array();
-		}
-		
-		return $rows;
+		return !empty($rows) && is_array($rows) ? $rows : array();
 	}
 
 	/**

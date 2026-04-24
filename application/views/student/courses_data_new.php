@@ -68,7 +68,7 @@
                               <li><p><a href="<?php echo base_url('courses-details/'.$value['id']); ?>" class="edu_courses_view mt-2" target="_blank"><?php echo html_escape($this->common->languageTranslator('ltr_course_view'));?> </a> </p></li>
                                       <!-- <li><p><a href="#" class="cour_view"> online </a></p></li> -->
                                       <?php 
-                                  $purchase = $this->db_model->select_data('*', 'sudent_batchs',array('student_id' => $this->session->userdata('uid'),'batch_id'=>$value['id']));
+                                  $purchase = $this->db_model->select_data('*', 'student_batchs',array('student_id' => $this->session->userdata('uid'),'batch_id'=>$value['id']));
                                     // print_r($value);
                                 if(empty($purchase)){
                                 ?>

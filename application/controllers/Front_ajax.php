@@ -1266,7 +1266,7 @@ function change_student_status(){
     		    }
 				
     		    if(!empty($check_email)){
-    		        $check_batch = $this->db_model->select_data('*','sudent_batchs',array('student_id'=>$check_email[0]['id'],'batch_id'=>$_POST['batchId']));
+    		        $check_batch = $this->db_model->select_data('*','student_batchs',array('student_id'=>$check_email[0]['id'],'batch_id'=>$_POST['batchId']));
     		        if(!empty($check_batch)){
     		            $resp = array('status'=>'0','msg'=>$this->lang->line('ltr_email_already_msg'));
     		        }else{
@@ -1386,7 +1386,7 @@ function change_student_status(){
 								 'added_by'=>'student',
 								 'admin_id'=>$admin_id
 										 );
-				   $this->db_model->insert_data('sudent_batchs',$data_batch);
+				   $this->db_model->insert_data('student_batchs',$data_batch);
 					// send email 
 					
 				   $title = $this->db_model->select_data('site_title','site_details','',1,array('id','desc'))[0]['site_title'];
@@ -1454,7 +1454,7 @@ function change_student_status(){
 								 'added_by'=>'student',
 								  'admin_id'=>$batch_type[0]['admin_id']
 										 );
-				$this->db_model->insert_data('sudent_batchs',$data_batch);
+				$this->db_model->insert_data('student_batchs',$data_batch);
 				// send email 
 			   $title = $this->db_model->select_data('site_title','site_details','',1,array('id','desc'))[0]['site_title'];
 				$subj = $title.'- '.$this->lang->line('ltr_thanks_msg');
@@ -1528,7 +1528,7 @@ function change_student_status(){
 								 'added_by'=>'student',
 								 'admin_id'=>$batch_type[0]['admin_id']
 										 );
-				   $this->db_model->insert_data('sudent_batchs',$data_batch);
+				   $this->db_model->insert_data('student_batchs',$data_batch);
 					// send email 
 				   $title = $this->db_model->select_data('site_title','site_details','',1,array('id','desc'))[0]['site_title'];
 					$subj = $title.'- '.$this->lang->line('ltr_credentials');
@@ -1583,7 +1583,7 @@ function change_student_status(){
 								 'added_by'=>'student',
 								 'admin_id'=>$batch_type[0]['admin_id']
 										 );
-				$this->db_model->insert_data('sudent_batchs',$data_batch);
+				$this->db_model->insert_data('student_batchs',$data_batch);
 				// send email 
 			   $title = $this->db_model->select_data('site_title','site_details','',1,array('id','desc'))[0]['site_title'];
 			   	

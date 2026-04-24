@@ -52,6 +52,13 @@ class Home extends CI_Controller {
 	  }else{
 		  $data['batches'] =''; 
 	  }
+	  $data['home_institute_api_url'] = site_url('api/institute/listing');
+	  $data['home_institute_details_url'] = site_url('institute/details');
+	  $tok = (string) $this->session->userdata('access_token');
+	  if ($tok === '') {
+		  $tok = (string) $this->session->userdata('token');
+	  }
+	  $data['api_access_token'] = $tok;
       	  $this->load->view('common/front_header',$data);
 		  $this->load->view('frontend/home',$data);
 		  $this->load->view('common/front_footer',$data);
@@ -463,7 +470,7 @@ $data['getsubjectchapter'] = $this->db_model->select_data('*','batch_subjects us
 								 'batch_id'=>$paypalInfo['item_number'],
 								 'added_by'=>'student'
 										 );
-				   $this->db_model->insert_data('sudent_batchs',$data_batch);
+				   $this->db_model->insert_data('student_batchs',$data_batch);
 					// send email 
 				   $title = $this->db_model->select_data('site_title','site_details','',1,array('id','desc'))[0]['site_title'];
 					$subj = $title.'- '.$this->lang->line('ltr_credentials');
@@ -526,7 +533,7 @@ $data['getsubjectchapter'] = $this->db_model->select_data('*','batch_subjects us
 								 'batch_id'=>$paypalInfo['item_number'],
 								 'added_by'=>'student'
 										 );
-				$this->db_model->insert_data('sudent_batchs',$data_batch);
+				$this->db_model->insert_data('student_batchs',$data_batch);
 				// send email 
 			   $title = $this->db_model->select_data('site_title','site_details','',1,array('id','desc'))[0]['site_title'];
 				$subj = $title.'- '.$this->lang->line('ltr_credentials');

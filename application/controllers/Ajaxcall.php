@@ -444,7 +444,7 @@ class Ajaxcall extends CI_Controller{
                 }
     
                 foreach($batch_data as $batch){
-                   $s_count = $this->db_model->countAll('sudent_batchs',array('batch_id'=>$batch['id']));
+                   $s_count = $this->db_model->countAll('student_batchs',array('batch_id'=>$batch['id']));
                     if($batch['batch_type']==2){
                             $price =$batch['batch_price'].' '.$this->general_settings('currency_decimal_code');
                         if(!empty($batch['batch_offer_price'])){
@@ -1099,7 +1099,7 @@ class Ajaxcall extends CI_Controller{
     //     		if(!empty($batch_ids)){
     //         		$cond1 = "`students`";
     //                 $cond2 = "`admin_id`";
-    //                 // $cond3 = "`sudent_batchs`";
+    //                 // $cond3 = "`student_batchs`";
     //                 $cond4 = "`batch_id`";
     //                 $cond5 = "`status`";
 
@@ -1122,7 +1122,7 @@ class Ajaxcall extends CI_Controller{
     //             }
     //         }
 
-    //         // $student_dat = $this->db_model->select_data('sudent_batchs.*,students.id as s_id,students.payment_status as paymentStatus,students.status,students.admission_date,students.name,students.email,students.contact_no,students.enrollment_id','sudent_batchs',$cond,$limit,array('students.id','asc'),$like,array('students','students.id=sudent_batchs.student_id','left'),'sudent_batchs.id',$or_like,$where_in);
+    //         // $student_dat = $this->db_model->select_data('student_batchs.*,students.id as s_id,students.payment_status as paymentStatus,students.status,students.admission_date,students.name,students.email,students.contact_no,students.enrollment_id','student_batchs',$cond,$limit,array('students.id','asc'),$like,array('students','students.id=student_batchs.student_id','left'),'student_batchs.id',$or_like,$where_in);
     //         $student_dat = $this->db_model->select_data('students.admin_id as aid,students.id as s_id,students.payment_status as paymentStatus,students.status,students.admission_date,students.name,students.email,students.contact_no,students.enrollment_id','students',$cond,$limit,array('students.id','asc'),$like,'','',$or_like,'','');
           
     //     //   echo $this->db->last_query();die;
@@ -1357,8 +1357,8 @@ class Ajaxcall extends CI_Controller{
                     
     //                 $count++;
     //             }
-    //              $where_in="`sudent_batchs`.`admin_id`=$uid";
-    //             // $recordsTotal = $this->db_model->custom_slect_query("COUNT(id) AS `numrows`FROM (SELECT `sudent_batchs`.`id` FROM sudent_batchs LEFT JOIN `students` ON `students`.`id`=`sudent_batchs`.`student_id` WHERE $where_in  ".($like1 != ''?"AND name LIKE '%".$like1."%' ESCAPE '!'":'')." GROUP BY `students`.`id`) sada")[0]['numrows'];
+    //              $where_in="`student_batchs`.`admin_id`=$uid";
+    //             // $recordsTotal = $this->db_model->custom_slect_query("COUNT(id) AS `numrows`FROM (SELECT `student_batchs`.`id` FROM student_batchs LEFT JOIN `students` ON `students`.`id`=`student_batchs`.`student_id` WHERE $where_in  ".($like1 != ''?"AND name LIKE '%".$like1."%' ESCAPE '!'":'')." GROUP BY `students`.`id`) sada")[0]['numrows'];
                  
     //              $recordsTotal = $this->db_model->countAll('students use',array('admin_id'=>$_SESSION['uid']),'','',$like,'','',$or_like);
             
@@ -1413,7 +1413,7 @@ class Ajaxcall extends CI_Controller{
 //                     // $cond = array('students.admin_id'=>$this->session->userdata('uid'));
 //                     // $cond['students.admin_id'] = $this->session->userdata('uid');
 //                     //   $cond1 = "`students`";
-//                       $cond1 = "`sudent_batchs`";
+//                       $cond1 = "`student_batchs`";
 //                       $cond2 = "`admin_id`";
 //                       $cond3 = $uid;
 //                   $cond = ($cond1.'.'.$cond2.'='.$cond3); 
@@ -1423,12 +1423,12 @@ class Ajaxcall extends CI_Controller{
 //             		if(!empty($batch_ids)){
 //                 		$cond1 = "`students`";
 //                         $cond2 = "`admin_id`";
-//                         $cond3 = "`sudent_batchs`";
+//                         $cond3 = "`student_batchs`";
 //                         $cond4 = "`batch_id`";
 //                         $cond5 = "`status`";
     
 //                         $cond = ($cond3.'.'.$cond4.' in ('.$batch_ids.') AND '.$cond1.'.'.$cond5.'= 1'); 
-//             // 		$cond = "students.admin_id = $admin_id AND sudent_batchs.batch_id in ($batch_ids) AND students.status = 1";
+//             // 		$cond = "students.admin_id = $admin_id AND student_batchs.batch_id in ($batch_ids) AND students.status = 1";
 //             		}else{
 //             			$cond = '';
 //             		}
@@ -1442,7 +1442,7 @@ class Ajaxcall extends CI_Controller{
 //                             // $cond_in['batch_id'] = $get['user_batch'];
 //                             $cond1 = "`students`";
 //                             $cond2 = "`admin_id`";
-//                             $cond3 = "`sudent_batchs`";
+//                             $cond3 = "`student_batchs`";
 //                             $cond4 = "explode(',',`batch_id`)";
 //                             $cond5 = "`status`";
 //                             $cond6 = "`login_status`";
@@ -1454,11 +1454,11 @@ class Ajaxcall extends CI_Controller{
                             
 //                             // $cond .= ' AND students.status='.$get['user_status'];
 //                             // $cond .= ' AND students.login_status='.$get['lgStatus'];
-//                             // $cond_in = ' AND sudent_batchs.batch_id='.$get['user_batch'];
+//                             // $cond_in = ' AND student_batchs.batch_id='.$get['user_batch'];
 //                         }else{
 //                             $cond1 = "`students`";
 //                             $cond2 = "`admin_id`";
-//                             $cond3 = "`sudent_batchs`";
+//                             $cond3 = "`student_batchs`";
 //                             $cond4 = "`batch_id`";
 //                             $cond5 = "`status`";
 //                             $cond6 = "`login_status`";
@@ -1470,7 +1470,7 @@ class Ajaxcall extends CI_Controller{
                             
 //                             // $cond .= ' AND students.status='.$get['user_status'];
 //                             // $cond .= ' AND students.login_status='.$get['lgStatus'];
-//                             // $cond .= ' AND sudent_batchs.batch_id='.$get['user_batch'];
+//                             // $cond .= ' AND student_batchs.batch_id='.$get['user_batch'];
 //                         }
                           
 //                     }else if($get['user_status']!='' && $get['lgStatus']!=''){
@@ -1479,7 +1479,7 @@ class Ajaxcall extends CI_Controller{
 //                             // $cond['login_status'] = $get['lgStatus'];
 //                             $cond1 = "`students`";
 //                             $cond2 = "`admin_id`";
-//                             $cond3 = "`sudent_batchs`";
+//                             $cond3 = "`student_batchs`";
 //                             $cond5 = "`status`";
 //                             $cond6 = "`login_status`";
     
@@ -1491,7 +1491,7 @@ class Ajaxcall extends CI_Controller{
 //                         }else{
 //                             $cond1 = "`students`";
 //                             $cond2 = "`admin_id`";
-//                             $cond3 = "`sudent_batchs`";
+//                             $cond3 = "`student_batchs`";
 //                             $cond5 = "`status`";
 //                             $cond6 = "`login_status`";
     
@@ -1504,11 +1504,11 @@ class Ajaxcall extends CI_Controller{
 //                     }else if($get['user_status']!='' && $get['user_batch']!=''){
 //                         if($this->session->userdata('role')==1){
 //                             // $cond['students.status'] = $get['user_status'];   
-//                             // $cond_in['sudent_batchs.batch_id'] = $get['user_batch'];
+//                             // $cond_in['student_batchs.batch_id'] = $get['user_batch'];
                             
 //                             $cond1 = "`students`";
 //                             $cond2 = "`admin_id`";
-//                             $cond3 = "`sudent_batchs`";
+//                             $cond3 = "`student_batchs`";
 //                             $cond4 = "`batch_id`";
 //                             $cond5 = "`status`";
 //                             $cond6 = "`login_status`";
@@ -1517,11 +1517,11 @@ class Ajaxcall extends CI_Controller{
 //                             $cond .= ' AND '.$cond1.'.'.$cond4.'='.$get['user_batch'];
     
 //                             // $cond .= ' AND students.status='.$get['user_status'];
-//                             // $cond .= ' AND sudent_batchs.batch_id='.$get['user_batch'];
+//                             // $cond .= ' AND student_batchs.batch_id='.$get['user_batch'];
 //                         }else{
 //                             $cond1 = "`students`";
 //                             $cond2 = "`admin_id`";
-//                             $cond3 = "`sudent_batchs`";
+//                             $cond3 = "`student_batchs`";
 //                             $cond4 = "`batch_id`";
 //                             $cond5 = "`status`";
 //                             $cond6 = "`login_status`";
@@ -1530,7 +1530,7 @@ class Ajaxcall extends CI_Controller{
 //                             $cond .= ' AND '.$cond1.'.'.$cond4.'='.$get['user_batch'];
                             
 //                             // $cond .= ' AND students.status='.$get['user_status'];
-//                             // $cond .= ' AND sudent_batchs.batch_id='.$get['user_batch'];
+//                             // $cond .= ' AND student_batchs.batch_id='.$get['user_batch'];
 //                         }
 //                     }else if($get['lgStatus']!='' && $get['user_batch']!=''){
 //                         if($this->session->userdata('role')==1){
@@ -1539,7 +1539,7 @@ class Ajaxcall extends CI_Controller{
                             
 //                             $cond1 = "`students`";
 //                             $cond2 = "`admin_id`";
-//                             $cond3 = "`sudent_batchs`";
+//                             $cond3 = "`student_batchs`";
 //                             $cond4 = "`batch_id`";
 //                             $cond5 = "`status`";
 //                             $cond6 = "`login_status`";
@@ -1548,12 +1548,12 @@ class Ajaxcall extends CI_Controller{
 //                             $cond .= ' AND '.$cond1.'.'.$cond4.'='.$get['user_batch'];
                             
 //                             // $cond .= ' AND students.login_status='.$get['lgStatus'];
-//                             // $cond_in .= ' AND sudent_batchs.batch_id='.$get['user_batch'];
+//                             // $cond_in .= ' AND student_batchs.batch_id='.$get['user_batch'];
 //                         }else{
                             
 //                             $cond1 = "`students`";
 //                             $cond2 = "`admin_id`";
-//                             $cond3 = "`sudent_batchs`";
+//                             $cond3 = "`student_batchs`";
 //                             $cond4 = "`batch_id`";
 //                             $cond5 = "`status`";
 //                             $cond6 = "`login_status`";
@@ -1563,7 +1563,7 @@ class Ajaxcall extends CI_Controller{
                             
                             
 //                             // $cond .= ' AND students.login_status='.$get['lgStatus'];
-//                             // $cond .= ' AND sudent_batchs.batch_id='.$get['user_batch'];
+//                             // $cond .= ' AND student_batchs.batch_id='.$get['user_batch'];
 //                         }
 //                     }else if($get['user_status']!='' ){
 //                         if($this->session->userdata('role')==1){
@@ -1606,7 +1606,7 @@ class Ajaxcall extends CI_Controller{
 //                         if(!empty($batch_ids)){
 //                     		$cond1 = "`students`";
 //                             $cond2 = "`admin_id`";
-//                             // $cond3 = "`sudent_batchs`";
+//                             // $cond3 = "`student_batchs`";
 //                             $cond4 = "`batch_id`";
 //                             $cond5 = "`status`";
         
@@ -1619,34 +1619,34 @@ class Ajaxcall extends CI_Controller{
 //                         if($this->session->userdata('role')==1){
 //                             // $cond_in['batch_id'] = $get['user_batch'];
                             
-//                             $cond3 = "`sudent_batchs`";
+//                             $cond3 = "`student_batchs`";
 //                             $cond4 = "`batch_id`";
                             
                             
 //                             // $cond .= ' AND '.($cond3.'.'.$cond4.' in ('.$get['user_batch'].')'); 
 //                             $cond .= ' AND '.$cond3.'.'.$cond4.'='.$get['user_batch'];
                             
-//                             // $cond .= ' AND sudent_batchs.batch_id='.$get['user_batch'];
+//                             // $cond .= ' AND student_batchs.batch_id='.$get['user_batch'];
      
 //                         }else{
-//                               $cond3 = "`sudent_batchs`";
+//                               $cond3 = "`student_batchs`";
 //                             $cond4 = "`batch_id`";
     
 //                             $cond .= ' AND '.$cond3.'.'.$cond4.'='.$get['user_batch'];
-//                             // $cond .= ' AND sudent_batchs.batch_id='.$get['user_batch'];
+//                             // $cond .= ' AND student_batchs.batch_id='.$get['user_batch'];
 //                         }
 //                     }
 //                 }
                 
 //                 if(!empty($cond_in['batch_id'])){
-//                     $where_in=array('sudent_batchs.batch_id',$cond_in['batch_id']);
+//                     $where_in=array('student_batchs.batch_id',$cond_in['batch_id']);
 //                 }else{
 //                     $where_in="";
 //                 }
 
 // print_r($cond_in);
 // die;
-//                 $student_dat = $this->db_model->select_data('sudent_batchs.*,students.id as s_id,students.status,students.admission_date,students.name,students.email,students.contact_no,students.enrollment_id','sudent_batchs',$cond,$limit,array('students.id','asc'),$like,array('students','students.id=sudent_batchs.student_id','left'),'sudent_batchs.id',$or_like,$where_in);
+//                 $student_dat = $this->db_model->select_data('student_batchs.*,students.id as s_id,students.status,students.admission_date,students.name,students.email,students.contact_no,students.enrollment_id','student_batchs',$cond,$limit,array('students.id','asc'),$like,array('students','students.id=student_batchs.student_id','left'),'student_batchs.id',$or_like,$where_in);
 //             //   echo $this->db->last_query();die;
 //                 $new = [];
 //                 foreach($student_dat as $row) {
@@ -1656,7 +1656,7 @@ class Ajaxcall extends CI_Controller{
 //                     }
                     
 //                 }
-//                 // $student_data = $this->db_model->select_data('students.*','students use index (id)',$cond,$limit,array('students.id','desc'),$like,array('sudent_batchs','sudent_batchs.student_id=students.id','left'),'students.id',$or_like,$where_in);
+//                 // $student_data = $this->db_model->select_data('students.*','students use index (id)',$cond,$limit,array('students.id','desc'),$like,array('student_batchs','student_batchs.student_id=students.id','left'),'students.id',$or_like,$where_in);
 //                 // print_r($student_data);
 //                 // echo $this->db->last_query();
     
@@ -1681,8 +1681,8 @@ class Ajaxcall extends CI_Controller{
 //                         }
         
 //                         foreach($new as $studentData){
-//                         $join = array('batches',"batches.id = sudent_batchs.batch_id");
-//                           $student_batch = $this->db_model->select_data('sudent_batchs.student_id,sudent_batchs.batch_id,batches.batch_name','sudent_batchs',array('student_id'=>$student['s_id']),'','','',$join,'batches.id');
+//                         $join = array('batches',"batches.id = student_batchs.batch_id");
+//                           $student_batch = $this->db_model->select_data('student_batchs.student_id,student_batchs.batch_id,batches.batch_name','student_batchs',array('student_id'=>$student['s_id']),'','','',$join,'batches.id');
 //                         // print_r($student_batch);
 //                         }
     
@@ -1907,10 +1907,10 @@ class Ajaxcall extends CI_Controller{
 //                         $count++;
 //                     }
                     
-//                   $table = 'sudent_batchs';
+//                   $table = 'student_batchs';
 //                 //   $recordsTotal = $this->db_model->countAll('students use index (id)',array('admin_id'=>$_SESSION['uid']),'','',$like,'','',$or_like,$where_in);
 //                     $recordsTotal = $this->db_model->custom_slect_query("COUNT(id) AS `numrows`
-//                     FROM (SELECT `sudent_batchs`.`id` FROM $table LEFT JOIN `students` ON `students`.`id`=`sudent_batchs`.`student_id` WHERE $cond $where_in GROUP BY `students`.`id`) sada")[0]['numrows'];
+//                     FROM (SELECT `student_batchs`.`id` FROM $table LEFT JOIN `students` ON `students`.`id`=`student_batchs`.`student_id` WHERE $cond $where_in GROUP BY `students`.`id`) sada")[0]['numrows'];
                     
 //                     $output = array(
 //                         "draw" => $post['draw'],
@@ -1963,7 +1963,7 @@ class Ajaxcall extends CI_Controller{
                     // $cond = array('students.admin_id'=>$this->session->userdata('uid'));
                     // $cond['students.admin_id'] = $this->session->userdata('uid');
                     //   $cond1 = "`students`";
-                      $cond1 = "`sudent_batchs`";
+                      $cond1 = "`student_batchs`";
                       $cond2 = "`admin_id`";
                       $cond3 = $uid;
                    $cond = ($cond1.'.'.$cond2.'='.$cond3); 
@@ -1973,12 +1973,12 @@ class Ajaxcall extends CI_Controller{
             		if(!empty($batch_ids)){
                 		$cond1 = "`students`";
                         $cond2 = "`admin_id`";
-                        $cond3 = "`sudent_batchs`";
+                        $cond3 = "`student_batchs`";
                         $cond4 = "`batch_id`";
                         $cond5 = "`status`";
     
                         $cond = ($cond3.'.'.$cond4.' in ('.$batch_ids.') AND '.$cond1.'.'.$cond5.'= 1'); 
-            // 		$cond = "students.admin_id = $admin_id AND sudent_batchs.batch_id in ($batch_ids) AND students.status = 1";
+            // 		$cond = "students.admin_id = $admin_id AND student_batchs.batch_id in ($batch_ids) AND students.status = 1";
             		}else{
             			$cond = '';
             		}
@@ -1992,7 +1992,7 @@ class Ajaxcall extends CI_Controller{
                             // $cond_in['batch_id'] = $get['user_batch'];
                             $cond1 = "`students`";
                             $cond2 = "`admin_id`";
-                            $cond3 = "`sudent_batchs`";
+                            $cond3 = "`student_batchs`";
                             $cond4 = "`batch_id`";
                             $cond5 = "`status`";
                             $cond6 = "`login_status`";
@@ -2004,11 +2004,11 @@ class Ajaxcall extends CI_Controller{
                             
                             // $cond .= ' AND students.status='.$get['user_status'];
                             // $cond .= ' AND students.login_status='.$get['lgStatus'];
-                            // $cond_in = ' AND sudent_batchs.batch_id='.$get['user_batch'];
+                            // $cond_in = ' AND student_batchs.batch_id='.$get['user_batch'];
                         }else{
                             $cond1 = "`students`";
                             $cond2 = "`admin_id`";
-                            $cond3 = "`sudent_batchs`";
+                            $cond3 = "`student_batchs`";
                             $cond4 = "`batch_id`";
                             $cond5 = "`status`";
                             $cond6 = "`login_status`";
@@ -2020,7 +2020,7 @@ class Ajaxcall extends CI_Controller{
                             
                             // $cond .= ' AND students.status='.$get['user_status'];
                             // $cond .= ' AND students.login_status='.$get['lgStatus'];
-                            // $cond .= ' AND sudent_batchs.batch_id='.$get['user_batch'];
+                            // $cond .= ' AND student_batchs.batch_id='.$get['user_batch'];
                         }
                           
                     }else if($get['user_status']!='' && $get['lgStatus']!=''){
@@ -2029,7 +2029,7 @@ class Ajaxcall extends CI_Controller{
                             // $cond['login_status'] = $get['lgStatus'];
                             $cond1 = "`students`";
                             $cond2 = "`admin_id`";
-                            $cond3 = "`sudent_batchs`";
+                            $cond3 = "`student_batchs`";
                             $cond5 = "`status`";
                             $cond6 = "`login_status`";
     
@@ -2041,7 +2041,7 @@ class Ajaxcall extends CI_Controller{
                         }else{
                             $cond1 = "`students`";
                             $cond2 = "`admin_id`";
-                            $cond3 = "`sudent_batchs`";
+                            $cond3 = "`student_batchs`";
                             $cond5 = "`status`";
                             $cond6 = "`login_status`";
     
@@ -2054,11 +2054,11 @@ class Ajaxcall extends CI_Controller{
                     }else if($get['user_status']!='' && $get['user_batch']!=''){
                         if($this->session->userdata('role')==1){
                             // $cond['students.status'] = $get['user_status'];   
-                            // $cond_in['sudent_batchs.batch_id'] = $get['user_batch'];
+                            // $cond_in['student_batchs.batch_id'] = $get['user_batch'];
                             
                             $cond1 = "`students`";
                             $cond2 = "`admin_id`";
-                            $cond3 = "`sudent_batchs`";
+                            $cond3 = "`student_batchs`";
                             $cond4 = "`batch_id`";
                             $cond5 = "`status`";
                             $cond6 = "`login_status`";
@@ -2067,11 +2067,11 @@ class Ajaxcall extends CI_Controller{
                             $cond .= ' AND '.$cond1.'.'.$cond4.'='.$get['user_batch'];
     
                             // $cond .= ' AND students.status='.$get['user_status'];
-                            // $cond .= ' AND sudent_batchs.batch_id='.$get['user_batch'];
+                            // $cond .= ' AND student_batchs.batch_id='.$get['user_batch'];
                         }else{
                             $cond1 = "`students`";
                             $cond2 = "`admin_id`";
-                            $cond3 = "`sudent_batchs`";
+                            $cond3 = "`student_batchs`";
                             $cond4 = "`batch_id`";
                             $cond5 = "`status`";
                             $cond6 = "`login_status`";
@@ -2080,7 +2080,7 @@ class Ajaxcall extends CI_Controller{
                             $cond .= ' AND '.$cond1.'.'.$cond4.'='.$get['user_batch'];
                             
                             // $cond .= ' AND students.status='.$get['user_status'];
-                            // $cond .= ' AND sudent_batchs.batch_id='.$get['user_batch'];
+                            // $cond .= ' AND student_batchs.batch_id='.$get['user_batch'];
                         }
                     }else if($get['lgStatus']!='' && $get['user_batch']!=''){
                         if($this->session->userdata('role')==1){
@@ -2089,7 +2089,7 @@ class Ajaxcall extends CI_Controller{
                             
                             $cond1 = "`students`";
                             $cond2 = "`admin_id`";
-                            $cond3 = "`sudent_batchs`";
+                            $cond3 = "`student_batchs`";
                             $cond4 = "`batch_id`";
                             $cond5 = "`status`";
                             $cond6 = "`login_status`";
@@ -2098,12 +2098,12 @@ class Ajaxcall extends CI_Controller{
                             $cond .= ' AND '.$cond1.'.'.$cond4.'='.$get['user_batch'];
                             
                             // $cond .= ' AND students.login_status='.$get['lgStatus'];
-                            // $cond_in .= ' AND sudent_batchs.batch_id='.$get['user_batch'];
+                            // $cond_in .= ' AND student_batchs.batch_id='.$get['user_batch'];
                         }else{
                             
                             $cond1 = "`students`";
                             $cond2 = "`admin_id`";
-                            $cond3 = "`sudent_batchs`";
+                            $cond3 = "`student_batchs`";
                             $cond4 = "`batch_id`";
                             $cond5 = "`status`";
                             $cond6 = "`login_status`";
@@ -2113,7 +2113,7 @@ class Ajaxcall extends CI_Controller{
                             
                             
                             // $cond .= ' AND students.login_status='.$get['lgStatus'];
-                            // $cond .= ' AND sudent_batchs.batch_id='.$get['user_batch'];
+                            // $cond .= ' AND student_batchs.batch_id='.$get['user_batch'];
                         }
                     }else if($get['user_status']!='' ){
                         if($this->session->userdata('role')==1){
@@ -2155,28 +2155,28 @@ class Ajaxcall extends CI_Controller{
                         if($this->session->userdata('role')==1){
                             // $cond_in['batch_id'] = $get['user_batch'];
                             
-                            $cond3 = "`sudent_batchs`";
+                            $cond3 = "`student_batchs`";
                             $cond4 = "`batch_id`";
                             $cond .= ' AND '.$cond3.'.'.$cond4.'='.$get['user_batch'];
-                            // $cond .= ' AND sudent_batchs.batch_id='.$get['user_batch'];
+                            // $cond .= ' AND student_batchs.batch_id='.$get['user_batch'];
      
                         }else{
-                              $cond3 = "`sudent_batchs`";
+                              $cond3 = "`student_batchs`";
                               $cond4 = "`batch_id`";
                               $cond .= ' AND '.$cond3.'.'.$cond4.'='.$get['user_batch'];
-                            // $cond .= ' AND sudent_batchs.batch_id='.$get['user_batch'];
+                            // $cond .= ' AND student_batchs.batch_id='.$get['user_batch'];
                         }
                     }
                 }
                 
                 if(!empty($cond_in['batch_id'])){
-                    $where_in=array('sudent_batchs.batch_id',$cond_in['batch_id']); 
+                    $where_in=array('student_batchs.batch_id',$cond_in['batch_id']); 
                 }else{
                     $where_in="";
                 }
 
 
-                $student_dat = $this->db_model->select_data('sudent_batchs.*,students.id as s_id,students.status,students.admission_date,students.name,students.email,students.contact_no,students.enrollment_id','sudent_batchs',$cond,$limit,array('students.id','asc'),$like,array('students','students.id=sudent_batchs.student_id','left'),'sudent_batchs.id',$or_like,$where_in);
+                $student_dat = $this->db_model->select_data('student_batchs.*,students.id as s_id,students.status,students.admission_date,students.name,students.email,students.contact_no,students.enrollment_id','student_batchs',$cond,$limit,array('students.id','asc'),$like,array('students','students.id=student_batchs.student_id','left'),'student_batchs.id',$or_like,$where_in);
             //   echo $this->db->last_query();die;
                 $new = [];
                 foreach($student_dat as $row) {
@@ -2186,7 +2186,7 @@ class Ajaxcall extends CI_Controller{
                     }
                     
                 }
-                // $student_data = $this->db_model->select_data('students.*','students use index (id)',$cond,$limit,array('students.id','desc'),$like,array('sudent_batchs','sudent_batchs.student_id=students.id','left'),'students.id',$or_like,$where_in);
+                // $student_data = $this->db_model->select_data('students.*','students use index (id)',$cond,$limit,array('students.id','desc'),$like,array('student_batchs','student_batchs.student_id=students.id','left'),'students.id',$or_like,$where_in);
                 // print_r($student_data);
                 // echo $this->db->last_query();
     
@@ -2211,8 +2211,8 @@ class Ajaxcall extends CI_Controller{
                         }
         
                         foreach($new as $studentData){
-                        $join = array('batches',"batches.id = sudent_batchs.batch_id");
-                          $student_batch = $this->db_model->select_data('sudent_batchs.student_id,sudent_batchs.batch_id,batches.batch_name','sudent_batchs',array('student_id'=>$student['s_id']),'','','',$join,'batches.id');
+                        $join = array('batches',"batches.id = student_batchs.batch_id");
+                          $student_batch = $this->db_model->select_data('student_batchs.student_id,student_batchs.batch_id,batches.batch_name','student_batchs',array('student_id'=>$student['s_id']),'','','',$join,'batches.id');
                         // print_r($student_batch);
                         }
     
@@ -2437,10 +2437,10 @@ class Ajaxcall extends CI_Controller{
                         $count++;
                     }
                     
-                  $table = 'sudent_batchs';
+                  $table = 'student_batchs';
                 //   $recordsTotal = $this->db_model->countAll('students use index (id)',array('admin_id'=>$_SESSION['uid']),'','',$like,'','',$or_like,$where_in);
                     $recordsTotal = $this->db_model->custom_slect_query("COUNT(id) AS `numrows`
-                    FROM (SELECT `sudent_batchs`.`id` FROM $table LEFT JOIN `students` ON `students`.`id`=`sudent_batchs`.`student_id` WHERE $cond $where_in GROUP BY `students`.`id`) sada")[0]['numrows'];
+                    FROM (SELECT `student_batchs`.`id` FROM $table LEFT JOIN `students` ON `students`.`id`=`student_batchs`.`student_id` WHERE $cond $where_in GROUP BY `students`.`id`) sada")[0]['numrows'];
                     
                     $output = array(
                         "draw" => $post['draw'],
@@ -2749,7 +2749,7 @@ class Ajaxcall extends CI_Controller{
     }
   
     function getBatches(){
-        $batch = $this->db_model->select_data('sudent_batchs.*','sudent_batchs',array('student_id'=>$_POST['sid']));
+        $batch = $this->db_model->select_data('student_batchs.*','student_batchs',array('student_id'=>$_POST['sid']));
         if(empty($batch)){
             $bt =[];
         }else{
@@ -2816,18 +2816,18 @@ class Ajaxcall extends CI_Controller{
                      
                    $batchName = array();
                     if($_POST['payMode']!='offline'){
-                        $del = $this->db_model->delete_data('sudent_batchs',array('student_id'=>$st_id));
+                        $del = $this->db_model->delete_data('student_batchs',array('student_id'=>$st_id));
                     }
                     if($ins){
                     foreach($batch_id as $value){
-                        $prevRecdBatch = $this->db_model->select_data('*','sudent_batchs',array('batch_id'=>$value,'student_id'=>$st_id),1);
+                        $prevRecdBatch = $this->db_model->select_data('*','student_batchs',array('batch_id'=>$value,'student_id'=>$st_id),1);
                         $data2['batch_id'] = $value;
                         $data2['student_id'] = $st_id;
                         $data2['status'] = 0;
                         $data2['added_by'] = 'Admin';
                         $data2['admin_id'] = $admin_id;
                      if(empty($prevRecdBatch)){
-                        $ins1 = $this->db_model->insert_data('sudent_batchs',$data2);
+                        $ins1 = $this->db_model->insert_data('student_batchs',$data2);
                      }
                      if($_POST['payMode']=='offline'){
                          $price = $data_arr['price'];
@@ -2992,7 +2992,7 @@ class Ajaxcall extends CI_Controller{
                             $data2['status'] = 0;
                             $data2['added_by'] = 'Admin';
                             $data2['admin_id'] =$admin_id;
-                            $ins1 = $this->db_model->insert_data('sudent_batchs',$data2);
+                            $ins1 = $this->db_model->insert_data('student_batchs',$data2);
                         }
                        
                     }
@@ -6922,7 +6922,7 @@ function subcategory_table(){
 //                 $join_array = array('students',"students.name like '%".$post['search']['value']."%' AND students.id = $table_name.student_id");
 //             }else{
 //               $join_array = array('students',"students.id = $table_name.student_id");
-// 				//$join_array = array('sudent_batchs ','sudent_batchs.student_id=students.id');
+// 				//$join_array = array('student_batchs ','student_batchs.student_id=students.id');
 //             }
          
 //             $cond = '';
@@ -7122,7 +7122,7 @@ function result_table($type){
                 $join_array = array('students',"students.name like '%".$post['search']['value']."%' AND students.id = $table_name.student_id");
             }else{
                $join_array = array('students',"students.id = $table_name.student_id");
-				//$join_array = array('sudent_batchs ','sudent_batchs.student_id=students.id');
+				//$join_array = array('student_batchs ','student_batchs.student_id=students.id');
             }
           //print_r(implode(",",$_SESSION['batch_id']));
 			//die;
@@ -12167,8 +12167,8 @@ function result_table($type){
        	$uid = $this->session->userdata('uid');
 		$batch_id = $post['id'];
 		$batch_id_like = '"'.$post['id'].'"';
-		$data['batch_details'] = $this->db_model->custom_slect_query("sudent_batchs.student_id,batches.*  FROM `sudent_batchs` JOIN `batches` ON `batches`.`id`=`sudent_batchs`.`batch_id` WHERE `sudent_batchs`.`student_id` = '".$uid."' ");
-		// $data['batch_details'] = $this->db_model->select_data('*', 'sudent_batchs',array('student_id' => $uid));
+		$data['batch_details'] = $this->db_model->custom_slect_query("student_batchs.student_id,batches.*  FROM `student_batchs` JOIN `batches` ON `batches`.`id`=`student_batchs`.`batch_id` WHERE `student_batchs`.`student_id` = '".$uid."' ");
+		// $data['batch_details'] = $this->db_model->select_data('*', 'student_batchs',array('student_id' => $uid));
         $data['total_mock_test']=$this->db_model->countAll('exams use index (id)',array('admin_id'=>$admin_id,'status'=>1,'type'=>1,'mock_sheduled_date'=>date('Y-m-d'),'batch_id'=>$batch_id));
         $data['upcoming_mock_test']=$this->db_model->countAll('exams use index (id)',array('admin_id'=>$admin_id,'status'=>1,'type'=>1,'mock_sheduled_date >'=>date('Y-m-d'),'batch_id'=>$batch_id));
         
@@ -12381,9 +12381,9 @@ function result_table($type){
                     $count = 1;
                 }
       
-                $cond = array('sudent_batchs.student_id' => $id);
+                $cond = array('student_batchs.student_id' => $id);
                 $table = 'batches';
-                $join = array('batches', 'sudent_batchs.batch_id = batches.id');
+                $join = array('batches', 'student_batchs.batch_id = batches.id');
          
             if($post['search']['value'] != ''){
                 $like = array($table.'.batch_name',$post['search']['value']);
@@ -12404,7 +12404,7 @@ function result_table($type){
             //     }
             // }
     
-            $batches = $this->db_model->select_data('batches.batch_name,sudent_batchs.batch_id,sudent_batchs.student_id','sudent_batchs',$cond,$limit,array('sudent_batchs.id','desc'),$like,$join,'',$or_like);
+            $batches = $this->db_model->select_data('batches.batch_name,student_batchs.batch_id,student_batchs.student_id','student_batchs',$cond,$limit,array('student_batchs.id','desc'),$like,$join,'',$or_like);
              //print_r($batches);
             // echo $this->db->last_query();
             if(!empty($batches)){
@@ -12452,7 +12452,7 @@ function result_table($type){
                
                 }
     
-                $recordsTotal = $this->db_model->countAll('sudent_batchs',$cond,'','',$like,$join,'',$or_like);
+                $recordsTotal = $this->db_model->countAll('student_batchs',$cond,'','',$like,$join,'',$or_like);
     
                 $output = array(
                     "draw" => $post['draw'],
@@ -12833,7 +12833,7 @@ function themesOption(){
                     }else{
                         $price =$this->lang->line('ltr_free');
                     }
-                    $s_count = $this->db_model->countAll('sudent_batchs',array('batch_id'=>$batch['id']));
+                    $s_count = $this->db_model->countAll('student_batchs',array('batch_id'=>$batch['id']));
                     $dataarray[] = array(
                                 $count,
                                 $batch['batch_name'],

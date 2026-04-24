@@ -931,4 +931,24 @@ $(document).on('click','#singleCatData', function(e){
 		
     });
 
+	$(document).on('click', '.front-share-app-btn', function () {
+		var url = ($(this).attr('data-site-url') || (typeof base_url !== 'undefined' ? base_url : window.location.origin + '/')).toString();
+		var title = ($(this).attr('data-site-name') || document.title).toString();
+		if (navigator.share) {
+			navigator.share({ title: title, text: title, url: url }).catch(function () {});
+		} else if (navigator.clipboard && navigator.clipboard.writeText) {
+			navigator.clipboard.writeText(url).then(function () {
+				if (typeof toastr !== 'undefined') {
+					toastr.success('Link copied to clipboard');
+				} else {
+					window.alert('Link copied to clipboard');
+				}
+			}).catch(function () {
+				window.prompt('Copy this link:', url);
+			});
+		} else {
+			window.prompt('Copy this link:', url);
+		}
+	});
+
 })(jQuery);

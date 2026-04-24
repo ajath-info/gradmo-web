@@ -152,7 +152,7 @@ class Main extends MY_Controller
 			$data = $_REQUEST;
 		}
 
-		$payload = $this->require_auth_payload();
+		$payload = $this->require_auth_payload(array(), is_array($data) ? $data : null);
 		if ($payload === false) {
 			return;
 		}
@@ -221,7 +221,7 @@ class Main extends MY_Controller
 			$data = $_REQUEST;
 		}
 
-		$payload = $this->require_auth_payload(array('institute'), $data);
+		$payload = $this->require_auth_payload(array('institute'), is_array($data) ? $data : null);
 		if ($payload === false) {
 			return;
 		}
@@ -636,5 +636,132 @@ class Main extends MY_Controller
 			'pagination' => $this->build_api_list_pagination_meta($pg['page'], $pg['limit'], $total),
 			'msg' => !empty($out) ? $this->lang->line('ltr_fetch_successfully') : $this->lang->line('ltr_no_record_msg')
 		));
+	}
+
+	/**
+	 * POST/GET api/main/review-detail
+	 * Auth: author only. review_id required. Pending (status=0) reviews only.
+	 */
+	public function review_detail()
+	{
+		$data = json_decode(file_get_contents('php://input'), true);
+		if (!is_array($data)) {
+			$data = $_REQUEST;
+		}
+		$payload = $this->require_auth_payload(array(), is_array($data) ? $data : null);
+		if ($payload === false) {
+			return;
+		}
+		$review_id = isset($data['review_id']) ? (int) $data['review_id'] : 0;
+		if ($review_id < 1) {
+			echo json_encode(array('status' => 'false', 'msg' => 'review_id is required'));
+			return;
+		}
+		$rows = $this->db_model->select_data('*', 'review', array('id' => $review_id), 1);
+		if (empty($rows[0])) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Review not found'));
+			return;
+		}
+		$r = $rows[0];
+		if ((int) $payload['uid'] !== (int) $r['user_id'] || strtolower(trim((string) $payload['ut'])) !== strtolower(trim((string) $r['user_type']))) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Not allowed'));
+			return;
+		}
+		if ((int) $r['status'] !== 0) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Only pending reviews can be edited'));
+			return;
+		}
+		echo json_encode(array(
+			'status' => 'true',
+			'review' => array(
+				'id' => (int) $r['id'],
+				'instituteId' => (int) $r['institute_id'],
+				'rating' => (int) $r['rating'],
+				'msg' => isset($r['msg']) ? (string) $r['msg'] : '',
+			),
+		), JSON_UNESCAPED_SLASHES);
+	}
+
+	/**
+	 * POST/GET api/main/update-review
+	 * Auth: author only. review_id, rating (1-5), msg. Pending only.
+	 */
+	public function update_review()
+	{
+		$data = json_decode(file_get_contents('php://input'), true);
+		if (!is_array($data)) {
+			$data = $_REQUEST;
+		}
+		$payload = $this->require_auth_payload(array(), is_array($data) ? $data : null);
+		if ($payload === false) {
+			return;
+		}
+		$review_id = isset($data['review_id']) ? (int) $data['review_id'] : 0;
+		$rating = isset($data['rating']) ? (int) $data['rating'] : 0;
+		$msg = isset($data['msg']) ? trim((string) $data['msg']) : '';
+		if ($review_id < 1 || $rating < 1 || $rating > 5 || $msg === '') {
+			echo json_encode(array('status' => 'false', 'msg' => 'review_id, rating (1-5), and msg are required'));
+			return;
+		}
+		$rows = $this->db_model->select_data('*', 'review', array('id' => $review_id), 1);
+		if (empty($rows[0])) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Review not found'));
+			return;
+		}
+		$r = $rows[0];
+		if ((int) $payload['uid'] !== (int) $r['user_id'] || strtolower(trim((string) $payload['ut'])) !== strtolower(trim((string) $r['user_type']))) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Not allowed'));
+			return;
+		}
+		if ((int) $r['status'] !== 0) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Only pending reviews can be updated'));
+			return;
+		}
+		$this->db_model->update_data('review', array(
+			'rating' => $rating,
+			'msg' => $msg,
+		), array('id' => $review_id));
+		echo json_encode(array(
+			'status' => 'true',
+			'msg' => 'Review updated',
+			'reviewId' => $review_id,
+		), JSON_UNESCAPED_SLASHES);
+	}
+
+	/**
+	 * POST/GET api/main/delete-review
+	 * Auth: author only. review_id. Pending only.
+	 */
+	public function delete_review()
+	{
+		$data = json_decode(file_get_contents('php://input'), true);
+		if (!is_array($data)) {
+			$data = $_REQUEST;
+		}
+		$payload = $this->require_auth_payload(array(), is_array($data) ? $data : null);
+		if ($payload === false) {
+			return;
+		}
+		$review_id = isset($data['review_id']) ? (int) $data['review_id'] : 0;
+		if ($review_id < 1) {
+			echo json_encode(array('status' => 'false', 'msg' => 'review_id is required'));
+			return;
+		}
+		$rows = $this->db_model->select_data('*', 'review', array('id' => $review_id), 1);
+		if (empty($rows[0])) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Review not found'));
+			return;
+		}
+		$r = $rows[0];
+		if ((int) $payload['uid'] !== (int) $r['user_id'] || strtolower(trim((string) $payload['ut'])) !== strtolower(trim((string) $r['user_type']))) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Not allowed'));
+			return;
+		}
+		if ((int) $r['status'] !== 0) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Only pending reviews can be deleted'));
+			return;
+		}
+		$this->db_model->delete_data('review', array('id' => $review_id), 1);
+		echo json_encode(array('status' => 'true', 'msg' => 'Review deleted'), JSON_UNESCAPED_SLASHES);
 	}
 }

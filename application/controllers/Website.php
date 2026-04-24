@@ -67,6 +67,9 @@ class Website extends MY_Controller
 			}else{
 				$data['batches'] =''; 
 			}
+			$data['home_institute_api_url'] = site_url('api/institute/listing');
+			$data['home_institute_details_url'] = site_url('institute/details');
+			$data['api_access_token'] = $this->website_session_access_token();
 			$this->render_frontend_layout('frontend/home', $data);
 		}
 
@@ -119,10 +122,13 @@ class Website extends MY_Controller
 				'state' => '',
 				'city' => '',
 				'pincode' => '',
+				'school_college_name' => '',
+				'grade' => '',
+				'show_grade_field' => true,
 			);
 			if ($uid > 0) {
 				if ($role === 'student') {
-					$rows = $this->db_model->select_data('name,email,contact_no,mobile,address,country,state,city,pincode', 'students use index (id)', array('id' => $uid), 1);
+					$rows = $this->db_model->select_data('*', 'students use index (id)', array('id' => $uid), 1);
 					if (! empty($rows) && is_array($rows[0])) {
 						$row = $rows[0];
 						$profile['name'] = isset($row['name']) ? (string) $row['name'] : $profile['name'];
@@ -133,9 +139,12 @@ class Website extends MY_Controller
 						$profile['state'] = isset($row['state']) ? (string) $row['state'] : '';
 						$profile['city'] = isset($row['city']) ? (string) $row['city'] : '';
 						$profile['pincode'] = isset($row['pincode']) ? (string) $row['pincode'] : '';
+						$profile['school_college_name'] = isset($row['school_college_name']) ? (string) $row['school_college_name'] : '';
+						$profile['grade'] = isset($row['grade']) ? (string) $row['grade'] : '';
 					}
+					$profile['show_grade_field'] = true;
 				} else {
-					$rows = $this->db_model->select_data('name,email,mobile,address,country,state,city,pincode', 'users use index (id)', array('id' => $uid), 1);
+					$rows = $this->db_model->select_data('name,email,mobile,address,country,state,city,pincode,teach_education', 'users use index (id)', array('id' => $uid), 1);
 					if (! empty($rows) && is_array($rows[0])) {
 						$row = $rows[0];
 						$profile['name'] = isset($row['name']) ? (string) $row['name'] : $profile['name'];
@@ -146,7 +155,10 @@ class Website extends MY_Controller
 						$profile['state'] = isset($row['state']) ? (string) $row['state'] : '';
 						$profile['city'] = isset($row['city']) ? (string) $row['city'] : '';
 						$profile['pincode'] = isset($row['pincode']) ? (string) $row['pincode'] : '';
+						$profile['school_college_name'] = isset($row['teach_education']) ? (string) $row['teach_education'] : '';
+						$profile['grade'] = '';
 					}
+					$profile['show_grade_field'] = false;
 				}
 			}
 			$data['profile'] = $profile;
@@ -196,6 +208,14 @@ class Website extends MY_Controller
 				$in = array();
 			}
 			list($code, $body) = $this->website_proxy_post_json(site_url('api/user/update-profile'), $in, array('Authorization: Bearer ' . $token));
+			$decoded = json_decode($body, true);
+			if (is_array($decoded)) {
+				$st = isset($decoded['status']) ? $decoded['status'] : '';
+				$ok = ($st === true || $st === 'true' || $st === 1 || $st === '1' || strtolower((string) $st) === 'true');
+				if ($ok && ! empty($decoded['data']) && is_array($decoded['data'])) {
+					$this->establish_web_session_from_api_login_data($decoded['data']);
+				}
+			}
 			$this->output->set_status_header((int) $code > 0 ? $code : 200);
 			$this->output->set_content_type('application/json')->set_output($body !== '' ? $body : json_encode(array('status' => false, 'msg' => 'Empty response')));
 		}
@@ -251,6 +271,33 @@ class Website extends MY_Controller
 			list($code, $body) = $this->website_proxy_post_json(site_url('api/user/delete-account'), array(), array('Authorization: Bearer ' . $token));
 			$this->output->set_status_header((int) $code > 0 ? $code : 200);
 			$this->output->set_content_type('application/json')->set_output($body !== '' ? $body : json_encode(array('status' => false, 'msg' => 'Empty response')));
+		}
+
+		public function payment_history()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			$data = $this->frontend_shell_data($this->common->languageTranslator('ltr_payment_history'));
+			$data['payment_history_data_url'] = site_url('payment-history-data');
+			$this->render_frontend_layout('frontend/payment_history', $data);
+		}
+
+		public function payment_history_data()
+		{
+			$in = $this->website_require_ajax_json();
+			if ($in === null) {
+				return;
+			}
+			$token = $this->website_session_access_token();
+			if ($token === '') {
+				$this->output->set_status_header(401)->set_content_type('application/json')->set_output(json_encode(array('status' => 'false', 'msg' => 'Please login again.')));
+				return;
+			}
+			list($code, $body) = $this->website_proxy_post_json(site_url('api/user/payment-history'), is_array($in) ? $in : array(), array('Authorization: Bearer ' . $token));
+			$this->output->set_status_header((int) $code > 0 ? $code : 200);
+			$this->output->set_content_type('application/json')->set_output($body !== '' ? $body : json_encode(array('status' => 'false', 'msg' => 'Empty response')));
 		}
 
 		/**
@@ -617,6 +664,574 @@ class Website extends MY_Controller
 				'msg' => $this->lang->line('ltr_logged_msg'),
 				'url' => $this->website_front_home_url(),
 			);
+		}
+
+		private function website_require_ajax_json()
+		{
+			if (! isset($_SERVER['HTTP_X_REQUESTED_WITH']) || strtolower((string) $_SERVER['HTTP_X_REQUESTED_WITH']) !== 'xmlhttprequest') {
+				$this->output->set_status_header(403)->set_content_type('application/json')->set_output(json_encode(array('status' => false, 'msg' => 'Not allowed')));
+				return null;
+			}
+			$raw = file_get_contents('php://input');
+			$in = json_decode($raw, true);
+			return is_array($in) ? $in : array();
+		}
+
+		private function website_session_is_institute()
+		{
+			$ut = strtolower(trim((string) $this->session->userdata('api_user_type')));
+			if ($ut === 'institute') {
+				return true;
+			}
+			$role = $this->session->userdata('role');
+			return ($role === 4 || $role === '4');
+		}
+
+		public function batch_list()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$data = $this->frontend_shell_data('Batches');
+			$data['batch_list_data_url'] = site_url('batch/list-data');
+			$data['batch_details_base'] = site_url('batch/details');
+			$this->render_frontend_layout('frontend/batch_list', $data);
+		}
+
+		public function batch_list_data()
+		{
+			$in = $this->website_require_ajax_json();
+			if ($in === null) {
+				return;
+			}
+			$token = $this->website_session_access_token();
+			if ($token === '') {
+				$this->output->set_status_header(401)->set_content_type('application/json')->set_output(json_encode(array('status' => 'false', 'msg' => 'Please login again.')));
+				return;
+			}
+			if (! is_array($in)) {
+				$in = array();
+			}
+			$payload = array(
+				'search' => isset($in['search']) ? trim((string) $in['search']) : '',
+				'page' => isset($in['page']) ? (int) $in['page'] : 1,
+				'limit' => isset($in['limit']) ? (int) $in['limit'] : 10,
+			);
+			if ($payload['page'] < 1) {
+				$payload['page'] = 1;
+			}
+			if ($payload['limit'] < 1) {
+				$payload['limit'] = 10;
+			}
+			if ($payload['limit'] > 100) {
+				$payload['limit'] = 100;
+			}
+			if (isset($in['list']) && trim((string) $in['list']) !== '') {
+				$payload['list'] = trim((string) $in['list']);
+			}
+			list($code, $body) = $this->website_proxy_post_json(site_url('api/batch/batch-list'), $payload, array('Authorization: Bearer ' . $token));
+			$this->output->set_status_header((int) $code > 0 ? $code : 200);
+			$this->output->set_content_type('application/json')->set_output($body !== '' ? $body : json_encode(array('status' => 'false', 'msg' => 'Empty response')));
+		}
+
+		public function batch_mylist()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$data = $this->frontend_shell_data('My batches');
+			$data['batch_mylist_data_url'] = site_url('batch/mylist-data');
+			$data['batch_details_base'] = site_url('batch/details');
+			$this->render_frontend_layout('frontend/batch_mylist', $data);
+		}
+
+		public function batch_mylist_data()
+		{
+			$in = $this->website_require_ajax_json();
+			if ($in === null) {
+				return;
+			}
+			$token = $this->website_session_access_token();
+			if ($token === '') {
+				$this->output->set_status_header(401)->set_content_type('application/json')->set_output(json_encode(array('status' => 'false', 'msg' => 'Please login again.')));
+				return;
+			}
+			if (! is_array($in)) {
+				$in = array();
+			}
+			$payload = array(
+				'search' => isset($in['search']) ? trim((string) $in['search']) : '',
+				'page' => isset($in['page']) ? (int) $in['page'] : 1,
+				'limit' => isset($in['limit']) ? (int) $in['limit'] : 10,
+			);
+			if ($payload['page'] < 1) {
+				$payload['page'] = 1;
+			}
+			if ($payload['limit'] < 1) {
+				$payload['limit'] = 10;
+			}
+			if ($payload['limit'] > 100) {
+				$payload['limit'] = 100;
+			}
+			list($code, $body) = $this->website_proxy_post_json(site_url('api/batch/batch-list'), $payload, array('Authorization: Bearer ' . $token));
+			$this->output->set_status_header((int) $code > 0 ? $code : 200);
+			$this->output->set_content_type('application/json')->set_output($body !== '' ? $body : json_encode(array('status' => 'false', 'msg' => 'Empty response')));
+		}
+
+		public function batch_details()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$batch_id = (int) $this->input->get('batch_id');
+			if ($batch_id < 1) {
+				$batch_id = (int) $this->input->get('id');
+			}
+			$data = $this->frontend_shell_data('Batch details');
+			$data['batch_id'] = $batch_id;
+			$data['batch_details_data_url'] = site_url('api/batch/batch-details');
+			$data['batch_payment_plan_url'] = site_url('batch/payment-plan');
+			$data['api_access_token'] = $this->website_session_access_token();
+			$this->render_frontend_layout('frontend/batch_details', $data);
+		}
+
+		public function batch_payment_plan()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$batch_id = (int) $this->input->get('batch_id');
+			if ($batch_id < 1) {
+				$batch_id = (int) $this->input->get('id');
+			}
+			$data = $this->frontend_shell_data('Payment plan');
+			$data['batch_id'] = $batch_id;
+			$data['batch_uid'] = (int) $this->session->userdata('uid');
+			$data['batch_details_data_url'] = site_url('api/batch/batch-details');
+			$data['batch_plans_data_url'] = site_url('api/plan/plans');
+			$data['batch_promo_codes_data_url'] = site_url('api/plan/promo-codes');
+			$data['batch_payment_history_data_url'] = site_url('api/user/payment-history');
+			$data['batch_create_order_url'] = site_url('api/payment/razorpay/create-order');
+			$data['batch_verify_payment_url'] = site_url('api/payment/razorpay/verify-payment');
+			$data['batch_payment_success_url'] = site_url('batch/payment-success');
+			$data['api_access_token'] = $this->website_session_access_token();
+			$data['batch_details_prefetch'] = array();
+			if ($batch_id > 0) {
+				$token = $this->website_session_access_token();
+				if ($token !== '') {
+					list($bd_code, $bd_body) = $this->website_proxy_post_json(
+						site_url('api/batch/batch-details'),
+						array('batch_id' => $batch_id),
+						array('Authorization: Bearer ' . $token)
+					);
+					$bd_json = json_decode($bd_body, true);
+					if ((int) $bd_code >= 200 && (int) $bd_code < 300 && is_array($bd_json) && isset($bd_json['status']) && ($bd_json['status'] === 'true' || $bd_json['status'] === true) && ! empty($bd_json['data']) && is_array($bd_json['data'])) {
+						$data['batch_details_prefetch'] = $bd_json['data'];
+					}
+				}
+			}
+			$this->render_frontend_layout('frontend/batch_payment_plan', $data);
+		}
+
+		public function batch_payment_success()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			$data = $this->frontend_shell_data('Payment success');
+			$data['batch_id'] = (int) $this->input->get('batch_id');
+			$data['payment_id'] = (string) $this->input->get('payment_id');
+			$data['order_id'] = (string) $this->input->get('order_id');
+			$data['amount'] = (string) $this->input->get('amount');
+			$this->render_frontend_layout('frontend/batch_payment_success', $data);
+		}
+
+		public function batch_live_classes()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$batch_id = (int) $this->input->get('batch_id');
+			if ($batch_id < 1) {
+				$batch_id = (int) $this->input->get('id');
+			}
+			$data = $this->frontend_shell_data('Live classes');
+			$data['batch_id'] = $batch_id;
+			$data['api_access_token'] = $this->website_session_access_token();
+			$data['live_class_list_url'] = site_url('api/batch/live-class-list');
+			$data['live_class_room_url'] = site_url('batch/live-room');
+			$this->render_frontend_layout('frontend/batch_live_classes', $data);
+		}
+
+		public function batch_live_room()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$live_class_id = (int) $this->input->get('live_class_id');
+			if ($live_class_id < 1) {
+				$live_class_id = (int) $this->input->get('id');
+			}
+			$data = $this->frontend_shell_data('Live room');
+			$data['live_class_id'] = $live_class_id;
+			$data['api_access_token'] = $this->website_session_access_token();
+			$data['live_class_details_url'] = site_url('api/batch/live-class-details');
+			$this->render_frontend_layout('frontend/batch_live_room', $data);
+		}
+
+		public function attendance_page()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$data = $this->frontend_shell_data('Attendance');
+			$data['attendance_api_url'] = site_url('api/user/attendance-list');
+			$data['batch_id'] = (int) $this->input->get('batch_id');
+			$data['api_access_token'] = $this->website_session_access_token();
+			$this->render_frontend_layout('frontend/attendance_page', $data);
+		}
+
+		public function homework_page()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$data = $this->frontend_shell_data('Homework');
+			$data['homework_api_url'] = site_url('api/batch/homework-list');
+			$data['batch_id'] = (int) $this->input->get('batch_id');
+			$data['api_access_token'] = $this->website_session_access_token();
+			$this->render_frontend_layout('frontend/homework_list_page', $data);
+		}
+
+		public function notifications_page()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$data = $this->frontend_shell_data('Notifications');
+			$data['notifications_api_url'] = site_url('api/main/notifications-list');
+			$data['api_access_token'] = $this->website_session_access_token();
+			$this->render_frontend_layout('frontend/notifications_page', $data);
+		}
+
+		public function library_page()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$batch_id = (int) $this->input->get('batch_id');
+			if ($batch_id < 1) {
+				$batch_id = (int) $this->input->get('id');
+			}
+			$data = $this->frontend_shell_data('Library');
+			$data['library_api_url'] = site_url('api/batch/library-list');
+			$data['batch_id'] = $batch_id;
+			$data['api_access_token'] = $this->website_session_access_token();
+			$data['my_batches_url'] = site_url('batch/mylist');
+			$this->render_frontend_layout('frontend/library_page', $data);
+		}
+
+		public function institute_listing()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$data = $this->frontend_shell_data('Institutes');
+			$data['institute_listing_data_url'] = site_url('institute/listing-data');
+			$data['institute_details_url'] = site_url('institute/details');
+			$data['institute_city_list_url'] = site_url('api/institute/city-list');
+			$data['batch_id'] = (int) $this->input->get('batch_id');
+			$data['show_institute_reviews_link'] = $this->website_session_is_institute();
+			$data['institute_reviews_list_url'] = site_url('institute/reviews-list');
+			$this->render_frontend_layout('frontend/institute_listing', $data);
+		}
+
+		public function institute_listing_data()
+		{
+			$in = $this->website_require_ajax_json();
+			if ($in === null) {
+				return;
+			}
+			$token = $this->website_session_access_token();
+			if ($token === '') {
+				$this->output->set_status_header(401)->set_content_type('application/json')->set_output(json_encode(array('status' => 'false', 'msg' => 'Please login again.')));
+				return;
+			}
+			if (! isset($in['order_field']) || $in['order_field'] === '') {
+				$in['order_field'] = 'name';
+			}
+			list($code, $body) = $this->website_proxy_post_json(site_url('api/institute/listing'), $in, array('Authorization: Bearer ' . $token));
+			$this->output->set_status_header((int) $code > 0 ? $code : 200);
+			$this->output->set_content_type('application/json')->set_output($body !== '' ? $body : json_encode(array('status' => 'false', 'msg' => 'Empty response')));
+		}
+
+		public function institute_details()
+		{
+			$id = (int) $this->input->get('institute_id');
+			if ($id < 1) {
+				$id = (int) $this->input->get('id');
+			}
+			$data = $this->frontend_shell_data('Institute details');
+			$data['institute_id'] = $id;
+			$data['institute_details_data_url'] = site_url('institute/details-data');
+			$data['add_review_url'] = site_url('institute/add-review');
+			$data['web_logged_in'] = isset($this->session->userdata['role']) && $this->website_session_access_token() !== '';
+			$this->render_frontend_layout('frontend/institute_details', $data);
+		}
+
+		public function institute_details_data()
+		{
+			$in = $this->website_require_ajax_json();
+			if ($in === null) {
+				return;
+			}
+			list($code, $body) = $this->website_proxy_post_json(site_url('api/institute/details'), $in);
+			$this->output->set_status_header((int) $code > 0 ? $code : 200);
+			$this->output->set_content_type('application/json')->set_output($body !== '' ? $body : json_encode(array('status' => 'false', 'msg' => 'Empty response')));
+		}
+
+		public function institute_add_review()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$iid = (int) $this->input->get('institute_id');
+			if ($iid < 1) {
+				redirect(site_url('institute/listing'));
+				return;
+			}
+			$data = $this->frontend_shell_data('Write a review');
+			$data['institute_id'] = $iid;
+			$data['institute_add_review_submit_url'] = site_url('institute/add-review-submit');
+			$this->render_frontend_layout('frontend/institute_add_review', $data);
+		}
+
+		public function institute_add_review_submit()
+		{
+			$in = $this->website_require_ajax_json();
+			if ($in === null) {
+				return;
+			}
+			$token = $this->website_session_access_token();
+			if ($token === '') {
+				$this->output->set_status_header(401)->set_content_type('application/json')->set_output(json_encode(array('status' => 'false', 'msg' => 'Please login again.')));
+				return;
+			}
+			list($code, $body) = $this->website_proxy_post_json(site_url('api/main/add-review'), $in, array('Authorization: Bearer ' . $token));
+			$this->output->set_status_header((int) $code > 0 ? $code : 200);
+			$this->output->set_content_type('application/json')->set_output($body !== '' ? $body : json_encode(array('status' => 'false', 'msg' => 'Empty response')));
+		}
+
+		public function institute_reviews_list()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			if (! $this->website_session_is_institute()) {
+				show_error('This page is for institute accounts only.', 403);
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$data = $this->frontend_shell_data('Institute reviews');
+			$data['institute_reviews_data_url'] = site_url('institute/reviews-data');
+			$data['institute_approve_review_submit_url'] = site_url('institute/approve-review-submit');
+			$this->render_frontend_layout('frontend/institute_reviews_list', $data);
+		}
+
+		public function institute_reviews_data()
+		{
+			$in = $this->website_require_ajax_json();
+			if ($in === null) {
+				return;
+			}
+			if (! $this->website_session_is_institute()) {
+				$this->output->set_status_header(403)->set_content_type('application/json')->set_output(json_encode(array('status' => 'false', 'msg' => 'Forbidden')));
+				return;
+			}
+			$token = $this->website_session_access_token();
+			if ($token === '') {
+				$this->output->set_status_header(401)->set_content_type('application/json')->set_output(json_encode(array('status' => 'false', 'msg' => 'Please login again.')));
+				return;
+			}
+			list($code, $body) = $this->website_proxy_post_json(site_url('api/main/institute-reviews-list'), $in, array('Authorization: Bearer ' . $token));
+			$this->output->set_status_header((int) $code > 0 ? $code : 200);
+			$this->output->set_content_type('application/json')->set_output($body !== '' ? $body : json_encode(array('status' => 'false', 'msg' => 'Empty response')));
+		}
+
+		public function institute_approve_review_submit()
+		{
+			$in = $this->website_require_ajax_json();
+			if ($in === null) {
+				return;
+			}
+			if (! $this->website_session_is_institute()) {
+				$this->output->set_status_header(403)->set_content_type('application/json')->set_output(json_encode(array('status' => 'false', 'msg' => 'Forbidden')));
+				return;
+			}
+			$token = $this->website_session_access_token();
+			if ($token === '') {
+				$this->output->set_status_header(401)->set_content_type('application/json')->set_output(json_encode(array('status' => 'false', 'msg' => 'Please login again.')));
+				return;
+			}
+			list($code, $body) = $this->website_proxy_post_json(site_url('api/main/approve-review'), $in, array('Authorization: Bearer ' . $token));
+			$this->output->set_status_header((int) $code > 0 ? $code : 200);
+			$this->output->set_content_type('application/json')->set_output($body !== '' ? $body : json_encode(array('status' => 'false', 'msg' => 'Empty response')));
+		}
+
+		public function institute_edit_review()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$rid = (int) $this->input->get('review_id');
+			if ($rid < 1) {
+				redirect(site_url('institute/listing'));
+				return;
+			}
+			$data = $this->frontend_shell_data('Edit review');
+			$data['review_id'] = $rid;
+			$data['institute_review_detail_data_url'] = site_url('institute/review-detail-data');
+			$data['institute_update_review_submit_url'] = site_url('institute/update-review-submit');
+			$this->render_frontend_layout('frontend/institute_edit_review', $data);
+		}
+
+		public function institute_review_detail_data()
+		{
+			$in = $this->website_require_ajax_json();
+			if ($in === null) {
+				return;
+			}
+			$token = $this->website_session_access_token();
+			if ($token === '') {
+				$this->output->set_status_header(401)->set_content_type('application/json')->set_output(json_encode(array('status' => 'false', 'msg' => 'Please login again.')));
+				return;
+			}
+			list($code, $body) = $this->website_proxy_post_json(site_url('api/main/review-detail'), $in, array('Authorization: Bearer ' . $token));
+			$this->output->set_status_header((int) $code > 0 ? $code : 200);
+			$this->output->set_content_type('application/json')->set_output($body !== '' ? $body : json_encode(array('status' => 'false', 'msg' => 'Empty response')));
+		}
+
+		public function institute_update_review_submit()
+		{
+			$in = $this->website_require_ajax_json();
+			if ($in === null) {
+				return;
+			}
+			$token = $this->website_session_access_token();
+			if ($token === '') {
+				$this->output->set_status_header(401)->set_content_type('application/json')->set_output(json_encode(array('status' => 'false', 'msg' => 'Please login again.')));
+				return;
+			}
+			list($code, $body) = $this->website_proxy_post_json(site_url('api/main/update-review'), $in, array('Authorization: Bearer ' . $token));
+			$this->output->set_status_header((int) $code > 0 ? $code : 200);
+			$this->output->set_content_type('application/json')->set_output($body !== '' ? $body : json_encode(array('status' => 'false', 'msg' => 'Empty response')));
+		}
+
+		public function institute_delete_review()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$rid = (int) $this->input->get('review_id');
+			if ($rid < 1) {
+				redirect(site_url('institute/listing'));
+				return;
+			}
+			$data = $this->frontend_shell_data('Delete review');
+			$data['review_id'] = $rid;
+			$data['institute_delete_review_submit_url'] = site_url('institute/delete-review-submit');
+			$this->render_frontend_layout('frontend/institute_delete_review', $data);
+		}
+
+		public function institute_delete_review_submit()
+		{
+			$in = $this->website_require_ajax_json();
+			if ($in === null) {
+				return;
+			}
+			$token = $this->website_session_access_token();
+			if ($token === '') {
+				$this->output->set_status_header(401)->set_content_type('application/json')->set_output(json_encode(array('status' => 'false', 'msg' => 'Please login again.')));
+				return;
+			}
+			list($code, $body) = $this->website_proxy_post_json(site_url('api/main/delete-review'), $in, array('Authorization: Bearer ' . $token));
+			$this->output->set_status_header((int) $code > 0 ? $code : 200);
+			$this->output->set_content_type('application/json')->set_output($body !== '' ? $body : json_encode(array('status' => 'false', 'msg' => 'Empty response')));
 		}
 
 		function readMoreWord($story_desc,$C_word='') {

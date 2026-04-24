@@ -884,8 +884,8 @@
                               
                 			    <ul>
                 			      <?php 
-                			      //$batch = $this->db_model->select_data('*,sudent_batchs.batch_id','batches use index (id)',array('batches.status'=>'1','admin_id'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('sudent_batchs','sudent_batchs.batch_id=batches.id'));
-                			      $batch = $this->db_model->select_data('*,sudent_batchs.batch_id','batches use index (id)',array('batches.status'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('sudent_batchs','sudent_batchs.batch_id=batches.id'));
+                			      //$batch = $this->db_model->select_data('*,student_batchs.batch_id','batches use index (id)',array('batches.status'=>'1','admin_id'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('student_batchs','student_batchs.batch_id=batches.id'));
+                			      $batch = $this->db_model->select_data('*,student_batchs.batch_id','batches use index (id)',array('batches.status'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('student_batchs','student_batchs.batch_id=batches.id'));
                 			        if(!empty($batch)) {
                 			        foreach($batch as $bat){?>
                 			        <li>

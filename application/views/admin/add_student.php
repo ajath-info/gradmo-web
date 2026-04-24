@@ -133,7 +133,7 @@
                                  $bName = "";
                                 // print_r($student_batch_dtail);
                                   foreach($batch_name_online as $batch){
-                                     $student_batch_dtail = $this->db_model->select_data('batch_id','sudent_batchs',array('student_id'=>$student_id,'batch_id'=>$batch['id']));
+                                     $student_batch_dtail = $this->db_model->select_data('batch_id','student_batchs',array('student_id'=>$student_id,'batch_id'=>$batch['id']));
                                  
                                     if(!empty($student_batch_dtail))
                                       {
@@ -165,7 +165,7 @@
                                     if(!empty($batch_name_offline)){
                                     
                                           foreach($batch_name_offline as $batch){
-                                             $student_batch_dtail = $this->db_model->select_data('batch_id','sudent_batchs',array('student_id'=>$student_id,'batch_id'=>$batch['id']));
+                                             $student_batch_dtail = $this->db_model->select_data('batch_id','student_batchs',array('student_id'=>$student_id,'batch_id'=>$batch['id']));
                                          
                                             if(!empty($student_batch_dtail))
                                               {

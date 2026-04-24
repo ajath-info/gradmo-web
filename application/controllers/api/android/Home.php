@@ -382,7 +382,7 @@ class Home extends CI_Controller {
 						                 'added_by'=>'student',
 						                 'admin_id'=>$admin_ids,
 	        					                 );
-					 	   $this->db_model->insert_data('sudent_batchs',$data_batch);
+					 	   $this->db_model->insert_data('student_batchs',$data_batch);
 						}
 					    // send email 
 					    $title = $this->db_model->select_data('site_title','site_details','',1,array('id','desc'))[0]['site_title'];
@@ -534,7 +534,7 @@ class Home extends CI_Controller {
 
 		    // Assign batch
 		    if ($batch_id > 0) {
-		        $this->db_model->insert_data('sudent_batchs', [
+		        $this->db_model->insert_data('student_batchs', [
 		            'student_id' => $student_id,
 		            'batch_id'   => $batch_id,
 		            'added_by'   => 'student',
@@ -721,7 +721,7 @@ class Home extends CI_Controller {
                             }else{
                               $batchData[$key]['videoLectures'] = array(); 
                             }
-    					   $student_batch_dtail = $this->db_model->select_data('*','sudent_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
+    					   $student_batch_dtail = $this->db_model->select_data('*','student_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
     					   if(!empty($student_batch_dtail)){
     					        $batchData[$key]['purchase_condition'] = true;
     					   }else{
@@ -774,7 +774,7 @@ class Home extends CI_Controller {
 			
 			if(!empty($data['student_id'])){
 			    
-			    $batchs_id =$this->db_model->select_data('batch_id','sudent_batchs',array('student_id'=>$data['student_id']));
+			    $batchs_id =$this->db_model->select_data('batch_id','student_batchs',array('student_id'=>$data['student_id']));
 			       //print_r($batchs_id);
 			    if(!empty($batchs_id)){
 			        
@@ -1090,7 +1090,7 @@ public function otherBatchData($data){
                         }else{
                           $batchData[$key]['videoLectures'] = array(); 
                         }
-					   $student_batch_dtail = $this->db_model->select_data('*','sudent_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
+					   $student_batch_dtail = $this->db_model->select_data('*','student_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
 					   if(!empty($student_batch_dtail)){
 					        $batchData[$key]['purchase_condition'] = true;
 					   }else{
@@ -2186,7 +2186,7 @@ public function otherBatchData($data){
 			}
 			
 			
-		    	 $adm_id = $this->db_model->select_data('*','sudent_batchs',array('student_id'=>$data['student_id'],'batch_id'=>$data['batch_id']));
+		    	 $adm_id = $this->db_model->select_data('*','student_batchs',array('student_id'=>$data['student_id'],'batch_id'=>$data['batch_id']));
 			$arrayData['admin_id']= $adm_id[0]['admin_id'];
 			$checkusers = $this->db_model->select_data('doubt_id','student_doubts_class',array('teacher_id'=>$data['teacher_id'],'batch_id'=>$data['batch_id'],'status'=>0,'student_id'=>$data['student_id'],'subjects_id'=>$data['subject_id'],'chapters_id'=>$data['chapter_id']),'',array('doubt_id ','desc'));
 			if(empty($checkusers)){
@@ -2529,7 +2529,7 @@ public function otherBatchData($data){
             	$this->db_model->insert_data('temp_data',array('temp'=>json_encode($data)));
     		if(!empty($data['student_id']) && !empty($data['batch_id'])){
     		    
-    		    $checkBatch =$this->db_model->select_data('*','sudent_batchs',array('batch_id'=>$data['batch_id'],'student_id'=>$data['student_id']),1);
+    		    $checkBatch =$this->db_model->select_data('*','student_batchs',array('batch_id'=>$data['batch_id'],'student_id'=>$data['student_id']),1);
     		    if(!empty($checkBatch)){
     		        
         		    $studentData =$this->db_model->select_data('id as studentId,email as userEmail,name as fullName,enrollment_id as enrollmentId,contact_no as mobile,app_version as versionCode, batch_id as batchId,admin_id as adminId,admission_date as admissionDate, image, token','students use index (id)',array('id'=>$data['student_id']),1);
@@ -2627,7 +2627,7 @@ public function otherBatchData($data){
     			                 'added_by'=>'student',
     			                 'admin_id'=>$admin_ids
     					                 );
-    		 	   $this->db_model->insert_data('sudent_batchs',$data_batch);
+    		 	   $this->db_model->insert_data('student_batchs',$data_batch);
     			    // send email 
     			   $title = $this->db_model->select_data('site_title','site_details','',1,array('id','desc'))[0]['site_title'];
                     $subj = $title.'- '.$this->lang->line('ltr_credentials');
@@ -2651,7 +2651,7 @@ public function otherBatchData($data){
             $last_login = $this->db_model->select_data('last_login_app','students use index(id)',array('id'=>$student_id),1);
             
             if($last_login[0]['last_login_app'] != '0000-00-00 00:00:00'){
-                $batch_details = $this->db_model->select_data('*','sudent_batchs ',array('student_id'=>$student_id),'','','',array('batches','batches.id=sudent_batchs.batch_id'));
+                $batch_details = $this->db_model->select_data('*','student_batchs ',array('student_id'=>$student_id),'','','',array('batches','batches.id=student_batchs.batch_id'));
                 foreach($batch_details as $batch_detail){
                 $lastLoginTime = $last_login[0]['last_login_app'];
                 $batch_id = $batch_detail['batch_id'];
@@ -3105,7 +3105,7 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
                     }else{
                       $batchData[$key]['videoLectures'] = array(); 
                     }
-                   $student_batch_dtail = $this->db_model->select_data('*','sudent_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
+                   $student_batch_dtail = $this->db_model->select_data('*','student_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
                    if(!empty($student_batch_dtail)){
                         $batchData[$key]['purchase_condition'] = true;
                    }else{
@@ -3255,7 +3255,7 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
 //                     }else{
 //                       $batchData[$key]['videoLectures'] = array(); 
 //                     }
-            // 	   $student_batch_dtail = $this->db_model->select_data('*','sudent_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
+            // 	   $student_batch_dtail = $this->db_model->select_data('*','student_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
             // 	   if(!empty($student_batch_dtail)){
             // 	        $batchData[$key]['purchase_condition'] = true;
             // 	   }else{
@@ -3392,7 +3392,7 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
                     }else{
                       $batchData[$key]['videoLectures'] = array(); 
                     }
-                   $student_batch_dtail = $this->db_model->select_data('*','sudent_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
+                   $student_batch_dtail = $this->db_model->select_data('*','student_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
                    
                    
                    if(!empty($student_batch_dtail)){
@@ -3422,10 +3422,10 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
          if(isset($data['student_id'])){
              $id=$data['student_id'];
             //  $batch_id = $data['batch_id'];
-            $cond = array('sudent_batchs.student_id' => $id);
+            $cond = array('student_batchs.student_id' => $id);
             $table = 'batches';
-            $join = array('batches', 'sudent_batchs.batch_id = batches.id');
-            $batches = $this->db_model->select_data('batches.batch_name,sudent_batchs.batch_id,sudent_batchs.student_id','sudent_batchs',$cond,$limit,array('sudent_batchs.id','desc'),$like,$join,'',$or_like);
+            $join = array('batches', 'student_batchs.batch_id = batches.id');
+            $batches = $this->db_model->select_data('batches.batch_name,student_batchs.batch_id,student_batchs.student_id','student_batchs',$cond,$limit,array('student_batchs.id','desc'),$like,$join,'',$or_like);
                 
             if(!empty($batches)){
                  

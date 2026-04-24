@@ -18,7 +18,7 @@
                                 <h2 class="edu_courses_title"><?php echo $singel_batches[0]['batch_name']; ?></h2>
                                 <p class="edu_courses_des mb_30 edu_para_ellipse"><?php echo $singel_batches[0]['description']; ?></p>
                                  <?php 
-                                  $purchase = $this->db_model->select_data('*', 'sudent_batchs',array('student_id' => $this->session->userdata('uid'),'batch_id'=>$singel_batches[0]['id']));
+                                  $purchase = $this->db_model->select_data('*', 'student_batchs',array('student_id' => $this->session->userdata('uid'),'batch_id'=>$singel_batches[0]['id']));
                                 if(empty($purchase)){
                                  ?>
                                 <a href="<?php echo base_url('enroll-now/'.$singel_batches[0]['id']); ?>" class="edu_btn"><?php echo html_escape($this->common->languageTranslator('ltr_enroll_now'));?></a>

@@ -784,7 +784,7 @@ class Home extends MY_Controller {
                             }else{
                               $batchData[$key]['videoLectures'] = array(); 
                             }
-    					   $student_batch_dtail = $this->db_model->select_data('*','sudent_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
+    					   $student_batch_dtail = $this->db_model->select_data('*','student_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
     					   if(!empty($student_batch_dtail)){
     					        $batchData[$key]['purchase_condition'] = true;
     					   }else{
@@ -837,7 +837,7 @@ class Home extends MY_Controller {
 			
 			if(!empty($data['student_id'])){
 			    
-			    $batchs_id =$this->db_model->select_data('batch_id','sudent_batchs',array('student_id'=>$data['student_id']));
+			    $batchs_id =$this->db_model->select_data('batch_id','student_batchs',array('student_id'=>$data['student_id']));
 			       //print_r($batchs_id);
 			    if(!empty($batchs_id)){
 			        
@@ -1153,7 +1153,7 @@ public function otherBatchData($data){
                         }else{
                           $batchData[$key]['videoLectures'] = array(); 
                         }
-					   $student_batch_dtail = $this->db_model->select_data('*','sudent_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
+					   $student_batch_dtail = $this->db_model->select_data('*','student_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
 					   if(!empty($student_batch_dtail)){
 					        $batchData[$key]['purchase_condition'] = true;
 					   }else{
@@ -1198,7 +1198,7 @@ public function otherBatchData($data){
     }
     $data = $this->normalize_multi_user_registration_data($data);
 
-    $payload = $this->require_auth_payload();
+    $payload = $this->require_auth_payload(array(), is_array($data) ? $data : null);
     if ($payload === false) {
         return;
     }
@@ -1218,7 +1218,7 @@ public function otherBatchData($data){
         $data_arr = array();
 
         $fields = array(
-            'name', 'email', 'mobile', 'address', 'country',
+            'name', 'email', 'address', 'country',
             'state', 'city', 'pincode', 'school_college_name', 'grade', 'is_complete',
         );
 
@@ -1226,6 +1226,16 @@ public function otherBatchData($data){
             if (isset($data[$field]) && $data[$field] !== '') {
                 $data_arr[$field] = $data[$field];
             }
+        }
+
+        $mob = '';
+        if (isset($data['mobile']) && trim((string) $data['mobile']) !== '') {
+            $mob = trim((string) $data['mobile']);
+        } elseif (isset($data['contact_no']) && trim((string) $data['contact_no']) !== '') {
+            $mob = trim((string) $data['contact_no']);
+        }
+        if ($mob !== '') {
+            $data_arr['contact_no'] = $mob;
         }
 
         if (isset($_FILES['image']) && !empty($_FILES['image']['name'])) {
@@ -2340,7 +2350,7 @@ public function otherBatchData($data){
 		return $att > $start ? 1 : 0;
 	}
 
-	/** True if student is linked to batch via sudent_batchs, students.batch_id, or multi_batch JSON. */
+	/** True if student is linked to batch via student_batchs, students.batch_id, or multi_batch JSON. */
 	private function attendance_student_enrolled_in_batch($student_id, $batch_id)
 	{
 		$student_id = (int) $student_id;
@@ -2348,7 +2358,7 @@ public function otherBatchData($data){
 		if ($student_id < 1 || $batch_id < 1) {
 			return false;
 		}
-		if (!empty($this->db_model->select_data('id', 'sudent_batchs', array('student_id' => $student_id, 'batch_id' => $batch_id), 1))) {
+		if (!empty($this->db_model->select_data('id', 'student_batchs', array('student_id' => $student_id, 'batch_id' => $batch_id), 1))) {
 			return true;
 		}
 		$rows = $this->db_model->select_data('batch_id, multi_batch', 'students', array('id' => $student_id, 'status' => 1), 1);
@@ -2527,7 +2537,7 @@ public function otherBatchData($data){
 
             $ph = implode(',', array_fill(0, count($batch_ids), '?'));
             // Rows in attendance for this date and batch (teacher scoped via batch_subjects above).
-            // Do not require sudent_batchs: some students have attendance + batch_id but no enrollment row there.
+            // Do not require student_batchs: some students have attendance + batch_id but no enrollment row there.
             // Do not filter by attendance.added_id (marker may differ from current teacher id).
             $sql = "SELECT s.id AS studentId, s.name, s.image, a.batch_id AS batchId,
                         a.id AS attendanceId, a.date, a.time,
@@ -3041,7 +3051,7 @@ public function otherBatchData($data){
 			}
 			
 			
-		    	 $adm_id = $this->db_model->select_data('*','sudent_batchs',array('student_id'=>$data['student_id'],'batch_id'=>$data['batch_id']));
+		    	 $adm_id = $this->db_model->select_data('*','student_batchs',array('student_id'=>$data['student_id'],'batch_id'=>$data['batch_id']));
 			$arrayData['admin_id']= $adm_id[0]['admin_id'];
 			$checkusers = $this->db_model->select_data('doubt_id','student_doubts_class',array('teacher_id'=>$data['teacher_id'],'batch_id'=>$data['batch_id'],'status'=>0,'student_id'=>$data['student_id'],'subjects_id'=>$data['subject_id'],'chapters_id'=>$data['chapter_id']),'',array('doubt_id ','desc'));
 			if(empty($checkusers)){
@@ -3510,7 +3520,7 @@ public function otherBatchData($data){
             	$this->db_model->insert_data('temp_data',array('temp'=>json_encode($data)));
     		if(!empty($data['student_id']) && !empty($data['batch_id'])){
     		    
-    		    $checkBatch =$this->db_model->select_data('*','sudent_batchs',array('batch_id'=>$data['batch_id'],'student_id'=>$data['student_id']),1);
+    		    $checkBatch =$this->db_model->select_data('*','student_batchs',array('batch_id'=>$data['batch_id'],'student_id'=>$data['student_id']),1);
     		    if(!empty($checkBatch)){
     		        
         		    $studentData =$this->db_model->select_data('id as studentId,email as userEmail,name as fullName,enrollment_id as enrollmentId,contact_no as mobile,app_version as versionCode, batch_id as batchId,admin_id as adminId,admission_date as admissionDate, image, token','students use index (id)',array('id'=>$data['student_id']),1);
@@ -3608,7 +3618,7 @@ public function otherBatchData($data){
     			                 'added_by'=>'student',
     			                 'admin_id'=>$admin_ids
     					                 );
-    		 	   $this->db_model->insert_data('sudent_batchs',$data_batch);
+    		 	   $this->db_model->insert_data('student_batchs',$data_batch);
     			    // send email 
     			   $title = $this->db_model->select_data('site_title','site_details','',1,array('id','desc'))[0]['site_title'];
                     $subj = $title.'- '.$this->lang->line('ltr_credentials');
@@ -3633,7 +3643,7 @@ public function otherBatchData($data){
             $last_login = $this->db_model->select_data('last_login_app','students use index(id)',array('id'=>$student_id),1);
             
             if($last_login[0]['last_login_app'] != '0000-00-00 00:00:00'){
-                $batch_details = $this->db_model->select_data('*','sudent_batchs ',array('student_id'=>$student_id),'','','',array('batches','batches.id=sudent_batchs.batch_id'));
+                $batch_details = $this->db_model->select_data('*','student_batchs ',array('student_id'=>$student_id),'','','',array('batches','batches.id=student_batchs.batch_id'));
                 foreach($batch_details as $batch_detail){
                 $lastLoginTime = $last_login[0]['last_login_app'];
                 $batch_id = $batch_detail['batch_id'];
@@ -4086,7 +4096,7 @@ public function otherBatchData($data){
                     }else{
                       $batchData[$key]['videoLectures'] = array(); 
                     }
-                   $student_batch_dtail = $this->db_model->select_data('*','sudent_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
+                   $student_batch_dtail = $this->db_model->select_data('*','student_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
                    if(!empty($student_batch_dtail)){
                         $batchData[$key]['purchase_condition'] = true;
                    }else{
@@ -4236,7 +4246,7 @@ public function otherBatchData($data){
             //                     }else{
             //                       $batchData[$key]['videoLectures'] = array(); 
             //                     }
-            // 	   $student_batch_dtail = $this->db_model->select_data('*','sudent_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
+            // 	   $student_batch_dtail = $this->db_model->select_data('*','student_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
             // 	   if(!empty($student_batch_dtail)){
             // 	        $batchData[$key]['purchase_condition'] = true;
             // 	   }else{
@@ -4373,7 +4383,7 @@ public function otherBatchData($data){
                     }else{
                       $batchData[$key]['videoLectures'] = array(); 
                     }
-                   $student_batch_dtail = $this->db_model->select_data('*','sudent_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
+                   $student_batch_dtail = $this->db_model->select_data('*','student_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
                    
                    
                    if(!empty($student_batch_dtail)){
@@ -4403,10 +4413,10 @@ public function otherBatchData($data){
          if(isset($data['student_id'])){
              $id=$data['student_id'];
             //  $batch_id = $data['batch_id'];
-            $cond = array('sudent_batchs.student_id' => $id);
+            $cond = array('student_batchs.student_id' => $id);
             $table = 'batches';
-            $join = array('batches', 'sudent_batchs.batch_id = batches.id');
-            $batches = $this->db_model->select_data('batches.batch_name,sudent_batchs.batch_id,sudent_batchs.student_id','sudent_batchs',$cond,$limit,array('sudent_batchs.id','desc'),$like,$join,'',$or_like);
+            $join = array('batches', 'student_batchs.batch_id = batches.id');
+            $batches = $this->db_model->select_data('batches.batch_name,student_batchs.batch_id,student_batchs.student_id','student_batchs',$cond,$limit,array('student_batchs.id','desc'),$like,$join,'',$or_like);
                 
             if(!empty($batches)){
                  
@@ -4561,6 +4571,215 @@ public function otherBatchData($data){
     }
 
 	/**
+	 * POST/GET api/user/user_details
+	 * Auth: student Bearer / body token.
+	 * Returns userDetails, batchList, instituteList, enrollment_details (payments + plan 1 yearly rule).
+	 */
+	public function user_details()
+	{
+		$from_body = json_decode(file_get_contents('php://input'), true);
+		if (!is_array($from_body)) {
+			$from_body = array();
+		}
+		$data = array_merge($_REQUEST, $from_body);
+		$payload = $this->require_auth_payload(array('student'), is_array($from_body) ? $from_body : null);
+		if ($payload === false) {
+			return;
+		}
+
+		$student_id = (int) $payload['uid'];
+		if ($student_id < 1) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => $this->lang->line('ltr_missing_parameters_msg'),
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
+
+		$student = $this->db_model->select_data('*', 'students use index (id)', array('id' => $student_id, 'status' => 1), 1);
+		if (empty($student)) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => $this->lang->line('ltr_not_found_msg'),
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
+
+		$now = date('Y-m-d H:i:s');
+		$userDetails = $this->build_student_login_data_array($student[0], '', '', '', $now, '');
+		unset($userDetails['access_token'], $userDetails['token_type'], $userDetails['plan_one']);
+
+		$batchRaw = $this->fetch_student_enrolled_batches_raw($student_id, '', null, 0);
+		$batchList = $this->map_batches_to_dashboard_list_cards($batchRaw);
+
+		$instituteList = $this->fetch_institutes_for_student_batches($student_id);
+		$enrollment_details = $this->build_enrollment_details_for_student($student_id);
+
+		echo json_encode(array(
+			'status' => 'true',
+			'msg' => $this->lang->line('ltr_fetch_successfully'),
+			'data' => array(
+				'userDetails' => $userDetails,
+				'batchList' => $batchList,
+				'instituteList' => $instituteList,
+				'enrollment_details' => $enrollment_details,
+			),
+		), JSON_UNESCAPED_SLASHES);
+	}
+
+	/**
+	 * Distinct institutes (users behind batches.admin_id) for batches the student is enrolled in.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function fetch_institutes_for_student_batches($student_id)
+	{
+		$student_id = (int) $student_id;
+		if ($student_id < 1) {
+			return array();
+		}
+
+		$sql = 'SELECT DISTINCT u.id, u.name, u.email, u.role, u.teach_image AS teach_image
+			FROM student_batchs sb
+			INNER JOIN batches b ON b.id = sb.batch_id AND (b.status = 1 OR b.status = \'1\')
+			INNER JOIN users u ON u.id = b.admin_id AND IFNULL(u.status, 1) = 1
+			WHERE sb.student_id = ?
+			ORDER BY u.name ASC';
+		$q = $this->db->query($sql, array($student_id));
+		if ($q === false) {
+			return array();
+		}
+
+		$out = array();
+		foreach ($q->result_array() as $row) {
+			$img = isset($row['teach_image']) ? trim((string) $row['teach_image']) : '';
+			$out[] = array(
+				'instituteId' => (int) $row['id'],
+				'name' => isset($row['name']) ? $row['name'] : '',
+				'email' => isset($row['email']) ? $row['email'] : '',
+				'role' => isset($row['role']) ? (int) $row['role'] : 0,
+				'image' => $img !== '' ? base_url('uploads/users/') . $img : '',
+			);
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Map a `student_payment_history` row (including merged plan / Razorpay columns) to API camelCase.
+	 *
+	 * @param array<string, mixed> $r
+	 * @return array<string, mixed>
+	 */
+	private function map_student_payment_history_row_for_api(array $r)
+	{
+		$pd = isset($r['payment_date']) ? $r['payment_date'] : null;
+		$ca = isset($r['create_at']) ? $r['create_at'] : null;
+
+		return array(
+			'id' => isset($r['id']) ? (int) $r['id'] : 0,
+			'recordId' => isset($r['id']) ? (int) $r['id'] : 0,
+			'studentId' => isset($r['student_id']) ? (int) $r['student_id'] : 0,
+			'batchId' => isset($r['batch_id']) ? (int) $r['batch_id'] : 0,
+			'planId' => isset($r['plan_id']) ? (int) $r['plan_id'] : 0,
+			'transactionId' => isset($r['transaction_id']) ? $r['transaction_id'] : '',
+			'mode' => isset($r['mode']) ? $r['mode'] : '',
+			'amount' => isset($r['amount']) ? (int) $r['amount'] : 0,
+			'adminId' => isset($r['admin_id']) ? (int) $r['admin_id'] : 0,
+			'baseAmount' => isset($r['base_amount']) ? $r['base_amount'] : null,
+			'batchFee' => isset($r['batch_fee']) ? $r['batch_fee'] : null,
+			'totalAmount' => isset($r['total_amount']) ? $r['total_amount'] : null,
+			'promoCodeId' => isset($r['promo_code_id']) ? ($r['promo_code_id'] !== null ? (int) $r['promo_code_id'] : null) : null,
+			'discountAmount' => isset($r['discount_amount']) ? $r['discount_amount'] : null,
+			'razorpayOrderId' => isset($r['razorpay_order_id']) ? $r['razorpay_order_id'] : '',
+			'razorpayPaymentId' => isset($r['razorpay_payment_id']) ? $r['razorpay_payment_id'] : '',
+			'paymentStatus' => isset($r['payment_status']) ? $r['payment_status'] : '',
+			'paymentDate' => $pd,
+			'createdAt' => $ca,
+		);
+	}
+
+	/**
+	 * Last payment row + plan_id = 1 yearly validity (1 year from payment_date).
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function build_enrollment_details_for_student($student_id)
+	{
+		$student_id = (int) $student_id;
+		$out = array(
+			'plan_one' => array(
+				'yearly_expired' => false,
+				'yearly_valid' => false,
+				'expires_at' => null,
+			)
+		);
+
+		if ($student_id < 1 || !$this->db->table_exists('student_payment_history')) {
+			return $out;
+		}
+
+		$has_pay_stat = $this->db->field_exists('payment_status', 'student_payment_history');
+		$has_plan = $this->db->field_exists('plan_id', 'student_payment_history');
+		$has_pay_date = $this->db->field_exists('payment_date', 'student_payment_history');
+
+		$this->db->reset_query();
+		$this->db->from('student_payment_history');
+		$this->db->where('student_id', $student_id);
+		if ($has_pay_stat) {
+			$this->db->where("(payment_status = 'SUCCESS' OR payment_status IS NULL OR payment_status = '')", null, false);
+		}
+		$this->db->order_by('COALESCE(payment_date, create_at) DESC, id DESC', '', false);
+		$this->db->limit(1);
+		$q = $this->db->get();
+		$last = ($q && $q->num_rows() > 0) ? $q->row_array() : null;
+
+		if ($last === null) {
+			$this->db->reset_query();
+			$this->db->from('student_payment_history');
+			$this->db->where('student_id', $student_id);
+			$this->db->order_by('COALESCE(payment_date, create_at) DESC, id DESC', '', false);
+			$this->db->limit(1);
+			$q2 = $this->db->get();
+			$last = ($q2 && $q2->num_rows() > 0) ? $q2->row_array() : null;
+		}
+
+		if ($has_plan) {
+			$this->db->reset_query();
+			$this->db->from('student_payment_history');
+			$this->db->where('student_id', $student_id);
+			$this->db->where('plan_id', 1);
+			if ($has_pay_stat) {
+				$this->db->where("(payment_status = 'SUCCESS' OR payment_status IS NULL OR payment_status = '')", null, false);
+			}
+			$this->db->order_by('COALESCE(payment_date, create_at) DESC, id DESC', '', false);
+			$this->db->limit(1);
+			$q3 = $this->db->get();
+			$p1 = ($q3 && $q3->num_rows() > 0) ? $q3->row_array() : null;
+
+			if ($p1 !== null) {
+				$pd = '';
+				if ($has_pay_date && isset($p1['payment_date'])) {
+					$pd = trim((string) $p1['payment_date']);
+				}
+				if ($pd === '' && isset($p1['create_at'])) {
+					$pd = trim((string) $p1['create_at']);
+				}
+				$cutoff = date('Y-m-d H:i:s', strtotime('-1 year'));
+				if ($pd !== '' && $pd !== '0000-00-00' && $pd !== '0000-00-00 00:00:00') {
+					$out['plan_one']['yearly_expired'] = ($pd < $cutoff);
+					$out['plan_one']['yearly_valid'] = ($pd >= $cutoff);
+					$out['plan_one']['expires_at'] = date('Y-m-d H:i:s', strtotime($pd . ' +1 year'));
+				}
+			}
+
+			
+		}
+
+		return $out;
+	}
+
+	/**
 	 * Student login payload for `data` — used by password login and verify_otp (same shape).
 	 */
 	private function build_student_login_data_array(array $student, $device_id, $device_token, $device_type, $now, $access_token)
@@ -4570,6 +4789,8 @@ public function otherBatchData($data){
 		$student_image = !empty($student['image'])
 			? base_url('uploads/students/') . $student['image']
 			: '';
+
+		$enrollment = $this->build_enrollment_details_for_student((int) $student['id']);
 
 		return array(
 			'userType'     => 'student',
@@ -4612,6 +4833,12 @@ public function otherBatchData($data){
 			'is_profile_completed' => $profile_completed,
 			'access_token' => $access_token,
 			'token_type'   => 'Bearer',
+			'plan_one'     => isset($enrollment['plan_one']) ? $enrollment['plan_one'] : array(
+				'yearly_expired' => false,
+				'yearly_valid' => false,
+				'expires_at' => null,
+				'last_expired_payment' => null,
+			),
 		);
 	}
 

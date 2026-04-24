@@ -868,10 +868,10 @@ CREATE TABLE `subjects` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `sudent_batchs`
+-- Table structure for table `student_batchs`
 --
 
-CREATE TABLE `sudent_batchs` (
+CREATE TABLE `student_batchs` (
   `id` int(11) NOT NULL,
   `student_id` int(11) NOT NULL,
   `batch_id` int(11) NOT NULL,
@@ -1312,9 +1312,9 @@ ALTER TABLE `subjects`
   ADD KEY `id` (`id`);
 
 --
--- Indexes for table `sudent_batchs`
+-- Indexes for table `student_batchs`
 --
-ALTER TABLE `sudent_batchs`
+ALTER TABLE `student_batchs`
   ADD PRIMARY KEY (`id`);
 
 --
@@ -1620,9 +1620,9 @@ ALTER TABLE `subjects`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `sudent_batchs`
+-- AUTO_INCREMENT for table `student_batchs`
 --
-ALTER TABLE `sudent_batchs`
+ALTER TABLE `student_batchs`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --

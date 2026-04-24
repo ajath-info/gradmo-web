@@ -1,451 +1,464 @@
+<?php
+$home_site_logo = '';
+if (!empty($site_Details) && is_array($site_Details) && !empty($site_Details[0]['site_logo'])) {
+	$home_site_logo = base_url('uploads/site_data/' . $site_Details[0]['site_logo']);
+}
+$home_batches = (isset($batches) && is_array($batches)) ? $batches : array();
+$home_inst_listing = base_url('institute/listing');
+$home_batch_list = base_url('batch/list');
+$home_institute_api_url = isset($home_institute_api_url) ? $home_institute_api_url : site_url('api/institute/listing');
+$home_institute_details_url = isset($home_institute_details_url) ? $home_institute_details_url : site_url('institute/details');
+$home_api_access_token = isset($api_access_token) ? (string) $api_access_token : '';
+$home_login_url = base_url('login');
+?>
+<style>
+/* Home hero — matches landing banner (promo cards + search) */
+.edu-home-page { overflow-x: hidden; }
+.edu-home-hero {
+	background: #f4f6f9;
+	padding: 28px 16px 32px;
+	margin-bottom: 8px;
+}
+.edu-home-hero-inner {
+	max-width: 1080px;
+	margin: 0 auto;
+}
+.edu-home-promo-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 14px;
+	margin-bottom: 22px;
+	align-items: stretch;
+}
+.edu-home-promo {
+	flex: 1 1 0;
+	min-width: 0;
+	min-height: 96px;
+	border-radius: 20px;
+	padding: 20px 16px;
+	text-align: center;
+	font-weight: 700;
+	font-size: 1.05rem;
+	line-height: 1.35;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-shadow: 0 2px 14px rgba(15, 23, 42, 0.06);
+	border: none;
+}
+.edu-home-promo--blue {
+	background: #4b6cf2;
+	color: #fff;
+}
+.edu-home-promo--outline {
+	background: #fff;
+	color: #111827;
+	border: 1px solid #e8ecf4;
+	box-shadow: 0 2px 14px rgba(15, 23, 42, 0.05);
+}
+.edu-home-promo--orange {
+	background: #f59e0b;
+	color: #fff;
+	box-shadow: 0 2px 14px rgba(245, 158, 11, 0.25);
+}
+@media (max-width: 767px) {
+	.edu-home-promo-row { flex-direction: column; }
+	.edu-home-promo { flex: 1 1 auto; min-height: 84px; }
+}
+.edu-home-search {
+	display: flex;
+	align-items: stretch;
+	flex-wrap: nowrap;
+	background: #fff;
+	border: 1px solid #e8ecf4;
+	border-radius: 22px;
+	overflow: hidden;
+	box-shadow: 0 4px 20px rgba(15, 23, 42, 0.07);
+	max-width: 100%;
+}
+.edu-home-search input[type="search"],
+.edu-home-search input[type="text"] {
+	flex: 1 1 auto;
+	min-width: 0;
+	border: 0;
+	padding: 16px 18px;
+	font-size: 0.95rem;
+	outline: none;
+	background: transparent;
+	color: #111827;
+}
+.edu-home-search input::placeholder {
+	color: #9ca3af;
+	font-style: italic;
+}
+.edu-home-search button {
+	flex: 0 0 auto;
+	background: #3b5bdb;
+	color: #fff;
+	border: 0;
+	padding: 16px 28px;
+	font-weight: 600;
+	font-size: 0.95rem;
+	cursor: pointer;
+	transition: background 0.2s ease;
+	white-space: nowrap;
+}
+.edu-home-search button:hover {
+	background: #324fd1;
+	color: #fff;
+}
+@media (max-width: 480px) {
+	.edu-home-search { flex-wrap: wrap; border-radius: 20px; }
+	.edu-home-search input { width: 100%; padding: 14px 16px; }
+	.edu-home-search button {
+		width: 100%;
+		border-radius: 0 0 18px 18px;
+		padding: 14px 16px;
+	}
+}
+.edu-home-wrap {
+	max-width: 1080px;
+	margin: 0 auto;
+	padding: 20px 16px 36px;
+}
+.edu-home-section-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 14px;
+}
+.edu-home-section-head h2 {
+	margin: 0;
+	font-size: 1.15rem;
+	font-weight: 700;
+	color: #111827;
+}
+.edu-home-section-head a {
+	font-size: 0.9rem;
+	font-weight: 600;
+	color: #4b6cf2;
+	text-decoration: none;
+}
+.edu-home-section-head a:hover { text-decoration: underline; }
+.edu-home-nearby-msg {
+	display: none;
+	font-size: 0.9rem;
+	color: #64748b;
+	margin: 0 0 12px;
+	line-height: 1.5;
+}
+.edu-home-nearby-msg.is-visible {
+	display: block;
+}
+.edu-home-nearby-msg a {
+	color: #4b6cf2;
+	font-weight: 600;
+}
+.edu-home-scroll-row {
+	display: flex;
+	gap: 14px;
+	overflow-x: auto;
+	padding-bottom: 8px;
+	-webkit-overflow-scrolling: touch;
+	scroll-snap-type: x mandatory;
+}
+.edu-home-scroll-row > * { scroll-snap-align: start; flex-shrink: 0; }
+.edu-home-inst-card {
+	width: 260px;
+	max-width: 85vw;
+	background: #fff;
+	border-radius: 16px;
+	padding: 16px 16px 18px;
+	box-shadow: 0 4px 18px rgba(15, 23, 42, 0.07);
+	border: 1px solid #eef0f5;
+	text-decoration: none;
+	color: inherit;
+	display: block;
+	transition: box-shadow 0.2s ease;
+}
+.edu-home-inst-card:hover {
+	box-shadow: 0 8px 24px rgba(75, 108, 242, 0.12);
+	color: inherit;
+	text-decoration: none;
+}
+.edu-home-badge {
+	display: inline-block;
+	font-size: 0.72rem;
+	font-weight: 600;
+	padding: 4px 10px;
+	border-radius: 8px;
+	background: #e8f0fe;
+	color: #3a5fc9;
+	margin-bottom: 10px;
+}
+.edu-home-inst-card h3 {
+	margin: 0 0 6px;
+	font-size: 1rem;
+	font-weight: 700;
+	color: #111827;
+}
+.edu-home-inst-card p {
+	margin: 0;
+	font-size: 0.85rem;
+	color: #6b7280;
+	line-height: 1.4;
+}
+.edu-home-live-stack { display: flex; flex-direction: column; gap: 18px; }
+.edu-home-live-card {
+	background: #fff;
+	border-radius: 18px;
+	overflow: hidden;
+	box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08);
+	border: 1px solid #eef0f5;
+}
+.edu-home-live-thumb {
+	width: 100%;
+	aspect-ratio: 16 / 9;
+	object-fit: cover;
+	background: #eef1f8;
+	display: block;
+}
+.edu-home-live-body { padding: 16px 16px 18px; }
+.edu-home-live-body h3 {
+	margin: 0 0 8px;
+	font-size: 1.05rem;
+	font-weight: 700;
+	color: #111827;
+}
+.edu-home-live-date { font-size: 0.88rem; color: #6b7280; margin-bottom: 12px; }
+.edu-home-tag-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.edu-home-tag {
+	font-size: 0.72rem;
+	font-weight: 600;
+	padding: 5px 10px;
+	border-radius: 8px;
+}
+.edu-home-tag--blue { background: #e8f0fe; color: #3a5fc9; }
+.edu-home-tag--orange { background: #fff3e6; color: #c65f0a; }
+.edu-home-btn-join {
+	display: block;
+	width: 100%;
+	text-align: center;
+	background: #4b6cf2;
+	color: #fff !important;
+	font-weight: 600;
+	padding: 12px 16px;
+	border-radius: 12px;
+	text-decoration: none;
+	border: 0;
+	cursor: pointer;
+	font-size: 0.95rem;
+	transition: background 0.2s ease;
+}
+.edu-home-btn-join:hover { background: #3b5bdb; color: #fff !important; text-decoration: none; }
+.edu-home-muted { color: #6b7280; font-size: 0.9rem; text-align: center; padding: 12px; }
+</style>
 
-<!----- Banner Wraapper ----->
-		<section class="edu_banner_wrapper relative">
-			<div class="swiper-container homeBannerSlider">
-				<div class="swiper-wrapper">
-				<?php 
-					if(!empty($frontend_details[0]['slider_details'])){
-						$sliders = json_decode($frontend_details[0]['slider_details'],true);
-					}else{
-						$sliders = '';
-					}
+<div class="edu-home-page">
+	<div class="edu-home-hero">
+		<div class="edu-home-hero-inner">
+			<div class="edu-home-promo-row" aria-label="Promotions">
+				<div class="edu-home-promo edu-home-promo--blue">IELTS Coaching</div>
+				<div class="edu-home-promo edu-home-promo--outline">20% OFF</div>
+				<div class="edu-home-promo edu-home-promo--orange">Join Now</div>
+			</div>
+			<form class="edu-home-search" id="edu_home_search_form" action="<?php echo html_escape($home_inst_listing); ?>" method="get" role="search">
+				<label for="edu_home_search_q" class="sr-only">Search institutes and batches</label>
+				<input type="search" name="search" id="edu_home_search_q" placeholder="Search by City, Topic, or Institute Name" autocomplete="off">
+				<button type="submit">Search</button>
+			</form>
+		</div>
+	</div>
 
-					if(!empty($sliders)){
-						for($i=0;$i<count($sliders['slider_heading']);$i++){
-					?>
-					<div class="swiper-slide">
-						<div class="innerSliderWrap">
-							<div class="edu_banner_section" style="background-image:url(<?php echo !empty($sliders['slider_img'][$i])?base_url('uploads/site_data/').$sliders['slider_img'][$i]:base_url('uploads/site_data/').'assets/images/slider1.png';?>)">
-								<div class="container-fluid">
-									<div class="row justify-content-center">
-										<div class="col-xl-8 col-lg-10 col-md-10 col-sm-12 col-12 text-center">
-											<div class="edu_banner_text">
-											<?php 
-												if(isset($sliders['slider_subheading']) && !empty($sliders['slider_subheading'][$i])){
-													echo '<h4 class="edu_subTitle animation_ttl1">'.$sliders['slider_subheading'][$i].'</h4>';
-												}
-												?>
-												<h1 class="animation_ttl2"><?php echo !empty($sliders['slider_heading'][$i])?$sliders['slider_heading'][$i]:'Choose Best for your Education';?></h1>
-												<p  class="animation_ttl2"><?php echo !empty($sliders['slider_desc'][$i])?$sliders['slider_desc'][$i]:'';?></p>
-											</div>
-										</div>
-									</div>
-								</div>
-							</div>
-						</div>
-					</div>
-					<?php
-						}
-					}
-					?>
-				</div>
-			</div>
-			<!----- Slider Arrows ----->
-			<div class="edu_banner_button">
-				<div class="ButtonNext"><span class="icofont-simple-right"></span></div>
-				<div class="ButtonPrev"><span class="icofont-simple-left"></span></div>
-			</div>
-		</section>
-		<!----- Call To Action Start ----->
-		<section class="edu_callToAction_wrapper edu_callToAction_wrapper_res"> 
-			<div class="container">
-				<div class="row align-items-center justify-content-center">
-					<div class="col-lg-12 col-md-12 col-sm-12 col-12">
-						<div class="edu_callToAction_bg">
-							<div class="edu_callToAction_bg_inner">
-								<div class="col-lg-4 col-md-4 col-sm-12 col-12 p-0 text-center">
-									<div class="edu_action_section counter_item">
-										<i class="fas fa-user-graduate"></i>
-										<h1><span class="count_no" data-to="<?php echo !empty($frontend_details[0]['total_toppers'])?$frontend_details[0]['total_toppers']:'654';?>" data-speed="3000"><?php echo !empty($frontend_details[0]['total_toppers'])?$frontend_details[0]['total_toppers']:'654';?></span><span>+</span></h1>
-										<p><?php echo html_escape($this->common->languageTranslator('ltr_our_toppers'));?></p>
-									</div>
-								</div>
-								<div class="col-lg-4 col-md-4 col-sm-12 col-12 p-0 text-center">
-									<div class="edu_action_section counter_item center">
-										<i class="fas fa-users"></i>
-										<h1><span class="count_no" data-to="<?php echo !empty($frontend_details[0]['trusted_students'])?$frontend_details[0]['trusted_students']:'156';?>" data-speed="3000"><?php echo !empty($frontend_details[0]['trusted_students'])?$frontend_details[0]['trusted_students']:'156';?></span><span>+</span></h1>
-										<p><?php echo html_escape($this->common->languageTranslator('ltr_trusted_teachers'));?></p>
-									</div>
-								</div>
-								<div class="col-lg-4 col-md-4 col-sm-12 col-12 p-0 text-center">
-									<div class="edu_action_section counter_item">
-										<i class="fas fa-award"></i>
-										<h1><span class="count_no" data-to="<?php echo !empty($frontend_details[0]['years_of_histry'])?$frontend_details[0]['years_of_histry']:'18';?>" data-speed="3000"><?php echo !empty($frontend_details[0]['years_of_histry'])?$frontend_details[0]['years_of_histry']:'18';?></span><span>+</span></h1>
-										<p><?php echo html_escape($this->common->languageTranslator('ltr_years_of_history'));?></p>
-									</div>
-								</div>
-							</div>
-						</div>
-					</div>
-				</div>
-			</div>
-		</section>
-		<!----- About Section Start ----->
-		<section class="edu_about_wrapper edu_about_wrapper_res">
-			<div class="container">
-				<div class="row">
-					<div class="col-lg-6 col-md-12 col-sm-12 col-12">
-						<div class="edu_about_img relative mb_30">
-							<img class="edu_about_big_img parallax" src="<?php echo !empty($frontend_details[0]['abt_frst_img'])?base_url('uploads/site_data/').$frontend_details[0]['abt_frst_img']:base_url('uploads/site_data/').'assets/images/about_img1.png';?>" alt=""/>
-							<img class="edu_about_small_img parallax" src="<?php echo !empty($frontend_details[0]['abt_sec_img'])?base_url('uploads/site_data/').$frontend_details[0]['abt_sec_img']:base_url('uploads/site_data/').'assets/images/about_img2.png';?>" alt=""/>
-							<span class="edu_about_time"><?php echo html_escape($this->common->languageTranslator('ltr_since'));?><?php echo !empty($frontend_details[0]['abt_year'])?$frontend_details[0]['abt_year']:'1995';?></span>
-						</div>
-					</div>
-					<div class="col-lg-6 col-md-12 col-sm-12 col-12">
-						<div class="edu_about_detail mb_30">
-							<h4 class="edu_subTitle"><?php $hh = html_escape($this->common->languageTranslator('ltr_about_eacademy')); echo !empty($frontend_details[0]['abt_frst_sub_heading'])?$frontend_details[0]['abt_frst_sub_heading']: $hh;?></h4>
-							<h2 class="edu_heading"><?php $hhd = html_escape($this->common->languageTranslator('ltr_home_thousands')); echo !empty($frontend_details[0]['abt_frst_heading'])?$frontend_details[0]['abt_frst_heading']:$hhd; ?></h2>
-							<p class="mb-3"><?php $hhdt = html_escape($this->common->languageTranslator('ltr_home_text')); echo !empty($frontend_details[0]['abt_frst_desc'])?$frontend_details[0]['abt_frst_desc']:$hhdt;?></p>
-							<a href="<?php echo base_url('about-us');?>" class="edu_btn"><?php echo html_escape($this->common->languageTranslator('ltr_read_more'));?></a>
-						</div>
-					</div>
-				</div>
-			</div>
-		</section>
-		<!----- Service Section Start ----->
-		<section class="edu_services_wrapper edu_services_wrapper_res">
-			<div class="container">
-				<div class="row">
-					<div class="col-lg-12 col-md-12 col-sm-12 col-12 text-center">
-						<div class="edu_heading_wrapper">
-							<h4 class="edu_subTitle"><?php echo !empty($frontend_details[0]['faci_sub_heading'])?$frontend_details[0]['faci_sub_heading']:'E-Academy';?></h4>
-							<h4 class="edu_heading"><?php $hhdg = html_escape($this->common->languageTranslator('ltr_our_facilities')); echo !empty($frontend_details[0]['faci_heading'])?$frontend_details[0]['faci_heading']:$hhdg ;?></h4>
-							<img src="<?php echo base_url(); ?>assets/images/border.png" alt=""/>
-						</div>
-					</div>
-					<?php
-						if(!empty($frontend_details[0]['faci_heading']) && 6 > 0){
-							if(!empty($Allfacilities)){
-								foreach($Allfacilities as $facility){ ?>
-									<div class="col-lg-4 col-md-6 col-sm-6 col-12 text-center">
-										<div class="edu_services_section edu_services_box-color">
-										   
-											<div class="edu_services_section_inner">
-											<div class="edu-frontend-icon">
-											    <i class="<?php echo html_escape($facility['icon']);?>"></i>
-											</div>
-												<h4><?php echo html_escape($facility['title']);?></h4>
-												<p><?php echo html_escape($facility['description']);?></p>
-											</div>
-										</div>
-									</div>
-								<?php 
-								}
-							}
-						}
-					?>
-				</div>
-			</div>
-		</section>					
-		<!----- Selection Section Start ----->
-		<?php 
-		if(!empty($frontend_details[0]['selection'])){
-			$selection = json_decode($frontend_details[0]['selection'],true);
-			$newSeleArr = array_chunk($selection, 3,true);
-			                              
-			if(count($selection)>=3){
-			?>
-		<section class="edu_selection_wrapper edu_selection_wrapper_res">
-			<div class="container">
-				<div class="row">
-					<div class="col-lg-12 col-md-12 col-sm-12 col-12 text-center">
-						<div class="edu_heading_wrapper">
-							<h4 class="edu_subTitle"><?php $top = html_escape($this->common->languageTranslator('ltr_toppers_here')); echo !empty($frontend_details[0]['selectn_subheading'])?$frontend_details[0]['selectn_subheading']:$top ;?></h4>
-							<h4 class="edu_heading"><?php $topd = html_escape($this->common->languageTranslator('ltr_our_selections')); echo !empty($frontend_details[0]['selectn_heading'])?$frontend_details[0]['selectn_heading']: $topd ;?></h4>
-							<img src="<?php echo base_url();?>assets/images/border.png" alt=""/>
-						</div>
-					</div>
-					<div class="col-lg-12 col-md-12 col-sm-12 col-12">
-						<div class="row extraMargin">
-							<div class="edu_selection_slider">
-							<div class="swiper-container selectionSlider">
-    					            <div class="swiper-wrapper">
-    					                <?php 
-    					                    foreach($newSeleArr as $select){
-					                            foreach($select as $key=>$value){
-					                                $student_d = $this->db_model->select_data('name ,image','students use index (id)',array('status'=>1,'id'=>$key));
-				                                    ?>
-				                                     <div class="swiper-slide">
-				                                         <div class="edu_selection_section">
-    													<div class="edu_selection_cap">
-    														<i class="fas fa-graduation-cap"></i>
-    													</div>
-    													<div class="edu_selection_cap">
-    														<i class="fas fa-graduation-cap"></i>
-    													</div>
-    													<div class="edu_selection_section_inner">
-    														<?php echo !empty($student_d[0]['image'])?'<img src="'.base_url('uploads/students/').$student_d[0]['image'].'" alt="" />':'';?>
-    														<div class="edu_selection_info">
-    															<a href="javascript:void(0);"><h4><?=$student_d[0]['name']?></h4></a>
-    															<p><?php echo $ltr_designation;?> <span><?php echo $value;?></span></p>
-    														</div>
-    													</div>
-    												</div>
-				                                     </div>
-				                                    <?php
-    					                    }
-    					                    }
-    					                ?>
-    					             
-    				                </div>
-    				                <div class="swiperPagination">
-    				                    
-    				                </div>
-    				        	</div>
-							</div>
-						</div>
-					</div>
-					
-				</div>
-			</div>
-		</section>
-		<?php }
-		   } ?>
-		<!----- Courses Section ----->
-		<section class="edu_courses_wrapper edu_courses_wrapper_res edu_courses_main">
-			<div class="container">
-				<div class="row">
-					<div class="col-lg-12 col-md-12 col-sm-12 col-12 text-center">
-						<div class="edu_heading_wrapper">
-							<h4 class="edu_subTitle"><?php $ltr_enhance = html_escape($this->common->languageTranslator('ltr_enhance')); echo !empty($frontend_details[0]['sec_crse_sub_heading'])?$frontend_details[0]['sec_crse_sub_heading']:$ltr_enhance ;?></h4>
-							<h4 class="edu_heading white"><?php $ltr_our_courses = html_escape($this->common->languageTranslator('ltr_our_courses')); echo !empty($frontend_details[0]['sec_crse_heading'])?$frontend_details[0]['sec_crse_heading']:$ltr_our_courses;?></h4>
-							<img src="<?php echo base_url();?>assets/images/border.png" alt=""/>
-						</div>
-					</div>
-				</div>
-			</div>
-			<?php if(!empty($frontend_details[0]['sec_crse_heading']) && 6 > 0){ ?>
-			<div class="container-fluid">
-				<div class="row">
-					<div class="col-lg-12 col-md-12 col-sm-12 col-12 padder0">
-						<div class="edu_courses_section">
-							<ul class="nav nav-tabs" role="tablist">
-							<?php
-							    $ltr_our_courses = html_escape($this->common->languageTranslator('ltr_active'));
-								$tabContent = '';
-								//print_r($Allcourses);
-								if(!empty($batches)){
-									$i = 1;
-									foreach($batches as $crs){ 
-										if($i == 1){
-											$activeMenu = 'active';
-											$activeCont = 'in active show';
-										}else{
-											$activeMenu = '';
-											$activeCont = '';
-										}	
-										
-										if($crs['batch_type']==2){ 
-											if(!empty($crs['batch_offer_price'])){ 
-												$of_val= '<s>'.$currency_decimal.' '.$crs['batch_price'].'</s> / '.$currency_decimal.' '.$crs['batch_offer_price']; 
-												$offer='<span class="edu_courses_flag">'.html_escape($this->common->languageTranslator('ltr_offer')).'</span>';
-											}else{ 
-												$of_val= $currency_decimal.' '.$crs['batch_price'];
-												$offer="";
-											}
-										}else{ 
-											$of_val= "Free";
-												$offer="";
-
-										} 
-										echo '<li class="nav-item">
-										<a class="nav-link '.$activeMenu.'" href="#courseType'.$i.'" role="tab" data-toggle="tab">
-											<span class="edu_tab_icons">
-												'.$crs['batch_name'].'
-											</span>
-										</a>
-									</li>';?>
-                                        
-									<?php $tabContent .= '<div role="tabpanel" class="tab-pane fade '.$activeCont.'" id="courseType'.$i.'">
-									<div class="edu_courses_content">
-										<div class="edu_courses_content_inner">
-											<div class="row">
-												<div class="col-lg-6 col-md-12 col-sm-12 col-12">
-													<div class="edu_courses_img relative">
-													'.$offer.'
-														<a href="'.base_url('courses-details/'.$crs['id']).'"><div class="edu_courses_img_holder">
-															<img src="'.base_url('uploads\batch_image/').$crs['batch_image'].'" alt=""/>
-														</div></a>
-													</div>
-												</div>
-												<div class="col-lg-6 col-md-12 col-sm-12 col-12">
-													<div class="edu_courses_detail">
-														<h4><a href="'.base_url('courses-details/'.$crs['id']).'">'.$crs['batch_name'].'</a></h4>
-														<p>'.$crs['description'].'</p>
-														<ul>
-															
-															<li>
-																<span class="edu_course_info_icon">
-																	<a href="'.base_url('enroll-now/'.$crs['id']).'" class="edu_course_price ">'.$of_val.'</a>
-																</span>
-																
-															</li>
-															<li><span class="edu_course_info_icon">
-																<a href="'.base_url('enroll-now/'.$crs['id']).'" class="edu_btn ">'.html_escape($this->common->languageTranslator('ltr_enroll_now')).'</a>
-																</span>
-															</li>
-														</ul>
-													</div>
-												</div>
-											</div>
-										</div>
-									</div>
-								</div>';
-
-								$i++;
-								}
-							}?>
-							<li class="nav-item">
-										<a class="nav-link " href="<?=base_url('courses-offered')?>">
-											<span class="edu_tab_icons">
-											More batch
-											</span>
-										</a>
-									</li>
-							</ul>
-						</div>
-					</div>
-				</div>
-			</div>
-			<div class="container">
-				<div class="row">
-					<div class="col-lg-12 col-md-12 col-sm-12 col-12">
-						<div class="edu_courses_section">
-							<div class="tab-content">
-								<?php echo  $tabContent; ?>
-							</div>
-						</div>
-					</div>
-				</div>
-			</div>
-			<?php } ?>
-		</section>
-		<!----- Team Section Start ----->
-		<?php 
-		$teachers = $this->db_model->select_data('*','users use index (id)',array('status'=>1,'role'=>3,'parent_id'=>1),$frontend_details[0]['no_of_teacher']);
-		if(!empty($teachers) ){							
-		?>
-		<section class="edu_team_wrapper edu_team_wrapper_res">
-			<div class="container">
-				<div class="row">
-					<div class="col-lg-12 col-md-12 col-sm-12 col-12 text-center">
-						<div class="edu_heading_wrapper">
-							<h4 class="edu_subTitle"><?php echo !empty($frontend_details[0]['teacher_subheading'])?$frontend_details[0]['teacher_subheading']:'Our Experts';?></h4>
-							<h4 class="edu_heading"><?php echo !empty($frontend_details[0]['teacher_heading'])?$frontend_details[0]['teacher_heading']:'Qualified Teachers';?></h4>
-							<img src="<?php echo base_url();?>assets/images/border.png" alt=""/>
-						</div>
-					</div>
-				</div>
-				<div class="row extraMargin">
-					<div class="col-lg-12 col-md-12 col-sm-12 col-12 p-0">
-						<div class="team_slider swiper-container">
-							<div class="swiper-wrapper">
-							<?php
-								if(!empty($frontend_details[0]['no_of_teacher']) && $frontend_details[0]['no_of_teacher'] > 0){
-									if(!empty($teachers)){
-									    $tc=0;
-										foreach($teachers as $teach_r){ ?>
-											<div class="swiper-slide">
-												<div class="edu_team_section">
-													<div class="edu_team_img">
-														<img src="<?php echo base_url('uploads/teachers/').$teach_r['teach_image'];?>" alt=""/>
-													</div>
-													<div class="edu_team_identity text-center">
-														<a href="javascript:void(0);"><?php echo html_escape($teach_r['name']);?></a>
-														<h6><?php echo html_escape($teach_r['teach_education']);?></h6>
-													</div>
-												</div>
-											</div>
-											<?php
-										$tc++;
-										}
-									}
-								}
-							?>
-							</div>
-						</div>
-						<div class="swiperTeamPagination"></div>
-					</div>
-				</div>
-			</div>
-		</section>
-		<?php } ?>
-		<!----- Testimonial Section ----->
-		<?php if(!empty($frontend_details[0]['testimonial'])){
-					$testimonial = json_decode($frontend_details[0]['testimonial'],true);
-				?>
-		<section class="edu_testimonial_wrapper edu_testimonial_wrapper_res">
-			<div class="container">
-				<div class="row align-items-center">
-					<div class="col-lg-12 col-md-12 col-sm-12 col-12 text-center">
-						<div class="edu_heading_wrapper">
-							<h4 class="edu_subTitle"><?php echo !empty($frontend_details[0]['testi_subheading'])?$frontend_details[0]['testi_subheading']:'E- Academy Reviews';?></h4>
-							<h4 class="edu_heading"><?php echo !empty($frontend_details[0]['testi_heading'])?$frontend_details[0]['testi_heading']:'What Student Says';?></h4>
-							<img src="<?php echo base_url(); ?>assets/images/border.png" alt=""/>
-						</div>
-					</div>
-					<div class="col-lg-12 col-md-12 col-sm-12 col-12">
-						<div class="edu_testimonials_section">
-							<div class="swiper-container testimonial_slider">
-								<div class="swiper-wrapper">
-									<?php 
-									foreach($testimonial as $key => $value){
-										$st_nameImg = explode('--',$key);
-								        $student_dt = $this->db_model->select_data('name ,image','students use index (id)',array('status'=>1,'id'=>$key));
-                                        if(!empty($student_dt)){
-										echo '<div class="swiper-slide">
-										<div class="edu_testimonial_section">
-											<div class="edu_client_img">
-												<span class="edu_testimonial_icon">
-													<i class="icofont-quote-left"></i>
-												</span>';
-												if(!empty($student_dt[0]['image'])){
-													echo '<img src="'.base_url('uploads/students/').$student_dt[0]['image'].'" alt=""/>';
-												}
-												echo '<div class="edu_client_quote">
-													<h4>'.$student_dt[0]['name'].'</h4>
-												</div>
-											</div>
-											<p>'.$value.' </p>
-										</div>
-									</div>';
-                                        }
-									}
-									?>
-								</div>
-							</div>
-							<!----- Slider Dots ----->
-							<div class="swiperTestimonialPagination"></div>
-						</div>
-					</div>
-				</div>
-			</div>
-		</section>
-		<?php
-		} ?>
-		<!----- Partner Start ----->
-		<?php if(!empty($frontend_details[0]['client_imgs'])){?>
-		<section class="edu_partner_wrapper edu_partner_wrapper_res">
-			<div class="container">
-				<div class="row">
-					<div class="col-lg-12 col-md-12 col-sm-12 col-12">
-						<div class="partner_slider swiper-container">
-							<div class="swiper-wrapper">
-								<?php
-								$clients = json_decode($frontend_details[0]['client_imgs'],true);
-								foreach($clients as $cln){
-									echo '<div class="swiper-slide">
-										<div class="edu_partners_container mb_30 text-center">
-											<a href="javascript:void(0);"><img src="'.base_url('uploads/site_data/').$cln.'" alt=""/></a>
-										</div>
-									</div>';
-								}
-								?>
-							</div>
-						</div>
-					</div>
-				</div>
-			</div>
-		</section>
-		<?php } ?>
+	<div class="edu-home-wrap">
+	<section class="edu-home-nearby" aria-labelledby="edu-home-nearby-title">
+		<div class="edu-home-section-head">
+			<h2 id="edu-home-nearby-title">Nearby Institutes</h2>
+			<a href="<?php echo html_escape($home_inst_listing); ?>">View All</a>
+		</div>
+		<div id="edu_home_nearby_msg" class="edu-home-nearby-msg" role="status" aria-live="polite"></div>
+		<div id="edu_home_nearby_row" class="edu-home-scroll-row"></div>
 	</section>
+	<script>
+	(function () {
+		var apiUrl = <?php echo json_encode($home_institute_api_url); ?>;
+		var token = <?php echo json_encode($home_api_access_token); ?>;
+		var detailsBase = <?php echo json_encode(rtrim($home_institute_details_url, '/') . '/'); ?>;
+		var listingUrl = <?php echo json_encode($home_inst_listing); ?>;
+		var loginUrl = <?php echo json_encode($home_login_url); ?>;
+		var row = document.getElementById('edu_home_nearby_row');
+		var msg = document.getElementById('edu_home_nearby_msg');
+		if (!row || !msg) { return; }
+		function ok(s) { return s === true || s === 'true' || s === 1 || s === '1'; }
+		function esc(t) {
+			var d = document.createElement('div');
+			d.textContent = t == null ? '' : String(t);
+			return d.innerHTML;
+		}
+		function badgeFromPayMode(pm) {
+			var s = (pm == null ? '' : String(pm)).toLowerCase();
+			if (s.indexOf('online') !== -1) { return 'Online'; }
+			if (s.indexOf('hybrid') !== -1) { return 'Hybrid'; }
+			if (s.indexOf('offline') !== -1) { return 'Offline'; }
+			return 'Institute';
+		}
+		function addressLine(it) {
+			var parts = [];
+			if (it.address) { parts.push(String(it.address)); }
+			else if (it.city) { parts.push(String(it.city)); }
+			if (it.pincode && (!it.address || String(it.address).indexOf(String(it.pincode)) === -1)) {
+				parts.push(String(it.pincode));
+			}
+			return parts.join(', ') || (it.city ? String(it.city) : '');
+		}
+		function renderCards(list) {
+			row.innerHTML = '';
+			if (!list || !list.length) {
+				msg.innerHTML = 'No institutes found. <a href="' + esc(listingUrl) + '">Browse directory</a>';
+				msg.classList.add('is-visible');
+				return;
+			}
+			msg.textContent = '';
+			msg.classList.remove('is-visible');
+			list.forEach(function (it) {
+				var id = it.instituteId != null ? it.instituteId : it.id;
+				var a = document.createElement('a');
+				a.className = 'edu-home-inst-card';
+				a.href = detailsBase + '?institute_id=' + encodeURIComponent(id);
+				var badge = document.createElement('span');
+				badge.className = 'edu-home-badge';
+				badge.textContent = badgeFromPayMode(it.pay_mode);
+				var h = document.createElement('h3');
+				h.textContent = it.name || 'Institute';
+				var p = document.createElement('p');
+				var line = addressLine(it);
+				if (it.distanceKm != null && it.distanceKm !== '') {
+					line = (line ? line + ' · ' : '') + it.distanceKm + ' km';
+				}
+				p.textContent = line || 'View details';
+				a.appendChild(badge);
+				a.appendChild(h);
+				a.appendChild(p);
+				row.appendChild(a);
+			});
+		}
+		function fetchList(lat, lon) {
+			var body = { page: 1, limit: 12, order_field: 'name', order_type: 'asc' };
+			if (lat != null && lon != null && !isNaN(lat) && !isNaN(lon)) {
+				body.order_field = 'distance';
+				body.order_type = 'asc';
+				body.latitude = lat;
+				body.longitude = lon;
+			}
+			msg.textContent = 'Loading institutes…';
+			msg.classList.add('is-visible');
+			fetch(apiUrl, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Accept': 'application/json',
+					'Authorization': 'Bearer ' + token
+				},
+				body: JSON.stringify(body)
+			}).then(function (r) { return r.json(); }).then(function (j) {
+				if (!ok(j.status)) {
+					msg.innerHTML = esc(j.msg || 'Could not load institutes.') + ' <a href="' + esc(listingUrl) + '">Open directory</a>';
+					return;
+				}
+				renderCards(j.institutes || []);
+			}).catch(function () {
+				msg.textContent = 'Network error. Try again later.';
+			});
+		}
+		if (!token) {
+			msg.innerHTML = 'Sign in to load institutes from your account. <a href="' + esc(loginUrl) + '">Log in</a> · <a href="' + esc(listingUrl) + '">Directory</a>';
+			msg.classList.add('is-visible');
+			return;
+		}
+		if (navigator.geolocation) {
+			navigator.geolocation.getCurrentPosition(
+				function (pos) {
+					fetchList(pos.coords.latitude, pos.coords.longitude);
+				},
+				function () {
+					fetchList(null, null);
+				},
+				{ timeout: 10000, maximumAge: 300000 }
+			);
+		} else {
+			fetchList(null, null);
+		}
+	})();
+	</script>
+
+	<section class="edu-home-live mt-4" aria-labelledby="edu-home-live-title">
+		<div class="edu-home-section-head">
+			<h2 id="edu-home-live-title">Live Classes</h2>
+			<a href="<?php echo html_escape($home_batch_list); ?>">View All</a>
+		</div>
+		<div class="edu-home-live-stack">
+			<?php
+			if (!empty($home_batches)) {
+				foreach ($home_batches as $hb) {
+					$bid = isset($hb['id']) ? (int) $hb['id'] : 0;
+					$bname = isset($hb['batch_name']) ? $hb['batch_name'] : 'Live Class';
+					$bimg = '';
+					if (!empty($hb['batch_image'])) {
+						$bimg = base_url('uploads/batch_image/' . $hb['batch_image']);
+					} elseif ($home_site_logo !== '') {
+						$bimg = $home_site_logo;
+					}
+					$dt = '';
+					if (!empty($hb['start_date']) && $hb['start_date'] !== '0000-00-00') {
+						$ts = strtotime($hb['start_date']);
+						if ($ts) {
+							$dt = date('F jS, Y', $ts);
+						}
+					}
+					if ($dt === '') {
+						$dt = date('F jS, Y');
+					}
+					$detail_url = $bid > 0 ? base_url('courses-details/' . $bid) : base_url('courses-offered');
+					?>
+			<article class="edu-home-live-card">
+				<?php if ($bimg !== '') { ?>
+				<img class="edu-home-live-thumb" src="<?php echo html_escape($bimg); ?>" alt="">
+				<?php } else { ?>
+				<div class="edu-home-live-thumb" role="img" aria-label=""></div>
+				<?php } ?>
+				<div class="edu-home-live-body">
+					<h3><?php echo html_escape($bname); ?></h3>
+					<div class="edu-home-live-date"><?php echo html_escape($dt); ?></div>
+					<div class="edu-home-tag-row">
+						<span class="edu-home-tag edu-home-tag--blue">Batch</span>
+						<span class="edu-home-tag edu-home-tag--orange">Live</span>
+					</div>
+					<a class="edu-home-btn-join" href="<?php echo html_escape($detail_url); ?>">Join Live Class</a>
+				</div>
+			</article>
+					<?php
+				}
+			} else {
+				?>
+			<article class="edu-home-live-card">
+				<div class="edu-home-live-thumb" style="background: linear-gradient(135deg,#e8f0fe,#fff3e6); min-height: 180px;"></div>
+				<div class="edu-home-live-body">
+					<h3>First Law of Motion</h3>
+					<div class="edu-home-live-date"><?php echo html_escape(date('F jS, Y')); ?></div>
+					<div class="edu-home-tag-row">
+						<span class="edu-home-tag edu-home-tag--blue">Physics</span>
+						<span class="edu-home-tag edu-home-tag--orange">12th Grade</span>
+					</div>
+					<a class="edu-home-btn-join" href="<?php echo html_escape(base_url('courses-offered')); ?>">Join Live Class</a>
+				</div>
+			</article>
+				<?php
+			}
+			?>
+		</div>
+		<!-- <p class="edu-home-muted mb-0">Sign in to join Zoom live rooms from your batch.</p> -->
+	</section>
+	</div>
+</div>
+

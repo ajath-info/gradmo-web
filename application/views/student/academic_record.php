@@ -4,8 +4,8 @@
 		
 					<?php 
 					if(!empty($student_data)){
-					$join = array('batches',"batches.id = sudent_batchs.batch_id");
-                      $student_batch = $this->db_model->select_data('sudent_batchs.student_id,sudent_batchs.batch_id,batches.batch_name','sudent_batchs',array('student_id'=>$student_id),'','','',$join);
+					$join = array('batches',"batches.id = student_batchs.batch_id");
+                      $student_batch = $this->db_model->select_data('student_batchs.student_id,student_batchs.batch_id,batches.batch_name','student_batchs',array('student_id'=>$student_id),'','','',$join);
                    
                       $batch_name="";
                      
