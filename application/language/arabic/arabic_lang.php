@@ -484,6 +484,7 @@ $lang['ltr_batch_name_already_msg'] = "اسم دفعة موجود بالفعل."
 $lang['ltr_no_data_msg'] = "لا توجد بيانات.";
 $lang['ltr_student_details_updated_msg'] = "تم تحديث التفاصيل بنجاح.";
 $lang['ltr_email_already_msg'] = "هذا البريد الإلكتروني مستخدم بالفعل.";
+$lang['ltr_institute_code_taken_msg'] = "رمز المعهد هذا مستخدم بالفعل في حساب آخر.";
 $lang['ltr_added_msg'] = "تمت الإضافة بنجاح.";
 $lang['ltr_char_qu_msg'] = "تم حذف الموضوع وفصوله وأسئلتهم بنجاح ..";
 $lang['ltr_char_qus_msg'] = "تم حذف الفصل وأسئلتهم بنجاح ..";

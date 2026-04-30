@@ -5514,6 +5514,65 @@ function subcategory_table(){
         return $out;
     }
 
+    /**
+     * Institute admin form uses contact_no / institute_code; many DBs store them as mobile / institude_code (legacy typo).
+     * Align keys before filter_users_payload so updates persist.
+     */
+    private function map_institute_form_keys_to_users_columns(array $data)
+    {
+        if (isset($data['contact_no']) && $this->users_column_exists('mobile')) {
+            $data['mobile'] = $data['contact_no'];
+            if (!$this->users_column_exists('contact_no')) {
+                unset($data['contact_no']);
+            }
+        }
+        if (isset($data['institute_code'])) {
+            if (!$this->users_column_exists('institute_code') && $this->users_column_exists('institude_code')) {
+                $data['institude_code'] = $data['institute_code'];
+                unset($data['institute_code']);
+            }
+        }
+        return $data;
+    }
+
+    private function normalize_institute_user_row_for_admin(array $row)
+    {
+        if (!isset($row['contact_no']) && isset($row['mobile'])) {
+            $row['contact_no'] = $row['mobile'];
+        }
+        if (!isset($row['institute_code']) && isset($row['institude_code'])) {
+            $row['institute_code'] = $row['institude_code'];
+        }
+        return $row;
+    }
+
+    /**
+     * True if another users row already uses this institute code (institude_code or institute_code column).
+     */
+    private function users_institute_code_taken_by_another($code, $excludeUserId = 0)
+    {
+        $code = trim((string) $code);
+        if ($code === '') {
+            return false;
+        }
+        $excludeUserId = (int) $excludeUserId;
+        foreach (array('institude_code', 'institute_code') as $col) {
+            if (!$this->users_column_exists($col)) {
+                continue;
+            }
+            $this->db->reset_query();
+            $this->db->select('id')->from('users')->where($col, $code)->limit(1);
+            if ($excludeUserId > 0) {
+                $this->db->where('id !=', $excludeUserId);
+            }
+            $q = $this->db->get();
+            if ($q && $q->num_rows() > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private function nominatim_http_get($query)
     {
         $query = trim((string) $query);
@@ -5599,7 +5658,6 @@ function subcategory_table(){
         if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
             $post = $this->input->post(NULL,TRUE);
             $get = $this->input->get(NULL,TRUE);
-            $super = $this->session->userdata('super_admin');
             if(isset($post['length']) && $post['length']>0){
                 if(isset($post['start']) && !empty($post['start'])){
                     $limit = array($post['length'],$post['start']);
@@ -5636,19 +5694,6 @@ function subcategory_table(){
             if(!empty($institutes)){
                 $dataarray = array();
                 foreach($institutes as $inst){
-                    $name = $this->db_model->select_data('*','users use index (id)',array('id'=>$inst['admin_id']),1);
-                    if($name){
-                        if($name[0]['admin_id']==1 && $name[0]['super_admin'] == 1){
-                            $added_by= $name[0]['name']."  (Super Admin) ";
-                        }else if($name[0]['admin_id']==1 && $name[0]['super_admin'] == 0){
-                            $added_by = $name[0]['name']."  (Sub-Admin)";
-                        }else{
-                            $added_by = $name[0]['name'];
-                        }
-                    }else{
-                        $added_by = '';
-                    }
-
                     if($inst['status'] == 1){
                         $statusDrop = '<div class="admin_tbl_status_wrap"><a class="tbl_status_btn light_sky_bg changeStatusButton" data-id="'.$inst['id'].'" data-table ="users" data-status ="0" href="javascript:;">'.$this->lang->line('ltr_active').'</a></div>';
                     }else{
@@ -5674,8 +5719,8 @@ function subcategory_table(){
                         $count,
                         $inst['name'],
                         '<p class="email">'.$inst['email'].'</p>',
-                        isset($inst['contact_no']) ? $inst['contact_no'] : '',
-                        isset($inst['institute_code']) ? $inst['institute_code'] : '',
+                        isset($inst['contact_no']) ? $inst['contact_no'] : (isset($inst['mobile']) ? $inst['mobile'] : ''),
+                        isset($inst['institute_code']) ? $inst['institute_code'] : (isset($inst['institude_code']) ? $inst['institude_code'] : ''),
                         isset($inst['school_college_name']) ? $inst['school_college_name'] : '',
                         isset($inst['grade']) ? $inst['grade'] : '',
                         isset($inst['country']) ? $inst['country'] : '',
@@ -5686,8 +5731,7 @@ function subcategory_table(){
                         $latVal,
                         $longVal,
                         $statusDrop,
-                        $action,
-                        $added_by
+                        $action
                     );
                     $count++;
                 }
@@ -5705,9 +5749,21 @@ function subcategory_table(){
 
     function add_institute(){
         if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
+            $ct = isset($_SERVER['CONTENT_TYPE']) ? (string) $_SERVER['CONTENT_TYPE'] : '';
+            if (stripos($ct, 'multipart/form-data') !== false && empty($_POST) && isset($_SERVER['CONTENT_LENGTH']) && (int) $_SERVER['CONTENT_LENGTH'] > 0) {
+                echo json_encode(array(
+                    'status' => 2,
+                    'msg' => 'The server did not receive your form fields (often caused by the request body exceeding PHP post_max_size). Try a smaller image or increase post_max_size and upload_max_filesize in php.ini.',
+                ), JSON_UNESCAPED_SLASHES);
+                return;
+            }
             if(!empty($this->input->post('name',TRUE))){
                 $data_arr = $this->input->post(NULL,TRUE);
                 $id = $this->input->post('institute_id', TRUE);
+                if ($id === null || $id === '') {
+                    $id = isset($_POST['institute_id']) ? $_POST['institute_id'] : '';
+                }
+                $data_arr = is_array($data_arr) ? $this->map_institute_form_keys_to_users_columns($data_arr) : $data_arr;
 
                 $geo = $this->geocode_institute_address(
                     isset($data_arr['address']) ? $data_arr['address'] : '',
@@ -5717,15 +5773,26 @@ function subcategory_table(){
                     isset($data_arr['pincode']) ? $data_arr['pincode'] : ''
                 );
                 if (!empty($geo)) {
-                    if ($this->users_column_exists('lat')) { $data_arr['lat'] = $geo['lat']; }
-                    if ($this->users_column_exists('long')) { $data_arr['long'] = $geo['long']; }
-                    if ($this->users_column_exists('latitude')) { $data_arr['latitude'] = $geo['lat']; }
-                    if ($this->users_column_exists('longitude')) { $data_arr['longitude'] = $geo['long']; }
+                    $hasManualLat = (isset($data_arr['lat']) && trim((string) $data_arr['lat']) !== '') || (isset($data_arr['latitude']) && trim((string) $data_arr['latitude']) !== '');
+                    $hasManualLon = (isset($data_arr['long']) && trim((string) $data_arr['long']) !== '') || (isset($data_arr['longitude']) && trim((string) $data_arr['longitude']) !== '');
+                    if (! $hasManualLat || ! $hasManualLon) {
+                        if ($this->users_column_exists('lat')) { $data_arr['lat'] = $geo['lat']; }
+                        if ($this->users_column_exists('long')) { $data_arr['long'] = $geo['long']; }
+                        if ($this->users_column_exists('latitude')) { $data_arr['latitude'] = $geo['lat']; }
+                        if ($this->users_column_exists('longitude')) { $data_arr['longitude'] = $geo['long']; }
+                    }
                 }
 
                 if(!empty($id)){
                     $id = (int) $id;
-                    if (!empty($data_arr['email'])) {
+                    $prevInst = $this->db_model->select_data('email', 'users use index (id)', array('id' => $id, 'role' => 4), 1);
+                    if (empty($prevInst) || !isset($prevInst[0])) {
+                        echo json_encode(array('status' => 2, 'msg' => 'Institute not found or you cannot edit this record.'), JSON_UNESCAPED_SLASHES);
+                        return;
+                    }
+                    $prevEmail = isset($prevInst[0]['email']) ? trim((string) $prevInst[0]['email']) : '';
+                    $newEmail = isset($data_arr['email']) ? trim((string) $data_arr['email']) : '';
+                    if ($newEmail !== '' && strcasecmp($newEmail, $prevEmail) !== 0) {
                         $dupUser = $this->db_model->select_data('id', 'users use index (id)', array('email' => $data_arr['email']), 1);
                         if (!empty($dupUser[0]['id']) && (int) $dupUser[0]['id'] !== $id) {
                             echo json_encode(array('status' => 2, 'msg' => $this->lang->line('ltr_email_already_msg')), JSON_UNESCAPED_SLASHES);
@@ -5736,6 +5803,17 @@ function subcategory_table(){
                             echo json_encode(array('status' => 2, 'msg' => $this->lang->line('ltr_email_already_msg')), JSON_UNESCAPED_SLASHES);
                             return;
                         }
+                    }
+                    $pendingCode = '';
+                    if (isset($data_arr['institude_code'])) {
+                        $pendingCode = trim((string) $data_arr['institude_code']);
+                    } elseif (isset($data_arr['institute_code'])) {
+                        $pendingCode = trim((string) $data_arr['institute_code']);
+                    }
+                    if ($pendingCode !== '' && $this->users_institute_code_taken_by_another($pendingCode, $id)) {
+                        $msg = $this->lang->line('ltr_institute_code_taken_msg');
+                        echo json_encode(array('status' => 2, 'msg' => $msg ? $msg : 'This institute code is already in use.'), JSON_UNESCAPED_SLASHES);
+                        return;
                     }
                     if(!empty($data_arr['password'])){
                         $data_arr['password'] = md5($data_arr['password']);
@@ -5763,12 +5841,38 @@ function subcategory_table(){
                     }
                     $data_arr = $this->filter_users_payload($data_arr);
                     $data_arr = $this->security->xss_clean($data_arr);
-                    $ins = $this->db_model->update_data_limit('users',$data_arr,array('id'=>$id),1);
-                    $resp = ($ins==true) ? array('status'=>1,'msg'=>'Institute updated successfully.') : array('status'=>0);
+                    if (!is_array($data_arr) || count($data_arr) < 1) {
+                        echo json_encode(array('status' => 2, 'msg' => 'No valid fields to save. Ensure your database `users` table includes the institute columns (e.g. contact_no, country, lat/long) or run the migration SQL.'), JSON_UNESCAPED_SLASHES);
+                        return;
+                    }
+                    $ins = $this->db_model->update_data('users', $data_arr, array('id' => $id));
+                    if ($ins === true) {
+                        $resp = array('status' => 1, 'msg' => 'Institute updated successfully.');
+                    } else {
+                        $dbErr = $this->db->error();
+                        $hint = (!empty($dbErr['message'])) ? ' ' . $dbErr['message'] : '';
+                        $msg = 'Could not update institute in the database.' . $hint;
+                        if (!empty($dbErr['code']) && (int) $dbErr['code'] === 1062) {
+                            $dupMsg = $this->lang->line('ltr_institute_code_taken_msg');
+                            $msg = $dupMsg ? $dupMsg : 'This institute code is already in use.';
+                        }
+                        $resp = array('status' => 2, 'msg' => $msg);
+                    }
                 }else{
                     $prevData =  $this->db_model->select_data('id','users use index (id)',array('email'=>$data_arr['email']),1);
                     $prevDataStu =  $this->db_model->select_data('id','students use index (id)',array('email'=>$data_arr['email'],'admin_id'=>$this->session->userdata('uid')),1);
                     if(empty($prevData) && empty($prevDataStu)){
+                        $pendingCodeNew = '';
+                        if (isset($data_arr['institude_code'])) {
+                            $pendingCodeNew = trim((string) $data_arr['institude_code']);
+                        } elseif (isset($data_arr['institute_code'])) {
+                            $pendingCodeNew = trim((string) $data_arr['institute_code']);
+                        }
+                        if ($pendingCodeNew !== '' && $this->users_institute_code_taken_by_another($pendingCodeNew, 0)) {
+                            $msg = $this->lang->line('ltr_institute_code_taken_msg');
+                            echo json_encode(array('status' => 2, 'msg' => $msg ? $msg : 'This institute code is already in use.'), JSON_UNESCAPED_SLASHES);
+                            return;
+                        }
                         unset($data_arr['institute_id']);
                         $data_arr['parent_id'] = $this->session->userdata('uid');
                         $data_arr['admin_id'] = $this->session->userdata('uid');
@@ -5797,7 +5901,9 @@ function subcategory_table(){
                         $data_arr = $this->filter_users_payload($data_arr);
                         $data_arr = $this->security->xss_clean($data_arr);
                         $ins = $this->db_model->insert_data('users',$data_arr);
-                        $resp = ($ins==true) ? array('status'=>1,'msg'=>'Institute added successfully.') : array('status'=>0);
+                        $resp = ((is_numeric($ins) && (int) $ins > 0) || $ins === true)
+                            ? array('status' => 1, 'msg' => 'Institute added successfully.')
+                            : array('status' => 2, 'msg' => 'Could not add institute. Check database logs or required columns.');
                     }else{
                         $resp = array('status'=>2,'msg'=> $this->lang->line('ltr_email_already_msg'));
                     }
@@ -5821,6 +5927,11 @@ function subcategory_table(){
         }
         $cond = array('id' => $rid, 'role' => 4);
         $institutes = $this->db_model->select_data('*', 'users use index (id)', $cond, '', array('id', 'desc'));
+        if (!empty($institutes)) {
+            foreach ($institutes as $i => $row) {
+                $institutes[$i] = $this->normalize_institute_user_row_for_admin($row);
+            }
+        }
         echo json_encode(!empty($institutes) ? $institutes : array(), JSON_UNESCAPED_SLASHES);
     }
 

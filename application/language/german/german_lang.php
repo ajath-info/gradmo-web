@@ -502,6 +502,7 @@ $lang['ltr_batch_name_already_msg'] ="Chargenname existiert bereits.";
 $lang['ltr_no_data_msg'] ="Keine Daten gefunden.";
 $lang['ltr_student_details_updated_msg'] ="s Details erfolgreich aktualisiert.";
 $lang['ltr_email_already_msg'] ="Diese E-Mail wird bereits verwendet.";
+$lang['ltr_institute_code_taken_msg'] = "Dieser Institutscode wird bereits von einem anderen Konto verwendet.";
 $lang['ltr_added_msg'] ="erfolgreich hinzugefügt.";
 $lang['ltr_char_qu_msg'] ="Thema und seine Kapitel & Fragen wurden erfolgreich gelöscht.";
 $lang['ltr_char_qus_msg'] ="Kapitel und seine Fragen wurden erfolgreich gelöscht..";

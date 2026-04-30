@@ -30,7 +30,6 @@ $(document).ready(function() {
             { targets: 15, responsivePriority: 4 },
             { targets: 4, responsivePriority: 500 },
             { targets: [5, 6, 7, 8, 9, 10, 11], responsivePriority: 2000 },
-            { targets: 17, responsivePriority: 3000 },
             { targets: [12, 13, 14], responsivePriority: 10000 }
         ]);
     }
@@ -2570,8 +2569,19 @@ $(document).on('click','.genrateMeetingId',function (){
         instituteSyncLocationHidden();
         var validchk = validate_form($(this).closest('form'));
         if (validchk == 'valid') {
-            var formdata = new FormData($(this).closest('form')[0]);
-            formdata.append('institute_id', $(this).attr('data-id'));
+            var $btn = $(this);
+            var $form = $btn.closest('form');
+            var formdata = new FormData($form[0]);
+            var iid = $btn.attr('data-id') || '';
+            if (typeof formdata.set === 'function') {
+                formdata.set('institute_id', iid);
+            } else {
+                formdata.append('institute_id', iid);
+            }
+            var fileEl = $form.find('[name="teach_image"]')[0];
+            if (fileEl && (!fileEl.files || !fileEl.files.length) && typeof formdata.delete === 'function') {
+                formdata.delete('teach_image');
+            }
             $('.edu_preloader').css('background-color', 'rgba(255,255,255,0.80)').css('display', 'block');
             $.ajax({
                 method: "POST",
@@ -2580,16 +2590,23 @@ $(document).on('click','.genrateMeetingId',function (){
                 processData: false,
                 contentType: false,
                 success: function(resp) {
-                    var parsed = $.parseJSON(resp);
-                    if (parsed['status'] == '1') {
+                    var parsed;
+                    try {
+                        parsed = typeof resp === 'object' ? resp : $.parseJSON(resp);
+                    } catch (e) {
+                        toastr.error(ltr_something_msg);
+                        $('.edu_preloader').fadeOut();
+                        return;
+                    }
+                    if (parsed['status'] == '1' || parsed['status'] === 1) {
                         toastr.success(parsed['msg']);
                         targetTableUrl = $('.server_datatable').attr('data-url');
                         dataTableObj.ajax.url(base_url + targetTableUrl).load();
                         $('#input_feilds_institute').find('[name="lat"]').val('');
                         $('#input_feilds_institute').find('[name="long"]').val('');
                         $('#input_feilds_institute').find('.mfp-close').trigger('click');
-                    } else if (parsed['status'] == '2') {
-                        toastr.error(parsed['msg']);
+                    } else if (parsed['status'] == '2' || parsed['status'] === 2) {
+                        toastr.error(parsed['msg'] || ltr_something_msg);
                     } else {
                         toastr.error(ltr_something_msg);
                     }

@@ -38,7 +38,6 @@
                                 <th>Longitude</th>
                                 <th><?php echo html_escape($this->common->languageTranslator('ltr_status'));?></th>
                                 <th class="no-sort"><?php echo html_escape($this->common->languageTranslator('ltr_action'));?></th>
-                                <th class="no-sort"><?php echo html_escape($this->common->languageTranslator('ltr_added_by'));?></th>
                             </tr>
                         </thead>
                         <tbody></tbody>

@@ -499,6 +499,7 @@ $lang [ 'ltr_batch_name_already_msg' ] = "El nombre del lote ya existe.";
 $lang [ 'ltr_no_data_msg' ] = "No se encontraron datos.";
 $lang [ 'ltr_student_details_updated_msg' ] = "detalles actualizados con éxito.";
 $lang [ 'ltr_email_already_msg' ] = "Este correo electrónico ya está en uso.";
+$lang [ 'ltr_institute_code_taken_msg' ] = "Este código de instituto ya está en uso por otra cuenta.";
 $lang [ 'ltr_added_msg' ] = "agregado con éxito.";
 $lang [ 'ltr_char_qu_msg' ] = "El tema y sus capítulos y preguntas se eliminan con éxito..";
 $lang [ 'ltr_char_qus_msg' ] = "El capítulo y sus preguntas se eliminan con éxito..";

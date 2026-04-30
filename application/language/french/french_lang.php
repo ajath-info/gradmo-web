@@ -502,6 +502,7 @@ $lang[ 'ltr_batch_name_already_msg' ] = 'Le nom du lot existe déjà.';
 $lang[ 'ltr_no_data_msg' ] = 'Aucune donnée trouvée.';
 $lang[ 'ltr_student_details_updatedate_msg' ] = 's détails mis à jour avec succès.';
 $lang[ 'ltr_email_already_msg' ] = 'Cet e-mail est déjà utilisé.';
+$lang[ 'ltr_institute_code_taken_msg' ] = "Ce code d'institut est déjà utilisé par un autre compte.";
 $lang[ 'ltr_added_msg' ] = 'ajouté avec succès.';
 $lang[ 'ltr_char_qu_msg' ] = 'Le sujet et leurs chapitres et questions sont supprimés avec succès..';
 $lang[ 'ltr_char_quus_msg' ] = 'Le chapitre et leurs questions sont supprimés avec succès..';

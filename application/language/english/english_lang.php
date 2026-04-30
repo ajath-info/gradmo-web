@@ -504,6 +504,7 @@ $lang['ltr_batch_name_already_msg'] ="Batch name already exists.";
 $lang['ltr_no_data_msg'] ="No data found.";
 $lang['ltr_student_details_updated_msg'] ="s details updated sucessfully.";
 $lang['ltr_email_already_msg'] ="This email is already in use.";
+$lang['ltr_institute_code_taken_msg'] = "This institute code is already in use by another account.";
 $lang['ltr_added_msg'] ="added sucessfully.";
 $lang['ltr_char_qu_msg'] ="Subject and their chapters & questions are deleted sucessfully..";
 $lang['ltr_char_qus_msg'] ="Chapter and their questions are deleted sucessfully..";

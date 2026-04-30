@@ -524,6 +524,7 @@ $lang['ltr_batch_name_already_msg'] = "बैच का नाम पहले �
 $lang['ltr_no_data_msg'] = "कोई डेटा नहीं मिला।";
 $lang['ltr_student_details_updated_msg'] = "s विवरण सफलतापूर्वक अपडेट किए गए।";
 $lang['ltr_email_already_msg'] = "यह ईमेल पहले से प्रयोग में है।";
+$lang['ltr_institute_code_taken_msg'] = "यह संस्थान कोड पहले से किसी अन्य खाते में प्रयोग में है।";
 $lang['ltr_added_msg'] = "सफलतापूर्वक जोड़ा गया।";
 $lang['ltr_char_qu_msg'] = "विषय और उनके अध्याय और प्रश्न सफलतापूर्वक हटा दिए गए हैं..";
 $lang['ltr_char_qus_msg'] = "अध्याय और उनके प्रश्नों को सफलतापूर्वक हटा दिया गया है..";
