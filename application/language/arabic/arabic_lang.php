@@ -18,6 +18,7 @@ $lang['ltr_payment_history'] = "تاريخ الدفع";
 $lang['ltr_teacher_manager'] = "مدير مدرس";
 $lang['ltr_extra_classes'] = "فصول اضافية";
 $lang['ltr_manage_teachers'] = "إدارة المعلمين";
+$lang['ltr_manage_institutes'] = "إدارة المعاهد";
 $lang['ltr_manage_teacher_leave'] = "إدارة إجازة المعلمين";
 $lang['ltr_exam'] = "امتحان";
 $lang['ltr_paper_manager'] ="مدير الورق";
@@ -55,6 +56,7 @@ $lang['ltr_Intitute'] = "تفاصيل المعهد";
 $lang['ltr_Intitute_name'] = "اسم المعهد";
 $lang['ltr_Intitute_logo'] = "شعار المعهد";
 $lang['ltr_Intitute_add'] = "أضف المعهد";
+$lang['ltr_update_institute'] = "تحديث المعهد";
 $lang['ltr_Intitute_edit'] = "تحرير المعهد";
 // Dashboard page
 $lang['ltr_total_students'] ="مجموع الطلاب";

@@ -373,8 +373,12 @@ if ( ! is_array($cur_arr)) {
                             
                  <?php  } ?>
                 <?php
-                    if (($this->session->userdata['super_admin'] == 1) || (isset($access->academics) && $access->academics == '1')) { ?>
-                    <li class="has_sub_menu <?php echo (in_array("batch-manage",$cur_arr) || in_array("notice-manage",$cur_arr) || in_array("subject-manage",$cur_arr) || in_array("question-manage",$cur_arr)||in_array("question-manage",$cur_arr)||in_array("vacancy-manage",$cur_arr)||in_array("live-class",$cur_arr)||in_array("live-class-history",$cur_arr)||in_array("batch-cat-manage",$cur_arr)||in_array("batch-subcat-manage",$cur_arr)||in_array("jetsi",$cur_arr) )?'active':''; ?>">
+					$role_admin = ((int) $this->session->userdata('role') === 1 || (string) $this->session->userdata('role') === '1');
+					$academics_granted = isset($access->academics) && (string) $access->academics === '1';
+					$academics_revoked = isset($access->academics) && (string) $access->academics === '0';
+					$show_academics_menu = ($this->session->userdata['super_admin'] == 1) || $academics_granted || ($role_admin && ! $academics_revoked);
+                    if ($show_academics_menu) { ?>
+                    <li class="has_sub_menu <?php echo (in_array("batch-manage",$cur_arr) || in_array("notice-manage",$cur_arr) || in_array("subject-manage",$cur_arr) || in_array("question-manage",$cur_arr)||in_array("question-manage",$cur_arr)||in_array("vacancy-manage",$cur_arr)||in_array("live-class",$cur_arr)||in_array("live-class-history",$cur_arr)||in_array("batch-cat-manage",$cur_arr)||in_array("batch-subcat-manage",$cur_arr)||in_array("jetsi",$cur_arr)||in_array("institute-manage",$cur_arr)||in_array("institute-progress",$cur_arr) )?'active':''; ?>">
                         <a href="javascript:void(0);" class="">
                             <svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
                                  viewBox="0 0 30 30" enable-background="new 0 0 30 30" xml:space="preserve">
@@ -413,8 +417,8 @@ if ( ! is_array($cur_arr)) {
                             <li <?php echo (in_array("batch-cat-manage",$cur_arr) )?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/batch-cat-manage"> <?php echo html_escape($this->common->languageTranslator('ltr_batch_cat_manager')); ?></a></li>
                              <li <?php echo (in_array("batch-subcat-manage",$cur_arr) )?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/batch-subcat-manage"> <?php echo html_escape($this->common->languageTranslator('ltr_batch_subcat_manager')); ?></a></li>
                             <li <?php echo (in_array("batch-manage",$cur_arr) || in_array("add-batch",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/batch-manage"> <?php echo html_escape($this->common->languageTranslator('ltr_batch_manager')); ?></a></li>
-                        
-                            <li <?php echo (in_array("notice-manage",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/notice-manage"><?php echo html_escape($this->common->languageTranslator('ltr_notice_manager')); ?></a>
+                            <li <?php echo (in_array("institute-manage",$cur_arr) || in_array("institute-progress",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/institute-manage"><?php echo html_escape($this->common->languageTranslator('ltr_manage_institutes')); ?></a></li>
+                            <li <?php echo (in_array("notice-manage",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/notice-manage"><?php echo html_escape($this->common->languageTranslator('ltr_notice_manager')); ?></a></li>
                             <li <?php echo (in_array("subject-manage",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/subject-manage"><?php echo html_escape($this->common->languageTranslator('ltr_subject_manager')); ?></a></li>
                             <li <?php echo (in_array("question-manage",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/question-manage"><?php echo html_escape($this->common->languageTranslator('ltr_question_manager')); ?></a></li>
                             <li <?php echo (in_array("vacancy-manage",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/vacancy-manage"><?php echo html_escape($this->common->languageTranslator('ltr_upcoming_exams_manager')); ?></a></li>
@@ -534,7 +538,6 @@ if ( ! is_array($cur_arr)) {
                         <ul class="sub-menu">
                             <li <?php echo (in_array("extra-classes",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/extra-classes"><?php echo html_escape($this->common->languageTranslator('ltr_extra_classes'));?></a></li>
                             <li <?php echo (in_array("teacher-manage",$cur_arr) || in_array("teacher-academic-record",$cur_arr) || in_array("teacher-progress",$cur_arr) || in_array("teacher-notice",$cur_arr) || in_array("doubts-class",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/teacher-manage"><?php echo html_escape($this->common->languageTranslator('ltr_manage_teachers'));?></a></li>
-                            <li <?php echo (in_array("institute-manage",$cur_arr) || in_array("institute-progress",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/institute-manage">Manage Institutes</a></li>
                             <li <?php echo (in_array("manage-teacher-leave",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/manage-teacher-leave"><?php echo html_escape($this->common->languageTranslator('ltr_manage_teacher_leave'));?></a></li>
                         </ul>
                     </li>

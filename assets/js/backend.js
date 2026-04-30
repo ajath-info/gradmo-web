@@ -17,6 +17,23 @@ $(document).ready(function() {
         var table_msg = ltr_live_class_msg;
     }
     if (typeof MathJax !== 'undefined') { MathJax.Hub.Queue(["Typeset", MathJax.Hub]); }
+    var instituteTableUrl = 'ajaxcall/institute_table';
+    var isInstituteManageTable = $('.server_datatable').attr('data-url') === instituteTableUrl;
+    var serverTableColumnDefs = [{ targets: '_all', orderable: false }];
+    if (isInstituteManageTable) {
+        serverTableColumnDefs = serverTableColumnDefs.concat([
+            { targets: 0, responsivePriority: 1 },
+            { targets: 16, responsivePriority: 1 },
+            { targets: 2, responsivePriority: 2 },
+            { targets: 3, responsivePriority: 2 },
+            { targets: 1, responsivePriority: 3 },
+            { targets: 15, responsivePriority: 4 },
+            { targets: 4, responsivePriority: 500 },
+            { targets: [5, 6, 7, 8, 9, 10, 11], responsivePriority: 2000 },
+            { targets: 17, responsivePriority: 3000 },
+            { targets: [12, 13, 14], responsivePriority: 10000 }
+        ]);
+    }
     var dataTableObj = $('.server_datatable').DataTable({
         searching: true,
         processing: true,
@@ -37,10 +54,7 @@ $(document).ready(function() {
         ],
         responsive: true,
         serverSide: { "regex": true },
-        columnDefs: [{
-            targets: "_all",
-            orderable: false
-        }],
+        columnDefs: serverTableColumnDefs,
         ajax: {
             "url": base_url + $('.server_datatable').attr('data-url'),
             "type": "POST"
@@ -2270,49 +2284,282 @@ $(document).on('click','.genrateMeetingId',function (){
         }
     });
 
-    function institute_edit(id) {
+    function instituteParseJson(resp) {
+        if (typeof resp === 'string') {
+            try {
+                return JSON.parse(resp);
+            } catch (e) {
+                return null;
+            }
+        }
+        return resp;
+    }
+
+    function instituteSyncLocationHidden() {
+        var $f = $('#input_feilds_institute');
+        var tc = $f.find('#institute_sel_country option:selected').text().trim();
+        var ts = $f.find('#institute_sel_state option:selected').text().trim();
+        var tci = $f.find('#institute_sel_city option:selected').text().trim();
+        $f.find('#institute_inp_country').val($f.find('#institute_sel_country').val() ? tc : '');
+        $f.find('#institute_inp_state').val($f.find('#institute_sel_state').val() ? ts : '');
+        $f.find('#institute_inp_city').val($f.find('#institute_sel_city').val() ? tci : '');
+    }
+
+    function instituteReloadCountries(callback) {
+        var $f = $('#input_feilds_institute');
+        var $c = $f.find('#institute_sel_country');
+        $c.find('option:not(:first)').remove();
         $.ajax({
-            method: "POST",
-            url: base_url + "ajaxcall/institute_edit_new",
-            data: { id: id },
-            success: function(resp) {
-                var data = JSON.parse(resp);
-                if (!data || !data.length) { return; }
-                var row = data[0];
-                $('#input_feilds_institute').find('[name="teach_image"]').removeClass('require').val('');
-                $('#input_feilds_institute').find('#PopupTitle').html('Edit Institute');
-                $('#input_feilds_institute').find('.addNewInstitute').attr('data-id', row['id']).val('Update Institute');
-                $('#input_feilds_institute').find('[name="name"]').val(row['name'] || '');
-                $('#input_feilds_institute').find('[name="email"]').val(row['email'] || '').attr('readonly', 'readonly');
-                $('#input_feilds_institute').find('[name="teach_education"]').val(row['teach_education'] || '');
-                $('#input_feilds_institute').find('[name="teach_gender"]').val(row['teach_gender'] || '').trigger('change');
-                $('#input_feilds_institute').find('[name="country"]').val(row['country'] || '');
-                $('#input_feilds_institute').find('[name="state"]').val(row['state'] || '');
-                $('#input_feilds_institute').find('[name="city"]').val(row['city'] || '');
-                $('#input_feilds_institute').find('[name="pincode"]').val(row['pincode'] || '');
-                $('#input_feilds_institute').find('[name="address"]').val(row['address'] || '');
-                $('#input_feilds_institute').find('[name="lat"]').val(row['lat'] || row['latitude'] || '');
-                $('#input_feilds_institute').find('[name="long"]').val(row['long'] || row['longitude'] || '');
-                $('#input_feilds_institute').find('[name="password"]').removeClass('require').closest('.form-group').find('label sup').addClass('hide');
-                $('#input_feilds_institute').find('.fileNameShow').html(row['teach_image'] || '');
+            url: base_url + 'api/main/country-list',
+            type: 'POST',
+            data: {},
+            dataType: 'json',
+            success: function(j) {
+                j = instituteParseJson(j);
+                if (j && j.countries && j.countries.length) {
+                    $.each(j.countries, function(i, ct) {
+                        $c.append($('<option></option>').attr('value', ct.id).text(ct.name || ''));
+                    });
+                }
+                if (typeof callback === 'function') {
+                    callback();
+                }
+            },
+            error: function() {
+                if (typeof callback === 'function') {
+                    callback();
+                }
             }
         });
     }
 
-    $(document).on('click', '.addInstitutePop, .edit_institute', function() {
-        if ($(this).hasClass('addInstitutePop')) {
-            if (($('#input_feilds_institute').find('[name="teach_image"]').hasClass('require')) == false) {
-                $('#input_feilds_institute').find('[name="teach_image"]').addClass('require');
+    function instituteReloadStates(countryId, callback) {
+        var $f = $('#input_feilds_institute');
+        var $s = $f.find('#institute_sel_state');
+        var $ci = $f.find('#institute_sel_city');
+        $s.find('option:not(:first)').remove();
+        $ci.find('option:not(:first)').remove();
+        if (!countryId) {
+            if (typeof callback === 'function') {
+                callback();
             }
-            $('#input_feilds_institute').find('form').trigger('reset');
-            $('#input_feilds_institute').find('#PopupTitle').html('Add Institute');
-            $('#input_feilds_institute').find('.addNewInstitute').attr('data-id', '').val('Add Institute');
-            $('#input_feilds_institute').find('[name="password"]').addClass('require').closest('.form-group').find('label sup').removeClass('hide');
-            $('#input_feilds_institute').find('[name="email"]').removeAttr('readonly');
-            $('#input_feilds_institute').find('.fileNameShow').html('');
-        } else {
-            institute_edit($(this).attr('data-id'));
+            return;
         }
+        $.ajax({
+            url: base_url + 'api/main/state-list',
+            type: 'POST',
+            data: { country_id: countryId },
+            dataType: 'json',
+            success: function(j) {
+                j = instituteParseJson(j);
+                if (j && j.states && j.states.length) {
+                    $.each(j.states, function(i, st) {
+                        $s.append($('<option></option>').attr('value', st.id).text(st.name || ''));
+                    });
+                }
+                if (typeof callback === 'function') {
+                    callback();
+                }
+            },
+            error: function() {
+                if (typeof callback === 'function') {
+                    callback();
+                }
+            }
+        });
+    }
+
+    function instituteReloadCities(stateId, callback) {
+        var $f = $('#input_feilds_institute');
+        var $ci = $f.find('#institute_sel_city');
+        $ci.find('option:not(:first)').remove();
+        if (!stateId) {
+            if (typeof callback === 'function') {
+                callback();
+            }
+            return;
+        }
+        $.ajax({
+            url: base_url + 'api/main/city-list',
+            type: 'POST',
+            data: { state_id: stateId },
+            dataType: 'json',
+            success: function(j) {
+                j = instituteParseJson(j);
+                if (j && j.cities && j.cities.length) {
+                    $.each(j.cities, function(i, c) {
+                        var label = c.city || c.name || '';
+                        $ci.append($('<option></option>').attr('value', c.id).text(label));
+                    });
+                }
+                if (typeof callback === 'function') {
+                    callback();
+                }
+            },
+            error: function() {
+                if (typeof callback === 'function') {
+                    callback();
+                }
+            }
+        });
+    }
+
+    function instituteSelectOptionByText($select, text, callback) {
+        text = (text || '').trim();
+        var found = false;
+        if (text) {
+            $select.find('option').each(function() {
+                if ($(this).text().trim() === text) {
+                    $select.val($(this).attr('value'));
+                    found = true;
+                    return false;
+                }
+            });
+        }
+        if (!found) {
+            $select.val('');
+        }
+        if (typeof callback === 'function') {
+            callback();
+        }
+    }
+
+    function instituteApplyLocationNamesForEdit(row, done) {
+        var cn = (row && row.country) ? String(row.country) : '';
+        var sn = (row && row.state) ? String(row.state) : '';
+        var cin = (row && row.city) ? String(row.city) : '';
+        var $f = $('#input_feilds_institute');
+        instituteReloadCountries(function() {
+            instituteSelectOptionByText($f.find('#institute_sel_country'), cn, function() {
+                var cid = $f.find('#institute_sel_country').val();
+                instituteReloadStates(cid, function() {
+                    instituteSelectOptionByText($f.find('#institute_sel_state'), sn, function() {
+                        var sid = $f.find('#institute_sel_state').val();
+                        instituteReloadCities(sid, function() {
+                            instituteSelectOptionByText($f.find('#institute_sel_city'), cin, function() {
+                                instituteSyncLocationHidden();
+                                if (typeof done === 'function') {
+                                    done();
+                                }
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    }
+
+    function institute_edit(id, onReady) {
+        if (!id) {
+            toastr.error('Invalid institute.');
+            return;
+        }
+        $.ajax({
+            method: 'POST',
+            url: base_url + 'ajaxcall/institute_edit_new',
+            data: { id: id },
+            dataType: 'json',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            success: function(resp) {
+                var data = instituteParseJson(resp);
+                if (!data || !data.length) {
+                    toastr.error('Could not load institute for editing. Please refresh the page and try again.');
+                    return;
+                }
+                var row = data[0];
+                var $f = $('#input_feilds_institute');
+                $f.find('[name="teach_image"]').val('');
+                $f.find('#PopupTitle').html('Edit Institute');
+                var $instBtn = $f.find('.addNewInstitute');
+                var updTxt = $instBtn.attr('data-btn-update') || 'Update Institute';
+                $instBtn.attr('data-id', row['id']).text(updTxt);
+                $f.find('[name="name"]').val(row['name'] || '');
+                $f.find('[name="email"]').val(row['email'] || '').removeAttr('readonly');
+                $f.find('[name="contact_no"]').val(row['contact_no'] || '');
+                $f.find('[name="institute_code"]').val(row['institute_code'] || '');
+                $f.find('[name="school_college_name"]').val(row['school_college_name'] || '');
+                $f.find('[name="grade"]').val(row['grade'] || '');
+                $f.find('[name="pincode"]').val(row['pincode'] || '');
+                $f.find('[name="address"]').val(row['address'] || '');
+                $f.find('[name="lat"]').val(row['lat'] || row['latitude'] || '');
+                $f.find('[name="long"]').val(row['long'] || row['longitude'] || '');
+                $f.find('[name="password"]').removeClass('require').closest('.form-group').find('label sup').addClass('hide');
+                $f.find('.fileNameShow').html(row['teach_image'] || '');
+                instituteApplyLocationNamesForEdit(row, function() {
+                    if (typeof onReady === 'function') {
+                        onReady();
+                    }
+                });
+            },
+            error: function(xhr) {
+                var msg = 'Could not load institute for editing.';
+                try {
+                    var t = xhr.responseText || '';
+                    if (t.indexOf('Not allowed') !== -1 || t.indexOf('not_allowed') !== -1) {
+                        msg = 'Session expired or access denied. Please log in again.';
+                    }
+                } catch (e) {}
+                toastr.error(msg);
+            }
+        });
+    }
+
+    $(document).on('change', '#input_feilds_institute #institute_sel_country', function() {
+        var cid = $(this).val();
+        instituteReloadStates(cid, function() {
+            instituteSyncLocationHidden();
+        });
+    });
+    $(document).on('change', '#input_feilds_institute #institute_sel_state', function() {
+        var sid = $(this).val();
+        instituteReloadCities(sid, function() {
+            instituteSyncLocationHidden();
+        });
+    });
+    $(document).on('change', '#input_feilds_institute #institute_sel_city', function() {
+        instituteSyncLocationHidden();
+    });
+
+    $(document).on('click', '.addInstitutePop, .edit_institute', function(e) {
+        e.preventDefault();
+        if ($(this).hasClass('edit_institute')) {
+            var editId = $(this).attr('data-id');
+            institute_edit(editId, function() {
+                $.magnificPopup.open({
+                    items: { src: '#input_feilds_institute' },
+                    type: 'inline',
+                    callbacks: {
+                        open: function() {
+                            var $b = $('#input_feilds_institute .addNewInstitute');
+                            var iid = $b.attr('data-id');
+                            if (iid) {
+                                $b.text($b.attr('data-btn-update') || 'Update Institute');
+                            } else {
+                                $b.text($b.attr('data-btn-add') || 'Add Institute');
+                            }
+                        }
+                    }
+                });
+            });
+            return;
+        }
+        if (!$(this).hasClass('addInstitutePop')) {
+            return;
+        }
+        var $f = $('#input_feilds_institute');
+        $f.find('form').trigger('reset');
+        $f.find('#institute_inp_country, #institute_inp_state, #institute_inp_city').val('');
+        $f.find('#institute_sel_country option:not(:first)').remove();
+        $f.find('#institute_sel_state option:not(:first)').remove();
+        $f.find('#institute_sel_city option:not(:first)').remove();
+        $f.find('#institute_sel_country').val('');
+        instituteReloadCountries(function() {});
+        $f.find('#PopupTitle').html('Add Institute');
+        var $addBtn = $f.find('.addNewInstitute');
+        $addBtn.attr('data-id', '').text($addBtn.attr('data-btn-add') || 'Add Institute');
+        $f.find('[name="password"]').addClass('require').closest('.form-group').find('label sup').removeClass('hide');
+        $f.find('[name="email"]').removeAttr('readonly');
+        $f.find('.fileNameShow').html('');
         $.magnificPopup.open({
             items: { src: '#input_feilds_institute' },
             type: 'inline'
@@ -2320,6 +2567,7 @@ $(document).on('click','.genrateMeetingId',function (){
     });
 
     $(document).on('click', '.addNewInstitute', function() {
+        instituteSyncLocationHidden();
         var validchk = validate_form($(this).closest('form'));
         if (validchk == 'valid') {
             var formdata = new FormData($(this).closest('form')[0]);

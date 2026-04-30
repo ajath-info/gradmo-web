@@ -5674,6 +5674,10 @@ function subcategory_table(){
                         $count,
                         $inst['name'],
                         '<p class="email">'.$inst['email'].'</p>',
+                        isset($inst['contact_no']) ? $inst['contact_no'] : '',
+                        isset($inst['institute_code']) ? $inst['institute_code'] : '',
+                        isset($inst['school_college_name']) ? $inst['school_college_name'] : '',
+                        isset($inst['grade']) ? $inst['grade'] : '',
                         isset($inst['country']) ? $inst['country'] : '',
                         isset($inst['state']) ? $inst['state'] : '',
                         isset($inst['city']) ? $inst['city'] : '',
@@ -5720,6 +5724,19 @@ function subcategory_table(){
                 }
 
                 if(!empty($id)){
+                    $id = (int) $id;
+                    if (!empty($data_arr['email'])) {
+                        $dupUser = $this->db_model->select_data('id', 'users use index (id)', array('email' => $data_arr['email']), 1);
+                        if (!empty($dupUser[0]['id']) && (int) $dupUser[0]['id'] !== $id) {
+                            echo json_encode(array('status' => 2, 'msg' => $this->lang->line('ltr_email_already_msg')), JSON_UNESCAPED_SLASHES);
+                            return;
+                        }
+                        $dupStu = $this->db_model->select_data('id', 'students use index (id)', array('email' => $data_arr['email'], 'admin_id' => $this->session->userdata('uid')), 1);
+                        if (!empty($dupStu)) {
+                            echo json_encode(array('status' => 2, 'msg' => $this->lang->line('ltr_email_already_msg')), JSON_UNESCAPED_SLASHES);
+                            return;
+                        }
+                    }
                     if(!empty($data_arr['password'])){
                         $data_arr['password'] = md5($data_arr['password']);
                     }else{
@@ -5737,6 +5754,12 @@ function subcategory_table(){
                     $data_arr['role'] = 4;
                     if ($this->users_column_exists('user_type')) {
                         $data_arr['user_type'] = 'institute';
+                    }
+                    if ($this->users_column_exists('teach_gender')) {
+                        unset($data_arr['teach_gender']);
+                    }
+                    if ($this->users_column_exists('teach_education')) {
+                        unset($data_arr['teach_education']);
                     }
                     $data_arr = $this->filter_users_payload($data_arr);
                     $data_arr = $this->security->xss_clean($data_arr);
@@ -5762,6 +5785,14 @@ function subcategory_table(){
                                 return;
                             }
                             $data_arr['teach_image'] = $image;
+                        } elseif ($this->users_column_exists('teach_image')) {
+                            $data_arr['teach_image'] = '';
+                        }
+                        if ($this->users_column_exists('teach_gender')) {
+                            unset($data_arr['teach_gender']);
+                        }
+                        if ($this->users_column_exists('teach_education')) {
+                            unset($data_arr['teach_education']);
                         }
                         $data_arr = $this->filter_users_payload($data_arr);
                         $data_arr = $this->security->xss_clean($data_arr);
@@ -5779,9 +5810,18 @@ function subcategory_table(){
     }
 
     public function institute_edit_new(){
-        $cond = array('id'=>$_POST['id'],'role'=>4);
-        $institutes = $this->db_model->select_data('*','users use index (id)',$cond,'',array('id','desc'));
-        echo json_encode($institutes,JSON_UNESCAPED_SLASHES);
+        if (! isset($_SERVER['HTTP_X_REQUESTED_WITH']) || $_SERVER['HTTP_X_REQUESTED_WITH'] != 'XMLHttpRequest') {
+            echo $this->lang->line('ltr_not_allowed_msg');
+            return;
+        }
+        $rid = (int) $this->input->post('id', true);
+        if ($rid < 1) {
+            echo json_encode(array(), JSON_UNESCAPED_SLASHES);
+            return;
+        }
+        $cond = array('id' => $rid, 'role' => 4);
+        $institutes = $this->db_model->select_data('*', 'users use index (id)', $cond, '', array('id', 'desc'));
+        echo json_encode(!empty($institutes) ? $institutes : array(), JSON_UNESCAPED_SLASHES);
     }
 
     /********   Teacher Manage Start  ********/

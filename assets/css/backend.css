@@ -2637,6 +2637,19 @@ span.select2.select2-container {
 .edu_popup_container .edu_btn_wrapper {
     margin-top: 10px;
 }
+/* Institute manage: tall form — keep submit visible */
+#input_feilds_institute.institute_manage_popup.edu_popup_container {
+    max-height: 92vh;
+}
+#input_feilds_institute .institute_popup_footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    margin-top: 8px;
+    padding-top: 16px;
+    background: var(--Secondary-Color);
+    box-shadow: 0 -8px 16px rgba(77, 74, 129, 0.08);
+}
 select.multiSelectCls {
     padding: 0;
 }

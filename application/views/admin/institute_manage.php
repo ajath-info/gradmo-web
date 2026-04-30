@@ -1,7 +1,7 @@
 <section class="edu_admin_content">
 	<div class="edu_admin_right sectionHolder edu_teacher_manager">
 	    <div class="edu_btn_wrapper sectionHolder padderBottom30 text-right">
-            <a href="#input_feilds_institute" class="edu_admin_btn openPopupLink ml-2 addInstitutePop"><i class="icofont-plus"></i><?php echo html_escape($this->common->languageTranslator('ltr_Intitute_add'));?></a>
+            <a href="javascript:void(0);" class="edu_admin_btn ml-2 addInstitutePop"><i class="icofont-plus"></i><?php echo html_escape($this->common->languageTranslator('ltr_Intitute_add'));?></a>
 	    </div>
 
 	    <div class="createDivWrapper edu_add_question create_ppr_popup hide">
@@ -15,7 +15,6 @@
         		</div>
     		</div>
 		</div>
-		<?php if(!empty($institute_data) && $institute_data>=1){ ?>
 	    <div class="edu_main_wrapper edu_table_wrapper">		
 			<div class="edu_admin_informationdiv sectionHolder dropdown_height">
                 <div class="tableFullWrapper">
@@ -26,6 +25,10 @@
                                 <th>#</th>
                                 <th><?php echo html_escape($this->common->languageTranslator('ltr_name'));?></th>
                                 <th><?php echo html_escape($this->common->languageTranslator('ltr_email'));?></th>
+                                <th><?php echo html_escape($this->common->languageTranslator('ltr_contact_no'));?></th>
+                                <th>Institute code</th>
+                                <th>School / college</th>
+                                <th>Grade</th>
                                 <th>Country</th>
                                 <th>State</th>
                                 <th>City</th>
@@ -43,39 +46,19 @@
                 </div>
 			</div>
 		</div>
-		<?php }else{ 
-		     echo '<section class="edu_admin_content">
-                    <div class="edu_admin_right sectionHolder edu_add_users">
-                        <div class="edu_admin_informationdiv edu_main_wrapper">
-                            <div class="eac_text eac_page_re">No institute data found.</div>
-                        </div>
-                    </div>
-                </section>';
-		} ?>
 	</div>
 </section>
 
-<div id="input_feilds_institute" class="edu_popup_container mfp-hide">
+<div id="input_feilds_institute" class="edu_popup_container institute_manage_popup mfp-hide">
     <div class="edu_popup_wrapper">
         <div class="edu_popup_inner">
             <h4 class="edu_sub_title" id="PopupTitle"><?php echo html_escape($this->common->languageTranslator('ltr_Intitute_add'));?></h4>
-            <form class="pxn_amin form" action="" method="post" autocomplete="off">
+            <form class="pxn_amin form" id="form_institute_manage" action="" method="post" autocomplete="off">
                 <div class="row">   
                     <div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
                         <div class="form-group">
                             <label><?php echo html_escape($this->common->languageTranslator('ltr_name'));?><sup>*</sup></label>
                             <input type="text" class="form-control require alphaField" name="name" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_name'));?>">
-                        </div>
-                    </div>
-                    <div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
-                        <div class="form-group">
-                            <label><?php echo html_escape($this->common->languageTranslator('ltr_gender'));?><sup>*</sup></label>
-                            <select name="teach_gender" class="form-control require edu_selectbox_without_search">
-                                <option value=""><?php echo html_escape($this->common->languageTranslator('ltr_select_gender'));?></option>
-                                <option value="male"><?php echo html_escape($this->common->languageTranslator('ltr_male'));?></option>
-                                <option value="female"><?php echo html_escape($this->common->languageTranslator('ltr_female'));?></option>
-                                <option value="other"><?php echo html_escape($this->common->languageTranslator('ltr_other'));?></option>
-                            </select>
                         </div>
                     </div>
                     <div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
@@ -86,15 +69,33 @@
                      </div> 
                     <div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
                         <div class="form-group">
-                            <label><?php echo html_escape($this->common->languageTranslator('ltr_image'));?><sup>*</sup></label>
-                            <input type="file" class="form-control require" name="teach_image" data-valid="image" data-error="<?php echo html_escape($this->common->languageTranslator('ltr_valid_image_msg'));?>">
-                            <p class="fileNameShow"></p>
+                            <label><?php echo html_escape($this->common->languageTranslator('ltr_contact_no'));?><sup>*</sup></label>
+                            <input type="text" class="form-control require" name="contact_no" maxlength="15" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_contact_no'));?>" data-valid="mobile" data-error="<?php echo html_escape($this->common->languageTranslator('ltr_valid_contact_msg'));?>">
                         </div>
                     </div>
                     <div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
                         <div class="form-group">
-                            <label><?php echo html_escape($this->common->languageTranslator('ltr_education'));?></label>
-                            <input type="text" class="form-control" name="teach_education" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_education'));?>">
+                            <label>Institute code</label>
+                            <input type="text" class="form-control" name="institute_code" placeholder="Institute code">
+                        </div>
+                    </div>
+                    <div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
+                        <div class="form-group">
+                            <label>School / college name</label>
+                            <input type="text" class="form-control" name="school_college_name" placeholder="School or college name">
+                        </div>
+                    </div>
+                    <div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
+                        <div class="form-group">
+                            <label>Grade</label>
+                            <input type="text" class="form-control" name="grade" placeholder="Grade">
+                        </div>
+                    </div>
+                    <div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
+                        <div class="form-group">
+                            <label><?php echo html_escape($this->common->languageTranslator('ltr_image'));?></label>
+                            <input type="file" class="form-control" name="teach_image" data-valid="image" data-error="<?php echo html_escape($this->common->languageTranslator('ltr_valid_image_msg'));?>">
+                            <p class="fileNameShow"></p>
                         </div>
                     </div>
                     <div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
@@ -106,19 +107,28 @@
                     <div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
                         <div class="form-group">
                             <label>Country<sup>*</sup></label>
-                            <input type="text" class="form-control require" name="country" placeholder="Country">
+                            <select id="institute_sel_country" class="form-control require edu_selectbox_without_search" data-placeholder="Select country">
+                                <option value="">Select country</option>
+                            </select>
+                            <input type="hidden" name="country" id="institute_inp_country" value="">
                         </div>
                     </div>
                     <div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
                         <div class="form-group">
                             <label>State<sup>*</sup></label>
-                            <input type="text" class="form-control require" name="state" placeholder="State">
+                            <select id="institute_sel_state" class="form-control require edu_selectbox_without_search" data-placeholder="Select state">
+                                <option value="">Select state</option>
+                            </select>
+                            <input type="hidden" name="state" id="institute_inp_state" value="">
                         </div>
                     </div>
                     <div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
                         <div class="form-group">
                             <label>City<sup>*</sup></label>
-                            <input type="text" class="form-control require" name="city" placeholder="City">
+                            <select id="institute_sel_city" class="form-control require edu_selectbox_without_search" data-placeholder="Select city">
+                                <option value="">Select city</option>
+                            </select>
+                            <input type="hidden" name="city" id="institute_inp_city" value="">
                         </div>
                     </div>
                     <div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
@@ -136,18 +146,18 @@
                     <div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
                         <div class="form-group">
                             <label>Latitude</label>
-                            <input type="text" class="form-control" name="lat" readonly>
+                            <input type="text" class="form-control" name="lat" placeholder="Latitude">
                         </div>
                     </div>
                     <div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
                         <div class="form-group">
                             <label>Longitude</label>
-                            <input type="text" class="form-control" name="long" readonly>
+                            <input type="text" class="form-control" name="long" placeholder="Longitude">
                         </div>
                     </div>
-                    <div class="col-lg-12 col-md-12 col-sm-12 col-12">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-12 institute_popup_footer">
                         <div class="edu_btn_wrapper">
-                            <input type="button" value="<?php echo html_escape($this->common->languageTranslator('ltr_Intitute_add'));?>" class="btn btn-primary addNewInstitute" />
+                            <button type="button" class="btn btn-primary addNewInstitute" data-btn-add="<?php echo html_escape($this->common->languageTranslator('ltr_Intitute_add'));?>" data-btn-update="<?php echo html_escape($this->common->languageTranslator('ltr_update_institute'));?>"><?php echo html_escape($this->common->languageTranslator('ltr_Intitute_add'));?></button>
                         </div>
                     </div>
                 </div>
