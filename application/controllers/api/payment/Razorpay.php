@@ -4,9 +4,9 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 /**
  * Razorpay backend APIs (Orders, verify payment, optional webhook).
  *
- * Keys: Admin → Payment settings (general_settings: razorpay_key_id, razorpay_secret_key),
- *       optional razorpay_webhook_secret for webhooks,
- *       or override via application/config/razorpay.php / env vars.
+ * Keys: payment_gateway_api_credentials (same source as api/main/get_defaults_requirements),
+ *       then Admin → Payment settings (general_settings),
+ *       then application/config/razorpay.php / env vars.
  */
 class Razorpay extends MY_Controller
 {
@@ -45,9 +45,51 @@ class Razorpay extends MY_Controller
 
 	protected function razorpay_credentials()
 	{
-		$mode = strtolower((string) $this->config->item('razorpay_mode', 'razorpay'));
+		$db_row = $this->get_payment_gateway_api_credentials_row();
+		$db_key_id = '';
+		$db_key_secret = '';
+		$db_webhook = '';
+		$db_mode = '';
+
+		if (!empty($db_row)) {
+			$pg = strtolower(trim(isset($db_row['paymentgateway']) ? (string) $db_row['paymentgateway'] : ''));
+			if ($pg === '' || $pg === 'razorpay') {
+				if (isset($db_row['Key_id'])) {
+					$db_key_id = trim((string) $db_row['Key_id']);
+				} elseif (isset($db_row['key_id'])) {
+					$db_key_id = trim((string) $db_row['key_id']);
+				}
+				$db_key_secret = isset($db_row['secret_key']) ? trim((string) $db_row['secret_key']) : '';
+				$db_webhook = isset($db_row['webhook_secret']) ? trim((string) $db_row['webhook_secret']) : '';
+				$m = isset($db_row['mode']) ? strtolower(trim((string) $db_row['mode'])) : '';
+				if ($m === 'live' || $m === 'test') {
+					$db_mode = $m;
+				}
+			}
+		}
+
+		$mode = $db_mode !== ''
+			? $db_mode
+			: strtolower((string) $this->config->item('razorpay_mode', 'razorpay'));
 		if ($mode !== 'live' && $mode !== 'test') {
 			$mode = 'test';
+		}
+
+		if ($db_key_id !== '' && $db_key_secret !== '') {
+			$webhook_secret = $db_webhook;
+			if ($webhook_secret === '') {
+				$webhook_secret = (string) $this->config->item('razorpay_webhook_secret', 'razorpay');
+			}
+			if ($webhook_secret === '') {
+				$webhook_secret = $this->setting_val('razorpay_webhook_secret');
+			}
+
+			return array(
+				'key_id' => $db_key_id,
+				'key_secret' => $db_key_secret,
+				'mode' => $mode,
+				'webhook_secret' => $webhook_secret,
+			);
 		}
 
 		$key_id = (string) $this->config->item('razorpay_key_id', 'razorpay');

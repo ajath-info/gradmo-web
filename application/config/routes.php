@@ -77,6 +77,9 @@ $route['admin/vacancy-manage'] = 'admin_profile/vacancy_manage';
 $route['admin/video-manage'] = 'admin_profile/video_manage';
 $route['admin/enquiry'] = 'admin_profile/enquiry';
 $route['admin/timezone'] = 'admin_profile/timezone';
+$route['admin/institute-manage'] = 'admin_profile/institute_manage';
+$route['admin/institute-progress/(:any)'] = 'admin_profile/institute_progress/$1';
+
 $route['admin/teacher-manage'] = 'admin_profile/teacher_manage';
 $route['admin/teacher-progress/(:any)'] = 'admin_profile/teacher_progress/$1';
 $route['admin/teacher-academic-record/(:any)'] = 'admin_profile/teacher_academic_record/$1';
@@ -325,6 +328,8 @@ $route['api/main/post-enquiry'] = 'api/main/main/post_enquiry';
 $route['api/main/country-list'] = 'api/main/main/country_list';
 $route['api/main/state-list'] = 'api/main/main/state_list';
 $route['api/main/city-list'] = 'api/main/main/city_list';
+$route['api/main/get_defaults_requirements'] = 'api/main/main/get_defaults_requirements';
+
 
 
 

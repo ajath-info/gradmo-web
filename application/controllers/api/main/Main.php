@@ -41,6 +41,29 @@ class Main extends MY_Controller
 	}
 
 	/**
+	 * GET/POST api/main/get_defaults_requirements
+	 * Auth: any valid app token (details are available after login).
+	 * Returns payment and zoom API credentials from DB defaults.
+	 */
+	public function get_defaults_requirements()
+	{
+		$payload = $this->require_auth_payload();
+		if ($payload === false) {
+			return;
+		}
+
+		$payment = $this->get_payment_gateway_api_credentials_row();
+		$zoom = $this->get_zoom_api_credentials_row();
+
+		echo json_encode(array(
+			'status' => 'true',
+			'msg' => $this->lang->line('ltr_fetch_successfully'),
+			'payment_gateway_api_credentials' => !empty($payment) ? $payment : array(),
+			'zoom_api_credentials' => !empty($zoom) ? $zoom : array()
+		), JSON_UNESCAPED_SLASHES);
+	}
+
+	/**
 	 * GET/POST api/main/notifications-list
 	 * Auth:
 	 *  - student: own notifications by student_id

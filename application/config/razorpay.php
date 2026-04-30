@@ -14,8 +14,8 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 | - RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET (legacy fallback)
 | - RAZORPAY_WEBHOOK_SECRET
 |
-| If key values resolve to empty here, app falls back to general_settings:
-| - razorpay_key_id, razorpay_secret_key, razorpay_webhook_secret
+| If key values resolve to empty here, Razorpay controller uses payment_gateway_api_credentials
+| (same as api/main/get_defaults_requirements), then general_settings.
 */
 $default_mode = (defined('ENVIRONMENT') && ENVIRONMENT === 'production') ? 'live' : 'test';
 $mode_env = getenv('RAZORPAY_MODE');
@@ -24,12 +24,8 @@ if ($mode !== 'live' && $mode !== 'test') {
 	$mode = $default_mode;
 }
 
-// Local test fallback (env vars still take priority).
-$local_test_key_id = 'rzp_test_SfkbMrldtSUP2K';
-$local_test_key_secret = '8OTEFKB5HW3anFsBE5ev5ln4';
-
-$test_key_id = getenv('RAZORPAY_TEST_KEY_ID') ? getenv('RAZORPAY_TEST_KEY_ID') : $local_test_key_id;
-$test_key_secret = getenv('RAZORPAY_TEST_KEY_SECRET') ? getenv('RAZORPAY_TEST_KEY_SECRET') : $local_test_key_secret;
+$test_key_id = getenv('RAZORPAY_TEST_KEY_ID') ? getenv('RAZORPAY_TEST_KEY_ID') : '';
+$test_key_secret = getenv('RAZORPAY_TEST_KEY_SECRET') ? getenv('RAZORPAY_TEST_KEY_SECRET') : '';
 $live_key_id = getenv('RAZORPAY_LIVE_KEY_ID') ? getenv('RAZORPAY_LIVE_KEY_ID') : '';
 $live_key_secret = getenv('RAZORPAY_LIVE_KEY_SECRET') ? getenv('RAZORPAY_LIVE_KEY_SECRET') : '';
 $legacy_key_id = getenv('RAZORPAY_KEY_ID') ? getenv('RAZORPAY_KEY_ID') : '';

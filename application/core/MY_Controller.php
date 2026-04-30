@@ -283,6 +283,39 @@ class MY_Controller extends CI_Controller
 	}
 
 	/**
+	 * Active payment_gateway_api_credentials row (same selection as api/main/get_defaults_requirements).
+	 *
+	 * @return array<string, mixed>
+	 */
+	protected function get_payment_gateway_api_credentials_row()
+	{
+		$payment = $this->db_model->select_data(
+			'*',
+			'payment_gateway_api_credentials',
+			array('status' => 1),
+			1,
+			array('id', 'desc')
+		);
+		if (empty($payment)) {
+			$payment = $this->db_model->select_data('*', 'payment_gateway_api_credentials', '', 1, array('id', 'desc'));
+		}
+
+		return !empty($payment[0]) && is_array($payment[0]) ? $payment[0] : array();
+	}
+
+	/**
+	 * Latest zoom_api_credentials row (same selection as api/main/get_defaults_requirements).
+	 *
+	 * @return array<string, mixed>
+	 */
+	protected function get_zoom_api_credentials_row()
+	{
+		$zoom = $this->db_model->select_data('*', 'zoom_api_credentials', '', 1, array('id', 'desc'));
+
+		return !empty($zoom[0]) && is_array($zoom[0]) ? $zoom[0] : array();
+	}
+
+	/**
 	 * Standard list pagination from request (page, limit, per_page).
 	 *
 	 * @param array $data Merged request body / query

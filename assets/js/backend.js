@@ -50,6 +50,9 @@ $(document).ready(function() {
             if ($('.server_datatable').attr('data-url') == 'ajaxcall/teacher_table') {
                 $("table.dataTable td").css("white-space", "initial");
             }
+            if ($('.server_datatable').attr('data-url') == 'ajaxcall/institute_table') {
+                $("table.dataTable td").css("white-space", "initial");
+            }
             if ($('.server_datatable').attr('data-url') == 'ajaxcall/student_table') {
                 $("table.dataTable td").css("white-space", "initial");
             }
@@ -2262,6 +2265,91 @@ $(document).on('click','.genrateMeetingId',function (){
                     toastr.error(ltr_something_msg);
                     $('.edu_preloader').fadeOut();
                     return false;
+                }
+            });
+        }
+    });
+
+    function institute_edit(id) {
+        $.ajax({
+            method: "POST",
+            url: base_url + "ajaxcall/institute_edit_new",
+            data: { id: id },
+            success: function(resp) {
+                var data = JSON.parse(resp);
+                if (!data || !data.length) { return; }
+                var row = data[0];
+                $('#input_feilds_institute').find('[name="teach_image"]').removeClass('require').val('');
+                $('#input_feilds_institute').find('#PopupTitle').html('Edit Institute');
+                $('#input_feilds_institute').find('.addNewInstitute').attr('data-id', row['id']).val('Update Institute');
+                $('#input_feilds_institute').find('[name="name"]').val(row['name'] || '');
+                $('#input_feilds_institute').find('[name="email"]').val(row['email'] || '').attr('readonly', 'readonly');
+                $('#input_feilds_institute').find('[name="teach_education"]').val(row['teach_education'] || '');
+                $('#input_feilds_institute').find('[name="teach_gender"]').val(row['teach_gender'] || '').trigger('change');
+                $('#input_feilds_institute').find('[name="country"]').val(row['country'] || '');
+                $('#input_feilds_institute').find('[name="state"]').val(row['state'] || '');
+                $('#input_feilds_institute').find('[name="city"]').val(row['city'] || '');
+                $('#input_feilds_institute').find('[name="pincode"]').val(row['pincode'] || '');
+                $('#input_feilds_institute').find('[name="address"]').val(row['address'] || '');
+                $('#input_feilds_institute').find('[name="lat"]').val(row['lat'] || row['latitude'] || '');
+                $('#input_feilds_institute').find('[name="long"]').val(row['long'] || row['longitude'] || '');
+                $('#input_feilds_institute').find('[name="password"]').removeClass('require').closest('.form-group').find('label sup').addClass('hide');
+                $('#input_feilds_institute').find('.fileNameShow').html(row['teach_image'] || '');
+            }
+        });
+    }
+
+    $(document).on('click', '.addInstitutePop, .edit_institute', function() {
+        if ($(this).hasClass('addInstitutePop')) {
+            if (($('#input_feilds_institute').find('[name="teach_image"]').hasClass('require')) == false) {
+                $('#input_feilds_institute').find('[name="teach_image"]').addClass('require');
+            }
+            $('#input_feilds_institute').find('form').trigger('reset');
+            $('#input_feilds_institute').find('#PopupTitle').html('Add Institute');
+            $('#input_feilds_institute').find('.addNewInstitute').attr('data-id', '').val('Add Institute');
+            $('#input_feilds_institute').find('[name="password"]').addClass('require').closest('.form-group').find('label sup').removeClass('hide');
+            $('#input_feilds_institute').find('[name="email"]').removeAttr('readonly');
+            $('#input_feilds_institute').find('.fileNameShow').html('');
+        } else {
+            institute_edit($(this).attr('data-id'));
+        }
+        $.magnificPopup.open({
+            items: { src: '#input_feilds_institute' },
+            type: 'inline'
+        });
+    });
+
+    $(document).on('click', '.addNewInstitute', function() {
+        var validchk = validate_form($(this).closest('form'));
+        if (validchk == 'valid') {
+            var formdata = new FormData($(this).closest('form')[0]);
+            formdata.append('institute_id', $(this).attr('data-id'));
+            $('.edu_preloader').css('background-color', 'rgba(255,255,255,0.80)').css('display', 'block');
+            $.ajax({
+                method: "POST",
+                url: base_url + "ajaxcall/add_institute",
+                data: formdata,
+                processData: false,
+                contentType: false,
+                success: function(resp) {
+                    var parsed = $.parseJSON(resp);
+                    if (parsed['status'] == '1') {
+                        toastr.success(parsed['msg']);
+                        targetTableUrl = $('.server_datatable').attr('data-url');
+                        dataTableObj.ajax.url(base_url + targetTableUrl).load();
+                        $('#input_feilds_institute').find('[name="lat"]').val('');
+                        $('#input_feilds_institute').find('[name="long"]').val('');
+                        $('#input_feilds_institute').find('.mfp-close').trigger('click');
+                    } else if (parsed['status'] == '2') {
+                        toastr.error(parsed['msg']);
+                    } else {
+                        toastr.error(ltr_something_msg);
+                    }
+                    $('.edu_preloader').fadeOut();
+                },
+                error: function() {
+                    toastr.error(ltr_something_msg);
+                    $('.edu_preloader').fadeOut();
                 }
             });
         }

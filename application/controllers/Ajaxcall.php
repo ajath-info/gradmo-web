@@ -5476,6 +5476,314 @@ function subcategory_table(){
     }
 
     /********   Enquiry Manage End   ********/
+    /********   Institute Manage Start  ********/
+
+    private $users_field_flip_cache = null;
+
+    private function users_field_flip()
+    {
+        if ($this->users_field_flip_cache !== null) {
+            return $this->users_field_flip_cache;
+        }
+        try {
+            $this->users_field_flip_cache = array_flip($this->db->list_fields('users'));
+        } catch (Exception $e) {
+            $this->users_field_flip_cache = array();
+        }
+        return $this->users_field_flip_cache;
+    }
+
+    private function users_column_exists($column)
+    {
+        $flip = $this->users_field_flip();
+        return isset($flip[$column]);
+    }
+
+    private function filter_users_payload(array $data)
+    {
+        $flip = $this->users_field_flip();
+        if (empty($flip)) {
+            return $data;
+        }
+        $out = array();
+        foreach ($data as $k => $v) {
+            if (isset($flip[$k])) {
+                $out[$k] = $v;
+            }
+        }
+        return $out;
+    }
+
+    private function nominatim_http_get($query)
+    {
+        $query = trim((string) $query);
+        if ($query === '') {
+            return '';
+        }
+        $url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' . rawurlencode($query);
+        $userAgent = 'education-app/1.0 (contact: admin@localhost)';
+        if (function_exists('curl_init')) {
+            $ch = curl_init();
+            curl_setopt_array($ch, array(
+                CURLOPT_URL => $url,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 20,
+                CURLOPT_CONNECTTIMEOUT => 10,
+                CURLOPT_HTTPHEADER => array(
+                    'Accept: application/json',
+                    'Accept-Language: en',
+                    'User-Agent: ' . $userAgent,
+                ),
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_SSL_VERIFYHOST => 2,
+            ));
+            $resp = curl_exec($ch);
+            curl_close($ch);
+            if ($resp !== false && $resp !== '') {
+                return (string) $resp;
+            }
+        }
+        if (ini_get('allow_url_fopen')) {
+            $ctx = stream_context_create(array(
+                'http' => array(
+                    'method' => 'GET',
+                    'timeout' => 20,
+                    'header' => 'User-Agent: ' . $userAgent . "\r\nAccept: application/json\r\nAccept-Language: en\r\n",
+                    'ignore_errors' => true,
+                ),
+                'ssl' => array(
+                    'verify_peer' => true,
+                    'verify_peer_name' => true,
+                ),
+            ));
+            $raw = @file_get_contents($url, false, $ctx);
+            if ($raw !== false && $raw !== '') {
+                return (string) $raw;
+            }
+        }
+        return '';
+    }
+
+    private function geocode_institute_address($address, $city, $state, $country, $pincode)
+    {
+        $attempts = array();
+        $full = array_filter(array(trim((string) $address), trim((string) $city), trim((string) $state), trim((string) $pincode), trim((string) $country)));
+        if (!empty($full)) {
+            $attempts[] = implode(', ', $full);
+        }
+        $attempts[] = trim(implode(', ', array_filter(array($city, $state, $pincode, $country))));
+        $attempts[] = trim(implode(', ', array_filter(array($city, $state, $country))));
+        $attempts[] = trim(implode(', ', array_filter(array($pincode, $country))));
+        $attempts = array_values(array_unique(array_filter(array_map('trim', $attempts))));
+        foreach ($attempts as $i => $query) {
+            if ($query === '') {
+                continue;
+            }
+            if ($i > 0) {
+                usleep(1100000);
+            }
+            $raw = $this->nominatim_http_get($query);
+            if ($raw === '') {
+                continue;
+            }
+            $decoded = json_decode($raw, true);
+            if (!is_array($decoded) || !isset($decoded[0]['lat'], $decoded[0]['lon'])) {
+                continue;
+            }
+            return array('lat' => (string) ((float) $decoded[0]['lat']), 'long' => (string) ((float) $decoded[0]['lon']));
+        }
+        return null;
+    }
+
+    function institute_table(){
+        if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
+            $post = $this->input->post(NULL,TRUE);
+            $get = $this->input->get(NULL,TRUE);
+            $super = $this->session->userdata('super_admin');
+            if(isset($post['length']) && $post['length']>0){
+                if(isset($post['start']) && !empty($post['start'])){
+                    $limit = array($post['length'],$post['start']);
+                    $count = $post['start']+1;
+                }else{
+                    $limit = array($post['length'],0);
+                    $count = 1;
+                }
+            }else{
+                $limit = '';
+                $count = 1;
+            }
+
+            if(isset($post['search']['value']) && $post['search']['value'] != ''){
+                $like = array('name',$post['search']['value']);
+            }else{
+                $like = '';
+            }
+            if(isset($get['admin']) && $get['admin']!=''){
+                $like = array('admin_id',$get['admin']);
+            }
+            // if($this->session->userdata('role') == 1 && $super == 1){
+            //     $cond = array('admin_id'=>$this->session->userdata('uid'),'role'=>4);
+            // }else if($this->session->userdata('role') == 1 && $super == 0){
+            //     $cond = array('parent_id'=>$this->session->userdata('uid'),'role'=>4);
+            // }else{
+            //     $cond = array('parent_id'=>$this->session->userdata('admin_id'),'role'=>4);
+            // }
+
+            $cond = array('role'=>4);
+           
+
+            $institutes = $this->db_model->select_data('*','users use index (id)',$cond,$limit,array('id','desc'),$like,'','');
+            if(!empty($institutes)){
+                $dataarray = array();
+                foreach($institutes as $inst){
+                    $name = $this->db_model->select_data('*','users use index (id)',array('id'=>$inst['admin_id']),1);
+                    if($name){
+                        if($name[0]['admin_id']==1 && $name[0]['super_admin'] == 1){
+                            $added_by= $name[0]['name']."  (Super Admin) ";
+                        }else if($name[0]['admin_id']==1 && $name[0]['super_admin'] == 0){
+                            $added_by = $name[0]['name']."  (Sub-Admin)";
+                        }else{
+                            $added_by = $name[0]['name'];
+                        }
+                    }else{
+                        $added_by = '';
+                    }
+
+                    if($inst['status'] == 1){
+                        $statusDrop = '<div class="admin_tbl_status_wrap"><a class="tbl_status_btn light_sky_bg changeStatusButton" data-id="'.$inst['id'].'" data-table ="users" data-status ="0" href="javascript:;">'.$this->lang->line('ltr_active').'</a></div>';
+                    }else{
+                        $statusDrop = '<div class="admin_tbl_status_wrap"><a class="tbl_status_btn light_red_bg changeStatusButton" data-id="'.$inst['id'].'" data-table ="users" data-status ="1" href="javascript:;">'.$this->lang->line('ltr_inactive').'</a></div>';
+                    }
+
+                    $action = '<div class="actions_wrap_dot">
+                    <span class="tbl_action_drop" >
+                        <svg xmlns="https://www.w3.org/2000/svg" width="15px" height="4px">
+        				<path fill-rule="evenodd" fill="rgb(77 74 129)" d="M13.031,4.000 C11.944,4.000 11.062,3.104 11.062,2.000 C11.062,0.895 11.944,-0.000 13.031,-0.000 C14.119,-0.000 15.000,0.895 15.000,2.000 C15.000,3.104 14.119,4.000 13.031,4.000 ZM7.500,4.000 C6.413,4.000 5.531,3.104 5.531,2.000 C5.531,0.895 6.413,-0.000 7.500,-0.000 C8.587,-0.000 9.469,0.895 9.469,2.000 C9.469,3.104 8.587,4.000 7.500,4.000 ZM1.969,4.000 C0.881,4.000 -0.000,3.104 -0.000,2.000 C-0.000,0.895 0.881,-0.000 1.969,-0.000 C3.056,-0.000 3.937,0.895 3.937,2.000 C3.937,3.104 3.056,4.000 1.969,4.000 Z"></path>
+        				</svg>
+        				<ul class="tbl_action_ul">
+        				    <li><a href="'.base_url('admin/institute-progress/').$inst['id'].'"><span class="action_drop_icon"><i class="icofont-paper"></i></span>'.$this->lang->line('ltr_progress').'</a></li>
+        				    <li><a href="javascript:void(0);" class="edit_institute" data-id="'.$inst['id'].'" data-img="'.$inst['teach_image'].'"><span class="action_drop_icon"><i class="fa fa-edit"></i></span>'.$this->lang->line('ltr_edit').'</a></li>
+        				    <li><a class="deleteData" data-id="'.$inst['id'].'" data-table="users" href="javascript:void(0);"><span class="action_drop_icon"><i class="fa fa-trash"></i></span>'.$this->lang->line('ltr_delete').'</a></li>
+        				</ul>
+                    </span></div>';
+
+                    $latVal = isset($inst['lat']) ? $inst['lat'] : (isset($inst['latitude']) ? $inst['latitude'] : '');
+                    $longVal = isset($inst['long']) ? $inst['long'] : (isset($inst['longitude']) ? $inst['longitude'] : '');
+                    $dataarray[] = array(
+                        '<input type="checkbox" class="checkOneRow" value="'.$inst['id'].'">',
+                        $count,
+                        $inst['name'],
+                        '<p class="email">'.$inst['email'].'</p>',
+                        isset($inst['country']) ? $inst['country'] : '',
+                        isset($inst['state']) ? $inst['state'] : '',
+                        isset($inst['city']) ? $inst['city'] : '',
+                        isset($inst['pincode']) ? $inst['pincode'] : '',
+                        isset($inst['address']) ? $inst['address'] : '',
+                        $latVal,
+                        $longVal,
+                        $statusDrop,
+                        $action,
+                        $added_by
+                    );
+                    $count++;
+                }
+
+                $recordsTotal = $this->db_model->countAll('users use index (id)',$cond,'','',$like,'','');
+                $output = array("draw" => $post['draw'],"recordsTotal" => $recordsTotal,"recordsFiltered" => $recordsTotal,"data" => $dataarray);
+            }else{
+                $output = array("draw" => $post['draw'],"recordsTotal" => 0,"recordsFiltered" => 0,"data" => array());
+            }
+            echo json_encode($output,JSON_UNESCAPED_SLASHES);
+        }else{
+            echo $this->lang->line('ltr_not_allowed_msg');
+        }
+    }
+
+    function add_institute(){
+        if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
+            if(!empty($this->input->post('name',TRUE))){
+                $data_arr = $this->input->post(NULL,TRUE);
+                $id = $this->input->post('institute_id', TRUE);
+
+                $geo = $this->geocode_institute_address(
+                    isset($data_arr['address']) ? $data_arr['address'] : '',
+                    isset($data_arr['city']) ? $data_arr['city'] : '',
+                    isset($data_arr['state']) ? $data_arr['state'] : '',
+                    isset($data_arr['country']) ? $data_arr['country'] : '',
+                    isset($data_arr['pincode']) ? $data_arr['pincode'] : ''
+                );
+                if (!empty($geo)) {
+                    if ($this->users_column_exists('lat')) { $data_arr['lat'] = $geo['lat']; }
+                    if ($this->users_column_exists('long')) { $data_arr['long'] = $geo['long']; }
+                    if ($this->users_column_exists('latitude')) { $data_arr['latitude'] = $geo['lat']; }
+                    if ($this->users_column_exists('longitude')) { $data_arr['longitude'] = $geo['long']; }
+                }
+
+                if(!empty($id)){
+                    if(!empty($data_arr['password'])){
+                        $data_arr['password'] = md5($data_arr['password']);
+                    }else{
+                        unset($data_arr['password']);
+                    }
+                    if(isset($_FILES['teach_image']) && !empty($_FILES['teach_image']['name'])){
+                        $image = $this->upload_media($_FILES,'uploads/users/','teach_image');
+                        if(is_array($image)){
+                            echo json_encode(array('status'=>'2', 'msg' => $image['msg']));
+                            return;
+                        }
+                        $data_arr['teach_image'] = $image;
+                    }
+                    unset($data_arr['institute_id']);
+                    $data_arr['role'] = 4;
+                    if ($this->users_column_exists('user_type')) {
+                        $data_arr['user_type'] = 'institute';
+                    }
+                    $data_arr = $this->filter_users_payload($data_arr);
+                    $data_arr = $this->security->xss_clean($data_arr);
+                    $ins = $this->db_model->update_data_limit('users',$data_arr,array('id'=>$id),1);
+                    $resp = ($ins==true) ? array('status'=>1,'msg'=>'Institute updated successfully.') : array('status'=>0);
+                }else{
+                    $prevData =  $this->db_model->select_data('id','users use index (id)',array('email'=>$data_arr['email']),1);
+                    $prevDataStu =  $this->db_model->select_data('id','students use index (id)',array('email'=>$data_arr['email'],'admin_id'=>$this->session->userdata('uid')),1);
+                    if(empty($prevData) && empty($prevDataStu)){
+                        unset($data_arr['institute_id']);
+                        $data_arr['parent_id'] = $this->session->userdata('uid');
+                        $data_arr['admin_id'] = $this->session->userdata('uid');
+                        $data_arr['role'] = 4;
+                        $data_arr['status'] = 1;
+                        $data_arr['teach_subject'] = '[]';
+                        if ($this->users_column_exists('teach_batch')) { $data_arr['teach_batch'] = ''; }
+                        if ($this->users_column_exists('user_type')) { $data_arr['user_type'] = 'institute'; }
+                        $data_arr['password'] = md5($data_arr['password']);
+                        if(isset($_FILES['teach_image']) && !empty($_FILES['teach_image']['name'])){
+                            $image = $this->upload_media($_FILES,'uploads/users/','teach_image');
+                            if(is_array($image)){
+                                echo json_encode(array('status'=>'2', 'msg' => $image['msg']));
+                                return;
+                            }
+                            $data_arr['teach_image'] = $image;
+                        }
+                        $data_arr = $this->filter_users_payload($data_arr);
+                        $data_arr = $this->security->xss_clean($data_arr);
+                        $ins = $this->db_model->insert_data('users',$data_arr);
+                        $resp = ($ins==true) ? array('status'=>1,'msg'=>'Institute added successfully.') : array('status'=>0);
+                    }else{
+                        $resp = array('status'=>2,'msg'=> $this->lang->line('ltr_email_already_msg'));
+                    }
+                }
+                echo json_encode($resp,JSON_UNESCAPED_SLASHES);
+            }
+        }else{
+            echo $this->lang->line('ltr_not_allowed_msg');
+        }
+    }
+
+    public function institute_edit_new(){
+        $cond = array('id'=>$_POST['id'],'role'=>4);
+        $institutes = $this->db_model->select_data('*','users use index (id)',$cond,'',array('id','desc'));
+        echo json_encode($institutes,JSON_UNESCAPED_SLASHES);
+    }
+
     /********   Teacher Manage Start  ********/
 
     function teacher_table(){

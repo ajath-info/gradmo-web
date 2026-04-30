@@ -534,6 +534,7 @@ if ( ! is_array($cur_arr)) {
                         <ul class="sub-menu">
                             <li <?php echo (in_array("extra-classes",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/extra-classes"><?php echo html_escape($this->common->languageTranslator('ltr_extra_classes'));?></a></li>
                             <li <?php echo (in_array("teacher-manage",$cur_arr) || in_array("teacher-academic-record",$cur_arr) || in_array("teacher-progress",$cur_arr) || in_array("teacher-notice",$cur_arr) || in_array("doubts-class",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/teacher-manage"><?php echo html_escape($this->common->languageTranslator('ltr_manage_teachers'));?></a></li>
+                            <li <?php echo (in_array("institute-manage",$cur_arr) || in_array("institute-progress",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/institute-manage">Manage Institutes</a></li>
                             <li <?php echo (in_array("manage-teacher-leave",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/manage-teacher-leave"><?php echo html_escape($this->common->languageTranslator('ltr_manage_teacher_leave'));?></a></li>
                         </ul>
                     </li>

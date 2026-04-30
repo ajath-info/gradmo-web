@@ -505,6 +505,33 @@ class Admin_profile extends CI_Controller {
 		$this->load->view("common/admin_footer");
 	}
 
+	function institute_manage(){
+		$header['title'] = 'Institute Manager';
+		$data['institute_data'] = $this->db_model->countAll('users', array('role' => 4));
+
+		$this->load->view("common/admin_header",$header);
+		$this->load->view("admin/institute_manage",$data);
+		$this->load->view("common/admin_footer");
+	}
+
+	function institute_progress($id){
+		if(!empty($id)){
+			$header['title'] = 'Institute Progress';
+			$data['id'] = $id;
+			$data['institute_data'] = $this->db_model->select_data(
+				'*',
+				'users use index (id)',
+				array('id' => $id, 'role' => 4),
+				1
+			);
+			$this->load->view('common/admin_header',$header);
+			$this->load->view('admin/institute_progress',$data);
+			$this->load->view('common/admin_footer');
+		}else{
+			redirect(base_url('admin/institute-manage'));
+		}
+	}
+
 	function teacher_progress($id){
 		if(!empty($id)){
 		    
