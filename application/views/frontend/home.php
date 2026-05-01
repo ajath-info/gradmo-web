@@ -10,22 +10,35 @@ $home_institute_api_url = isset($home_institute_api_url) ? $home_institute_api_u
 $home_institute_details_url = isset($home_institute_details_url) ? $home_institute_details_url : site_url('institute/details');
 $home_api_access_token = isset($api_access_token) ? (string) $api_access_token : '';
 $home_login_url = base_url('login');
+$home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
+	'<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">' .
+	'<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#e8f0fe"/><stop offset="1" stop-color="#fff3e6"/></linearGradient></defs>' .
+	'<rect width="1200" height="675" fill="url(#g)"/>' .
+	'<circle cx="210" cy="200" r="75" fill="#4b6cf2" opacity="0.22"/>' .
+	'<rect x="340" y="150" width="540" height="46" rx="12" fill="#2948c8" opacity="0.82"/>' .
+	'<rect x="340" y="224" width="430" height="26" rx="10" fill="#3b5bdb" opacity="0.45"/>' .
+	'<rect x="340" y="286" width="360" height="26" rx="10" fill="#f59e0b" opacity="0.45"/>' .
+	'<rect x="150" y="420" width="900" height="105" rx="18" fill="#ffffff" opacity="0.65"/>' .
+	'<text x="600" y="487" text-anchor="middle" font-family="Arial, sans-serif" font-size="38" fill="#1f2a56">E Academy</text>' .
+	'</svg>'
+);
 ?>
 <style>
 /* Home hero — matches landing banner (promo cards + search) */
 .edu-home-page { overflow-x: hidden; }
 .edu-home-hero {
-	background: #f4f6f9;
-	padding: 28px 16px 32px;
-	margin-bottom: 8px;
+	background: linear-gradient(180deg, #eef3ff 0%, #f8faff 64%, #f4f6fb 100%);
+	padding: 34px 16px 30px;
+	margin-bottom: 12px;
+	border-bottom: 1px solid #e7ebf5;
 }
 .edu-home-hero-inner {
-	max-width: 1080px;
+	max-width: 1200px;
 	margin: 0 auto;
 }
 .edu-home-promo-row {
 	display: flex;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 	gap: 14px;
 	margin-bottom: 22px;
 	align-items: stretch;
@@ -46,6 +59,13 @@ $home_login_url = base_url('login');
 	box-shadow: 0 2px 14px rgba(15, 23, 42, 0.06);
 	border: none;
 }
+.edu-home-promo-row .edu-home-promo:nth-child(1),
+.edu-home-promo-row .edu-home-promo:nth-child(3) {
+	flex: 0 0 calc((100% - 28px) * 0.30);
+}
+.edu-home-promo-row .edu-home-promo:nth-child(2) {
+	flex: 0 0 calc((100% - 28px) * 0.40);
+}
 .edu-home-promo--blue {
 	background: #4b6cf2;
 	color: #fff;
@@ -62,7 +82,7 @@ $home_login_url = base_url('login');
 	box-shadow: 0 2px 14px rgba(245, 158, 11, 0.25);
 }
 @media (max-width: 767px) {
-	.edu-home-promo-row { flex-direction: column; }
+	.edu-home-promo-row { flex-direction: column; flex-wrap: nowrap; }
 	.edu-home-promo { flex: 1 1 auto; min-height: 84px; }
 }
 .edu-home-search {
@@ -117,9 +137,9 @@ $home_login_url = base_url('login');
 	}
 }
 .edu-home-wrap {
-	max-width: 1080px;
+	max-width: 1200px;
 	margin: 0 auto;
-	padding: 20px 16px 36px;
+	padding: 14px 16px 44px;
 }
 .edu-home-section-head {
 	display: flex;
@@ -165,11 +185,11 @@ $home_login_url = base_url('login');
 }
 .edu-home-scroll-row > * { scroll-snap-align: start; flex-shrink: 0; }
 .edu-home-inst-card {
-	width: 260px;
+	width: 280px;
 	max-width: 85vw;
 	background: #fff;
 	border-radius: 16px;
-	padding: 16px 16px 18px;
+	padding: 14px 14px 16px;
 	box-shadow: 0 4px 18px rgba(15, 23, 42, 0.07);
 	border: 1px solid #eef0f5;
 	text-decoration: none;
@@ -182,6 +202,24 @@ $home_login_url = base_url('login');
 	color: inherit;
 	text-decoration: none;
 }
+.edu-home-inst-head {
+	display: flex;
+	gap: 12px;
+	align-items: center;
+	margin-bottom: 8px;
+}
+.edu-home-inst-logo {
+	width: 44px;
+	height: 44px;
+	border-radius: 12px;
+	object-fit: cover;
+	background: #eef2ff;
+	border: 1px solid #e5e9f6;
+	flex: 0 0 44px;
+}
+.edu-home-inst-title-wrap {
+	min-width: 0;
+}
 .edu-home-badge {
 	display: inline-block;
 	font-size: 0.72rem;
@@ -193,41 +231,68 @@ $home_login_url = base_url('login');
 	margin-bottom: 10px;
 }
 .edu-home-inst-card h3 {
-	margin: 0 0 6px;
+	margin: 0 0 4px;
 	font-size: 1rem;
 	font-weight: 700;
 	color: #111827;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 .edu-home-inst-card p {
 	margin: 0;
 	font-size: 0.85rem;
 	color: #6b7280;
 	line-height: 1.4;
+	min-height: 36px;
 }
-.edu-home-live-stack { display: flex; flex-direction: column; gap: 18px; }
+.edu-home-live-stack {
+	display: flex;
+	gap: 14px;
+	overflow-x: auto;
+	padding-bottom: 8px;
+	-webkit-overflow-scrolling: touch;
+	scroll-snap-type: x mandatory;
+}
+.edu-home-live-stack > * { scroll-snap-align: start; flex-shrink: 0; }
 .edu-home-live-card {
+	width: 280px;
+	max-width: 85vw;
 	background: #fff;
-	border-radius: 18px;
-	overflow: hidden;
-	box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08);
+	border-radius: 16px;
+	padding: 14px;
+	box-shadow: 0 4px 18px rgba(15, 23, 42, 0.07);
 	border: 1px solid #eef0f5;
 }
 .edu-home-live-thumb {
-	width: 100%;
-	aspect-ratio: 16 / 9;
+	width: 44px;
+	height: 44px;
+	border-radius: 12px;
 	object-fit: cover;
-	background: #eef1f8;
+	background: #eef2ff;
+	border: 1px solid #e5e9f6;
+	flex: 0 0 44px;
 	display: block;
 }
-.edu-home-live-body { padding: 16px 16px 18px; }
+.edu-home-live-body { padding: 0; }
 .edu-home-live-body h3 {
-	margin: 0 0 8px;
-	font-size: 1.05rem;
+	margin: 0 0 4px;
+	font-size: 1rem;
 	font-weight: 700;
 	color: #111827;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
-.edu-home-live-date { font-size: 0.88rem; color: #6b7280; margin-bottom: 12px; }
-.edu-home-tag-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.edu-home-live-date { font-size: 0.85rem; color: #6b7280; margin-bottom: 10px; min-height: 18px; }
+.edu-home-live-head {
+	display: flex;
+	gap: 12px;
+	align-items: center;
+	margin-bottom: 8px;
+}
+.edu-home-live-main { min-width: 0; }
+.edu-home-tag-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .edu-home-tag {
 	font-size: 0.72rem;
 	font-weight: 600;
@@ -287,6 +352,7 @@ $home_login_url = base_url('login');
 		var detailsBase = <?php echo json_encode(rtrim($home_institute_details_url, '/') . '/'); ?>;
 		var listingUrl = <?php echo json_encode($home_inst_listing); ?>;
 		var loginUrl = <?php echo json_encode($home_login_url); ?>;
+		var defaultImage = <?php echo json_encode($home_default_card_image); ?>;
 		var row = document.getElementById('edu_home_nearby_row');
 		var msg = document.getElementById('edu_home_nearby_msg');
 		if (!row || !msg) { return; }
@@ -296,11 +362,18 @@ $home_login_url = base_url('login');
 			d.textContent = t == null ? '' : String(t);
 			return d.innerHTML;
 		}
-		function badgeFromPayMode(pm) {
-			var s = (pm == null ? '' : String(pm)).toLowerCase();
-			if (s.indexOf('online') !== -1) { return 'Online'; }
-			if (s.indexOf('hybrid') !== -1) { return 'Hybrid'; }
-			if (s.indexOf('offline') !== -1) { return 'Offline'; }
+		function badgeFromListingItem(it) {
+			var ut = (it.userType != null ? String(it.userType) : '').trim().toLowerCase();
+			if (ut === 'teacher') { return 'Teacher'; }
+			if (ut === 'institute') { return 'Institute'; }
+			if (ut === 'student') { return 'Student'; }
+			var r = it.role != null ? parseInt(it.role, 10) : NaN;
+			if (r === 3) { return 'Teacher'; }
+			if (r === 4) { return 'Institute'; }
+			var pm = (it.pay_mode == null ? '' : String(it.pay_mode)).toLowerCase();
+			if (pm.indexOf('online') !== -1) { return 'Online'; }
+			if (pm.indexOf('hybrid') !== -1) { return 'Hybrid'; }
+			if (pm.indexOf('offline') !== -1) { return 'Offline'; }
 			return 'Institute';
 		}
 		function addressLine(it) {
@@ -326,9 +399,19 @@ $home_login_url = base_url('login');
 				var a = document.createElement('a');
 				a.className = 'edu-home-inst-card';
 				a.href = detailsBase + '?institute_id=' + encodeURIComponent(id);
+				var logoSrc = it.imageUrl || it.logo || it.image || it.instituteLogo || '';
+				var head = document.createElement('div');
+				head.className = 'edu-home-inst-head';
+				var logo = document.createElement('img');
+				logo.className = 'edu-home-inst-logo';
+				logo.src = logoSrc || defaultImage;
+				logo.alt = (it.name || 'Institute') + ' logo';
+				logo.onerror = function () { this.onerror = null; this.src = defaultImage; };
+				var titleWrap = document.createElement('div');
+				titleWrap.className = 'edu-home-inst-title-wrap';
 				var badge = document.createElement('span');
 				badge.className = 'edu-home-badge';
-				badge.textContent = badgeFromPayMode(it.pay_mode);
+				badge.textContent = badgeFromListingItem(it);
 				var h = document.createElement('h3');
 				h.textContent = it.name || 'Institute';
 				var p = document.createElement('p');
@@ -337,8 +420,11 @@ $home_login_url = base_url('login');
 					line = (line ? line + ' · ' : '') + it.distanceKm + ' km';
 				}
 				p.textContent = line || 'View details';
-				a.appendChild(badge);
-				a.appendChild(h);
+				titleWrap.appendChild(badge);
+				titleWrap.appendChild(h);
+				head.appendChild(logo);
+				head.appendChild(titleWrap);
+				a.appendChild(head);
 				a.appendChild(p);
 				row.appendChild(a);
 			});
@@ -422,19 +508,24 @@ $home_login_url = base_url('login');
 					$detail_url = $bid > 0 ? base_url('courses-details/' . $bid) : base_url('courses-offered');
 					?>
 			<article class="edu-home-live-card">
-				<?php if ($bimg !== '') { ?>
-				<img class="edu-home-live-thumb" src="<?php echo html_escape($bimg); ?>" alt="">
-				<?php } else { ?>
-				<div class="edu-home-live-thumb" role="img" aria-label=""></div>
-				<?php } ?>
 				<div class="edu-home-live-body">
-					<h3><?php echo html_escape($bname); ?></h3>
+					<div class="edu-home-live-head">
+						<?php if ($bimg !== '') { ?>
+						<img class="edu-home-live-thumb" src="<?php echo html_escape($bimg); ?>" alt="" onerror="this.onerror=null;this.src='<?php echo html_escape($home_default_card_image); ?>';">
+						<?php } else { ?>
+						<img class="edu-home-live-thumb" src="<?php echo html_escape($home_default_card_image); ?>" alt="">
+						<?php } ?>
+						<div class="edu-home-live-main">
+							<span class="edu-home-badge">Batch</span>
+							<h3><?php echo html_escape($bname); ?></h3>
+						</div>
+					</div>
 					<div class="edu-home-live-date"><?php echo html_escape($dt); ?></div>
 					<div class="edu-home-tag-row">
-						<span class="edu-home-tag edu-home-tag--blue">Batch</span>
-						<span class="edu-home-tag edu-home-tag--orange">Live</span>
+						<span class="edu-home-tag edu-home-tag--blue">Live Class</span>
+						<span class="edu-home-tag edu-home-tag--orange">Start Learning</span>
 					</div>
-					<a class="edu-home-btn-join" href="<?php echo html_escape($detail_url); ?>">Join Live Class</a>
+					<a class="edu-home-btn-join" href="<?php echo html_escape($detail_url); ?>">View Details</a>
 				</div>
 			</article>
 					<?php
@@ -442,15 +533,20 @@ $home_login_url = base_url('login');
 			} else {
 				?>
 			<article class="edu-home-live-card">
-				<div class="edu-home-live-thumb" style="background: linear-gradient(135deg,#e8f0fe,#fff3e6); min-height: 180px;"></div>
 				<div class="edu-home-live-body">
-					<h3>First Law of Motion</h3>
+					<div class="edu-home-live-head">
+						<img class="edu-home-live-thumb" src="<?php echo html_escape($home_default_card_image); ?>" alt="">
+						<div class="edu-home-live-main">
+							<span class="edu-home-badge">Batch</span>
+							<h3>First Law of Motion</h3>
+						</div>
+					</div>
 					<div class="edu-home-live-date"><?php echo html_escape(date('F jS, Y')); ?></div>
 					<div class="edu-home-tag-row">
-						<span class="edu-home-tag edu-home-tag--blue">Physics</span>
-						<span class="edu-home-tag edu-home-tag--orange">12th Grade</span>
+						<span class="edu-home-tag edu-home-tag--blue">Live Class</span>
+						<span class="edu-home-tag edu-home-tag--orange">Start Learning</span>
 					</div>
-					<a class="edu-home-btn-join" href="<?php echo html_escape(base_url('courses-offered')); ?>">Join Live Class</a>
+					<a class="edu-home-btn-join" href="<?php echo html_escape(base_url('courses-offered')); ?>">View Details</a>
 				</div>
 			</article>
 				<?php

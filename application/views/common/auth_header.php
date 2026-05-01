@@ -10,7 +10,6 @@
 	<link rel="stylesheet" type="text/css" href="<?php echo base_url().'assets/css/magnific-popup.css';?>"/>
     <link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/frontend-style.css?<?php echo time();?>">
     <link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/font.css"/>
-    <link rel="stylesheet" type="text/css" href="<?php echo base_url().'assets/css/frontend-style.css?'.time();?>"/>
     <!------ Include the above in your HEAD tag ---------->
     <link rel="shortcut icon" type="image/x-icon" href="<?php echo base_url();?>assets/images/favicon.png" />
       <!-- google Recaptcha v2 API  -->

@@ -52,6 +52,7 @@
 	var monthlyTuition = 0;
 	var lastOrderId = '';
 	function ok(s) { return s === true || s === 'true' || s === 1 || s === '1'; }
+	function truthy(v) { return v === true || v === 'true' || v === 1 || v === '1'; }
 	function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
 	function money(n) { return 'Rs ' + (Math.round(Number(n || 0) * 100) / 100).toFixed(2); }
 	function post(url, body) {
@@ -215,6 +216,12 @@
 				} else if (res[2].batch_details && typeof res[2].batch_details === 'object') {
 					bd = res[2].batch_details;
 				}
+			}
+			if (bd && Object.prototype.hasOwnProperty.call(bd, 'canEnroll') && !truthy(bd.canEnroll)) {
+				document.getElementById('bp_msg').textContent = 'This batch is already paid/enrolled. You cannot pay again.';
+				document.getElementById('bp_pay').disabled = true;
+				document.getElementById('bp_pay').textContent = 'Already Enrolled';
+				return;
 			}
 			var offer = Number(bd.batch_offer_price || 0);
 			var regular = Number(bd.batch_price || 0);

@@ -1,4 +1,19 @@
 <link rel="stylesheet" href="<?php echo base_url('assets/css/institute-frontend.css'); ?>?v=8">
+<style>
+#bd_body.bd-locked .bd-lockable {
+	filter: blur(4px);
+	opacity: 0.75;
+	pointer-events: none;
+	user-select: none;
+}
+#bd_lock_hint {
+	margin-top: 12px;
+	font-size: 0.9rem;
+	text-align: center;
+	color: #4d4a81;
+	font-weight: 600;
+}
+</style>
 <div class="inst-detail-page">
 	<div class="inst-detail-mobile-bar">
 		<a class="inst-back" href="<?php echo site_url('batch/list'); ?>" aria-label="Back"><i class="fas fa-arrow-left"></i></a>
@@ -8,7 +23,7 @@
 	<div class="inst-detail-container">
 		<div id="bd_msg" class="inst-muted text-center py-3">Loading...</div>
 		<div id="bd_body" class="inst-detail-hidden">
-			<div class="inst-detail-summary-card">
+			<div class="inst-detail-summary-card bd-lockable">
 				<div class="inst-detail-summary-row">
 					<img id="bd_logo" class="inst-detail-logo-lg" src="" alt="" style="display:none;">
 					<div id="bd_logo_ph" class="inst-detail-logo-lg inst-avatar-placeholder">B</div>
@@ -20,10 +35,11 @@
 					</div>
 				</div>
 			</div>
-			<div class="inst-detail-panel">
+			<div class="inst-detail-panel bd-lockable">
 				<div class="inst-panel-head"><h3>Modules</h3></div>
 				<div id="bd_modules" class="inst-panel-stack"></div>
 			</div>
+			<div id="bd_lock_hint" class="inst-detail-hidden">Preview is locked. Complete payment to unlock batch details.</div>
 			<button type="button" id="bd_next_btn" class="inst-submit-full">Continue</button>
 		</div>
 	</div>
@@ -36,7 +52,9 @@
 	var paymentPlanUrl = <?php echo json_encode(isset($batch_payment_plan_url) ? $batch_payment_plan_url : ''); ?>;
 	var liveClassesUrl = <?php echo json_encode(site_url('batch/live-classes')); ?>;
 	var libraryPageUrl = <?php echo json_encode(site_url('library')); ?>;
+	var canEnrollForBatch = true;
 	function ok(s) { return s === true || s === 'true' || s === 1 || s === '1'; }
+	function truthy(v) { return v === true || v === 1 || v === '1' || v === 'true'; }
 	function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
 	function modCard(title, sub) {
 		return '<div class="inst-batch-card"><div class="inst-card-body"><p class="inst-card-title-sm">' + esc(title) + '</p><p class="inst-card-sub">' + esc(sub) + '</p></div></div>';
@@ -62,7 +80,12 @@
 				document.getElementById('bd_msg').textContent = j.msg || 'Could not load batch details.';
 				return;
 			}
-			var b = j.data || {};
+			var b = {};
+			if (j.data && typeof j.data === 'object') {
+				b = j.data;
+			} else if (j.batch_details && typeof j.batch_details === 'object') {
+				b = j.batch_details;
+			}
 			document.getElementById('bd_msg').textContent = '';
 			document.getElementById('bd_body').classList.remove('inst-detail-hidden');
 			document.getElementById('bd_name').textContent = b.batchName || b.title || '';
@@ -82,15 +105,22 @@
 				modCard('Attendance', (m.attendance && m.attendance.marked != null) ? ('Marked: ' + m.attendance.marked) : 'No data') +
 				modCard('Upcoming Exams', (m.upcoming_exams && m.upcoming_exams.count != null) ? m.upcoming_exams.count : '0') +
 				modCard('Homework', (m.homework && m.homework.today_count != null) ? ('Today: ' + m.homework.today_count) : 'No data');
-			var canEnroll = !!b.canEnroll;
-			document.getElementById('bd_next_btn').textContent = canEnroll ? 'Enroll to Unlock' : 'Continue';
+			var canEnroll = truthy(b.canEnroll);
+			canEnrollForBatch = canEnroll;
+			document.getElementById('bd_next_btn').textContent = canEnroll ? 'Pay Now' : 'Continue';
+			document.getElementById('bd_body').classList.toggle('bd-locked', canEnroll);
+			document.getElementById('bd_lock_hint').classList.toggle('inst-detail-hidden', !canEnroll);
 		}).catch(function () {
 			document.getElementById('bd_msg').textContent = 'Network error.';
 		});
 	}
 	document.addEventListener('DOMContentLoaded', function () {
 		document.getElementById('bd_next_btn').addEventListener('click', function () {
-			window.location.href = paymentPlanUrl + '?batch_id=' + encodeURIComponent(batchId);
+			if (canEnrollForBatch) {
+				window.location.href = paymentPlanUrl + '?batch_id=' + encodeURIComponent(batchId);
+				return;
+			}
+			window.location.href = liveClassesUrl + '?batch_id=' + encodeURIComponent(batchId);
 		});
 		load();
 	});

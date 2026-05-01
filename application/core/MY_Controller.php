@@ -269,8 +269,20 @@ class MY_Controller extends CI_Controller
 			if (is_string($allowed_types)) {
 				$allowed_types = array($allowed_types);
 			}
-			$ut = isset($payload['ut']) ? (string) $payload['ut'] : '';
-			if (!in_array($ut, $allowed_types, true)) {
+			$ut_raw = isset($payload['ut']) ? (string) $payload['ut'] : '';
+			$ut = strtolower(trim($ut_raw));
+			$allowed_norm = array();
+			foreach ($allowed_types as $t) {
+				$allowed_norm[] = strtolower(trim((string) $t));
+			}
+			$ok = in_array($ut, $allowed_norm, true);
+			if (!$ok && $ut === '3' && in_array('teacher', $allowed_norm, true)) {
+				$ok = true;
+			}
+			if (!$ok && $ut === '4' && in_array('institute', $allowed_norm, true)) {
+				$ok = true;
+			}
+			if (!$ok) {
 				echo json_encode(array(
 					'status' => 'false',
 					'msg' => 'Unauthorized: invalid token user'
@@ -588,6 +600,126 @@ class MY_Controller extends CI_Controller
 		}
 		$rows = $query->result_array();
 		return is_array($rows) ? $rows : array();
+	}
+
+	/**
+	 * Parse users.teach_batch (comma-separated batch ids) into unique positive ints.
+	 *
+	 * @param string $teach_batch
+	 * @return array<int>
+	 */
+	protected function parse_users_teach_batch_ids($teach_batch)
+	{
+		$teach_batch = trim((string) $teach_batch);
+		if ($teach_batch === '') {
+			return array();
+		}
+		$out = array();
+		foreach (preg_split('/\s*,\s*/', $teach_batch) as $p) {
+			$bid = (int) trim($p);
+			if ($bid > 0) {
+				$out[] = $bid;
+			}
+		}
+		return array_values(array_unique($out));
+	}
+
+	/**
+	 * Tenant admin_id for a teacher (users.admin_id, may be comma-separated text).
+	 *
+	 * @param int $teacher_user_id users.id
+	 * @return int
+	 */
+	protected function teacher_tenant_admin_id($teacher_user_id)
+	{
+		$teacher_user_id = (int) $teacher_user_id;
+		if ($teacher_user_id < 1) {
+			return 0;
+		}
+		$rows = $this->db_model->select_data('admin_id', 'users use index (id)', array('id' => $teacher_user_id), 1);
+		if (empty($rows) || !isset($rows[0]['admin_id'])) {
+			return 0;
+		}
+		$raw = trim((string) $rows[0]['admin_id']);
+		if ($raw === '') {
+			return 0;
+		}
+		if (ctype_digit($raw)) {
+			return (int) $raw;
+		}
+		$parts = preg_split('/\s*,\s*/', $raw);
+		return isset($parts[0]) && ctype_digit($parts[0]) ? (int) $parts[0] : (int) $raw;
+	}
+
+	/**
+	 * Teacher may use attendance APIs for a batch if batch_subjects links them OR users.teach_batch
+	 * lists the batch (login responses expose teach_batch as batchId; admin save keeps both in sync),
+	 * OR the batch belongs to the same coaching tenant (batches.admin_id = teacher's admin_id).
+	 *
+	 * @param int $teacher_id users.id
+	 * @param int $batch_id
+	 * @return bool
+	 */
+	protected function teacher_assigned_for_attendance_batch($teacher_id, $batch_id)
+	{
+		$teacher_id = (int) $teacher_id;
+		$batch_id = (int) $batch_id;
+		if ($teacher_id < 1 || $batch_id < 1) {
+			return false;
+		}
+		if (!empty($this->db_model->select_data('id', 'batch_subjects', array('teacher_id' => $teacher_id, 'batch_id' => $batch_id), 1))) {
+			return true;
+		}
+		$rows = $this->db_model->select_data('teach_batch', 'users use index (id)', array('id' => $teacher_id), 1);
+		if (!empty($rows)) {
+			$ids = $this->parse_users_teach_batch_ids(isset($rows[0]['teach_batch']) ? $rows[0]['teach_batch'] : '');
+			if (in_array($batch_id, $ids, true)) {
+				return true;
+			}
+		}
+		$batch_row = $this->db_model->select_data('id,admin_id', 'batches use index (id)', array('id' => $batch_id), 1);
+		if (!empty($batch_row)) {
+			$b_admin = isset($batch_row[0]['admin_id']) ? (int) $batch_row[0]['admin_id'] : 0;
+			$t_admin = $this->teacher_tenant_admin_id($teacher_id);
+			if ($b_admin > 0 && $t_admin > 0 && $b_admin === $t_admin) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Batch ids a teacher may scope attendance to (batch_subjects ∪ teach_batch).
+	 *
+	 * @param int $teacher_id
+	 * @return array<int>
+	 */
+	protected function teacher_attendance_accessible_batch_ids($teacher_id)
+	{
+		$teacher_id = (int) $teacher_id;
+		if ($teacher_id < 1) {
+			return array();
+		}
+		$batch_ids = array();
+		$assigned = $this->db_model->select_data('batch_id', 'batch_subjects', array('teacher_id' => $teacher_id), '');
+		if (!empty($assigned)) {
+			foreach ($assigned as $r) {
+				$bid = isset($r['batch_id']) ? (int) $r['batch_id'] : 0;
+				if ($bid > 0) {
+					$batch_ids[] = $bid;
+				}
+			}
+		}
+		$urows = $this->db_model->select_data('teach_batch', 'users use index (id)', array('id' => $teacher_id), 1);
+		if (!empty($urows) && isset($urows[0]['teach_batch'])) {
+			foreach ($this->parse_users_teach_batch_ids($urows[0]['teach_batch']) as $bid) {
+				$batch_ids[] = $bid;
+			}
+		}
+		$batch_ids = array_values(array_unique(array_filter($batch_ids, function ($v) {
+			return (int) $v > 0;
+		})));
+		return $batch_ids;
 	}
 
 	/**

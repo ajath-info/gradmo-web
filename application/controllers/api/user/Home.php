@@ -407,7 +407,19 @@ class Home extends MY_Controller {
 	            return;
 	        }
 
-	        $tok = $this->mint_access_credentials($user['id'], $user['user_type']);
+	        $token_ut = isset($user['user_type']) ? strtolower(trim((string) $user['user_type'])) : '';
+	        if ($token_ut === '') {
+	            $rid = isset($user['role']) ? (int) $user['role'] : 0;
+	            if ($rid === 3) {
+	                $token_ut = 'teacher';
+	            } elseif ($rid === 4) {
+	                $token_ut = 'institute';
+	            } else {
+	                $token_ut = $user_type;
+	            }
+	        }
+
+	        $tok = $this->mint_access_credentials($user['id'], $token_ut);
 	        $access_token = $tok['access_token'];
 	        $now = date('Y-m-d H:i:s', $tok['iat']);
 	        $this->db_model->update_data_limit('users', [
@@ -2400,6 +2412,12 @@ public function otherBatchData($data){
         }
 
         $ut = strtolower(trim((string) $payload['ut']));
+        if ($ut === '3') {
+            $ut = 'teacher';
+        }
+        if ($ut === '4') {
+            $ut = 'institute';
+        }
 
         // STUDENT VIEW: summary = selected month; attendance = whole year (calendar can show every month, e.g. March marks while viewing April).
         if ($ut === 'student') {
@@ -2491,17 +2509,7 @@ public function otherBatchData($data){
                 $date = date('Y-m-d');
             }
 
-            $assigned = $this->db_model->select_data('batch_id', 'batch_subjects', array('teacher_id' => $teacher_id), '');
-            $batch_ids = array();
-            if (!empty($assigned)) {
-                foreach ($assigned as $r) {
-                    $bid = isset($r['batch_id']) ? (int) $r['batch_id'] : 0;
-                    if ($bid > 0) {
-                        $batch_ids[] = $bid;
-                    }
-                }
-            }
-            $batch_ids = array_values(array_unique($batch_ids));
+            $batch_ids = $this->teacher_attendance_accessible_batch_ids($teacher_id);
 
             if (isset($data['batch_id']) && trim((string) $data['batch_id'], "\"' \t\n\r\0\x0B") !== '') {
                 $want = (int) trim(trim((string) $data['batch_id']), "\"' \t\n\r\0\x0B");
@@ -2509,7 +2517,7 @@ public function otherBatchData($data){
                     echo json_encode(array('status' => 'false', 'msg' => 'Invalid batch_id'));
                     return;
                 }
-                if (!in_array($want, $batch_ids, true)) {
+                if (!$this->teacher_assigned_for_attendance_batch($teacher_id, $want)) {
                     echo json_encode(array(
                         'status' => 'false',
                         'msg' => 'You are not assigned to this batch'
@@ -2634,8 +2642,7 @@ public function otherBatchData($data){
 			return;
 		}
 
-		$assigned = $this->db_model->select_data('id', 'batch_subjects', array('teacher_id' => $teacher_id, 'batch_id' => $batch_id), 1);
-		if (empty($assigned)) {
+		if (!$this->teacher_assigned_for_attendance_batch($teacher_id, $batch_id)) {
 			echo json_encode(array('status' => 'false', 'msg' => 'You are not assigned to this batch'));
 			return;
 		}

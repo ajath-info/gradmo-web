@@ -687,6 +687,17 @@ class Website extends MY_Controller
 			return ($role === 4 || $role === '4');
 		}
 
+		private function website_is_truthy($value)
+		{
+			if ($value === true || $value === 1 || $value === '1') {
+				return true;
+			}
+			if (is_string($value) && strtolower(trim($value)) === 'true') {
+				return true;
+			}
+			return false;
+		}
+
 		public function batch_list()
 		{
 			if (! isset($this->session->userdata['role'])) {
@@ -847,6 +858,10 @@ class Website extends MY_Controller
 					$bd_json = json_decode($bd_body, true);
 					if ((int) $bd_code >= 200 && (int) $bd_code < 300 && is_array($bd_json) && isset($bd_json['status']) && ($bd_json['status'] === 'true' || $bd_json['status'] === true) && ! empty($bd_json['data']) && is_array($bd_json['data'])) {
 						$data['batch_details_prefetch'] = $bd_json['data'];
+						if (array_key_exists('canEnroll', $bd_json['data']) && ! $this->website_is_truthy($bd_json['data']['canEnroll'])) {
+							redirect(site_url('batch/details?batch_id=' . $batch_id));
+							return;
+						}
 					}
 				}
 			}

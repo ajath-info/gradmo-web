@@ -514,6 +514,22 @@ class Batch extends MY_Controller
 
 		$category = $this->db_model->select_data('name', 'batch_category use index (id)', array('id' => $b['cat_id']), 1);
 		$subcategory = $this->db_model->select_data('name', 'batch_subcategory use index (id)', array('id' => $b['sub_cat_id']), 1);
+		$can_enroll = false;
+		if ($ut === 'student') {
+			$batch_type = isset($b['batch_type']) ? (int) $b['batch_type'] : 0;
+			// Paid batch: allow pay only when no payment history exists for this student+batch.
+			if ($batch_type === 2) {
+				$paid_rows = $this->db_model->select_data(
+					'id',
+					'student_payment_history',
+					array('student_id' => $student_id, 'batch_id' => $batch_id),
+					1
+				);
+				$can_enroll = empty($paid_rows);
+			} else {
+				$can_enroll = ((int) $enrollment[0]['status'] !== 1);
+			}
+		}
 
 		$data = array(
 			'batch_id' => $batch_id,
@@ -540,7 +556,7 @@ class Batch extends MY_Controller
 				'create_at' => isset($enrollment[0]['create_at']) ? $enrollment[0]['create_at'] : '',
 				'added_by' => isset($enrollment[0]['added_by']) ? $enrollment[0]['added_by'] : ''
 			),
-			'canEnroll' => ($ut === 'student' && (int) $enrollment[0]['status'] !== 1),
+			'canEnroll' => $can_enroll,
 			'modules' => array(
 				'live_classes' => array(
 					'is_live' => $is_live,
@@ -1457,30 +1473,6 @@ class Batch extends MY_Controller
 			'exam' => $e
 		), JSON_UNESCAPED_SLASHES);
 		die;
-	}
-
-	/**
-	 * Tenant admin_id for a teacher (users.admin_id, stored as text in DB).
-	 */
-	private function teacher_tenant_admin_id($teacher_user_id)
-	{
-		$teacher_user_id = (int) $teacher_user_id;
-		if ($teacher_user_id < 1) {
-			return 0;
-		}
-		$rows = $this->db_model->select_data('admin_id', 'users use index (id)', array('id' => $teacher_user_id), 1);
-		if (empty($rows) || !isset($rows[0]['admin_id'])) {
-			return 0;
-		}
-		$raw = trim((string) $rows[0]['admin_id']);
-		if ($raw === '') {
-			return 0;
-		}
-		if (ctype_digit($raw)) {
-			return (int) $raw;
-		}
-		$parts = preg_split('/\s*,\s*/', $raw);
-		return isset($parts[0]) && ctype_digit($parts[0]) ? (int) $parts[0] : (int) $raw;
 	}
 
 	/**

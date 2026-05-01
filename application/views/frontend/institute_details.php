@@ -140,13 +140,15 @@
 			var imgUrl = (ins.imageUrl || '').trim();
 			var hero = document.getElementById('inst_d_hero');
 			var heroWrap = document.getElementById('inst_d_hero_wrap');
-			if (imgUrl) {
-				hero.src = imgUrl;
-				hero.style.display = 'block';
-				hero.alt = ins.name || '';
-				heroWrap.style.background = '#dce4f5';
-			} else {
-				hero.style.display = 'none';
+			if (hero && heroWrap) {
+				if (imgUrl) {
+					hero.src = imgUrl;
+					hero.style.display = 'block';
+					hero.alt = ins.name || '';
+					heroWrap.style.background = '#dce4f5';
+				} else {
+					hero.style.display = 'none';
+				}
 			}
 			var logo = document.getElementById('inst_d_logo');
 			var lph = document.getElementById('inst_d_logo_ph');

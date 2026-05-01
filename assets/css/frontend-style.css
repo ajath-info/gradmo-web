@@ -2165,6 +2165,11 @@ footer.edu_footer_wrapper.edu-footer-gradmo .edu-footer-gradmo__fluid {
     background: rgba(0, 0, 0, 0.75);
 }
 
+/* Hide page title strip across frontend pages */
+.edu_page_title_wrapper {
+    display: none !important;
+}
+
 .edu_page_title_text h1 {
     color: var(--Secondary-Color);
     font-size: 38px;

@@ -344,7 +344,6 @@ $route['api/plan/promo-codes'] = 'api/plan/plan/promo_codes';
 /* Razorpay payment APIs (backend) — keys from Admin payment settings or application/config/razorpay.php */
 $route['api/payment/razorpay/create-order'] = 'api/payment/razorpay/create_order';
 $route['api/payment/razorpay/verify-payment'] = 'api/payment/razorpay/verify_payment';
-$route['api/payment/razorpay/mobile-confirm-payment'] = 'api/payment/razorpay/mobile_confirm_payment';
 $route['api/payment/razorpay/fetch-payment'] = 'api/payment/razorpay/fetch_payment';
 $route['api/payment/razorpay/order-status'] = 'api/payment/razorpay/order_status';
 $route['api/payment/razorpay/webhook'] = 'api/payment/razorpay/webhook';
