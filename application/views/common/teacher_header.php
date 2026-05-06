@@ -718,7 +718,7 @@ if ( ! empty($lastrecord['access'])) {
                 <a class="edu_admin_bar edu_admin_with_img" href="javascript:void(0);"> 
 					<?php 
 					if(isset($this->session->userdata['profile_img']) && !empty($this->session->userdata['profile_img'])){
-						echo '<img src="'.base_url('uploads/teachers/').$this->session->userdata['profile_img'].'" />';
+						echo '<img src="'.base_url('uploads/teachers/').$this->session->userdata['profile_img'].'" data-fallback-type="teacher" data-has-fallback="1" />';
 					}else{
 						echo '<span class="icofont-user-alt-4"></span>';
 					} 

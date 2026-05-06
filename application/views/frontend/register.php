@@ -43,7 +43,7 @@
 									<select id="reg_user_type" class="edu_form_field" title="Account type">
 										<option value="student"><?php echo html_escape($this->common->languageTranslator('ltr_student')); ?></option>
 										<option value="teacher"><?php echo html_escape($this->common->languageTranslator('ltr_teacher')); ?></option>
-										<option value="institute">Institute</option>
+										<!-- <option value="institute">Institute</option> -->
 									</select>
 								</div>
 							</div>

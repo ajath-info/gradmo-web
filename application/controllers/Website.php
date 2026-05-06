@@ -47,6 +47,11 @@ class Website extends MY_Controller
 		}
 
 		function index(){
+			// Public home: require a logged-in session (same idea as front_header). No role-based redirects here.
+			if (empty($_SESSION['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
 			$data['title'] =$this->lang->line('ltr_home');
 			$data['frontend_details'] = $this->db_model->select_data('*','frontend_details',array('id'=>'1'),1);
 			
@@ -74,17 +79,10 @@ class Website extends MY_Controller
 		}
 
 		function login(){
-			if(isset($this->session->userdata['role']))
-			{
-				$role = $this->session->userdata['role'];
-				if($role==1){
-				redirect(base_url().'admin/dashboard');
-				}elseif($role==3){
-				redirect(base_url().'teacher/dashboard');
-				}else if($role=='student'){
-				redirect(base_url().'student/my_course');
-				}
-			} 
+			if (! empty($_SESSION['role'])) {
+				redirect(rtrim(base_url(), '/') . '/');
+				return;
+			}
 			$data = $this->frontend_shell_data($this->lang->line('ltr_login'));
 			$data['load_auth_form_assets'] = true;
 			$data['load_login_otp_script'] = true;

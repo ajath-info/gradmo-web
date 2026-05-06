@@ -247,22 +247,27 @@ $home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
 	min-height: 36px;
 }
 .edu-home-live-stack {
-	display: flex;
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
 	gap: 14px;
-	overflow-x: auto;
-	padding-bottom: 8px;
-	-webkit-overflow-scrolling: touch;
-	scroll-snap-type: x mandatory;
 }
-.edu-home-live-stack > * { scroll-snap-align: start; flex-shrink: 0; }
 .edu-home-live-card {
-	width: 280px;
-	max-width: 85vw;
+	width: 100%;
+	max-width: none;
 	background: #fff;
 	border-radius: 16px;
 	padding: 14px;
 	box-shadow: 0 4px 18px rgba(15, 23, 42, 0.07);
 	border: 1px solid #eef0f5;
+}
+@media (max-width: 1199px) {
+	.edu-home-live-stack { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 991px) {
+	.edu-home-live-stack { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 575px) {
+	.edu-home-live-stack { grid-template-columns: 1fr; }
 }
 .edu-home-live-thumb {
 	width: 44px;

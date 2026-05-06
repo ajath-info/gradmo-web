@@ -64,7 +64,7 @@
 									<div class="col-lg-4 col-md-4 col-sm-6 col-12">
 										<div class="edu_courses_box">
 											<div class="edu_courses_imgbox">
-												<img src="<?php if(!empty($value['batch_image'])) { echo base_url('uploads\batch_image/').$value['batch_image'] ; }else{ echo base_url('uploads/site_data/'.$site_Details['0']['site_logo']); } ?>" alt="image">
+												<img src="<?php if(!empty($value['batch_image'])) { echo base_url('uploads\batch_image/').$value['batch_image'] ; }else{ echo ''; } ?>" alt="image" data-fallback-type="batch" data-has-fallback="1">
 												<a href="<?php echo base_url('enroll-now/'.$value['id']); ?>" class="courses_atc"><?php echo html_escape($this->common->languageTranslator('ltr_enroll_now'));?></a>
 												<a href="<?php echo base_url('enroll-now/'.$value['id']); ?>" class="edu_btn courses_price"><?php if($value['batch_type']==2){ if(!empty($value['batch_offer_price'])){ echo '<s>'.$currency_decimal.' '.$value['batch_price'].'</s> / '.$currency_decimal.' '.$value['batch_offer_price']; }else{ echo $currency_decimal.' '.$value['batch_price'];} }else{ echo "Free";} ?></a>
 												<?php if(!empty($value['batch_offer_price'])){ ?>

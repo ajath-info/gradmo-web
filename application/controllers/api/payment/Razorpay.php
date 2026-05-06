@@ -292,13 +292,26 @@ class Razorpay extends MY_Controller
 			return $res;
 		}
 
-		$sb = $this->db_model->select_data('id', 'student_batchs', array('student_id' => $student_id, 'batch_id' => $batch_id), 1);
+		$bf = $this->get_student_batchs_table_fields();
+
+		$sb = $this->db_model->select_data('id, status', 'student_batchs', array('student_id' => $student_id, 'batch_id' => $batch_id), 1);
 		if (!empty($sb)) {
 			$res['student_batchs_id'] = (int) $sb[0]['id'];
+			// Payment succeeded — enrollment must be active (batch-details uses status === 1).
+			if ($bf !== false && isset($bf['status'])) {
+				$cur = isset($sb[0]['status']) ? (int) $sb[0]['status'] : 0;
+				if ($cur !== 1) {
+					$this->db_model->update_data_limit(
+						'student_batchs',
+						array('status' => 1),
+						array('id' => (int) $sb[0]['id']),
+						1
+					);
+				}
+			}
 			return $res;
 		}
 
-		$bf = $this->get_student_batchs_table_fields();
 		if ($bf === false) {
 			return $res;
 		}
@@ -308,7 +321,7 @@ class Razorpay extends MY_Controller
 			'batch_id' => $batch_id,
 			'added_by' => 'student',
 			'admin_id' => $batch_admin_id,
-			'status' => 0,
+			'status' => 1,
 		);
 		$insert_sb = $this->filter_insert_row_for_table_fields($bf, $batch_row);
 		if (empty($insert_sb)) {
@@ -482,6 +495,10 @@ class Razorpay extends MY_Controller
 			$plan_id_req = (int) $data['plan_id'];
 		} elseif (isset($data['planId']) && $data['planId'] !== '' && is_numeric($data['planId'])) {
 			$plan_id_req = (int) $data['planId'];
+		} elseif (isset($data['first_payment_plan_id']) && $data['first_payment_plan_id'] !== '' && is_numeric($data['first_payment_plan_id'])) {
+			$plan_id_req = (int) $data['first_payment_plan_id'];
+		} elseif (isset($data['renewal_plan_id']) && $data['renewal_plan_id'] !== '' && is_numeric($data['renewal_plan_id'])) {
+			$plan_id_req = (int) $data['renewal_plan_id'];
 		}
 		if (!empty($data['student_id']) && !empty($data['batch_id']) && $payload['ut'] === 'student') {
 			$sid = (int) $data['student_id'];

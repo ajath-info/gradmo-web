@@ -20,13 +20,21 @@ class Student_profile extends CI_Controller {
 	      
         $uid = $this->session->userdata('uid');
         $studentData = $this->db_model->select_data('token, brewers_check, status','students  use index (id)',array('id'=>$uid),'1',array('id','desc'));
-		if(!empty($studentData)){
-    	   if(($studentData[0]['token'] !=1) || ($studentData[0]['status'] !=1) || ($studentData[0]['brewers_check'] !=$_SESSION['brewers_check'])){
-        		if($this->session->all_userdata()){
-                    $this->session->sess_destroy();
-        			redirect(base_url('login'));
-        		}
-    	   }
+		// Legacy web login set token=1 + brewers_check in DB. API/mobile login uses device token and JWT;
+		// website login stores access_token in session — do not destroy session on legacy token mismatch.
+		$api_web_session = trim((string) $this->session->userdata('access_token')) !== '';
+		if (! empty($studentData) && ! $api_web_session) {
+			if (($studentData[0]['token'] != 1) || ($studentData[0]['status'] != 1) || ($studentData[0]['brewers_check'] != $_SESSION['brewers_check'])) {
+				if ($this->session->all_userdata()) {
+					$this->session->sess_destroy();
+					redirect(base_url('login'));
+				}
+			}
+		} elseif (! empty($studentData) && (int) $studentData[0]['status'] !== 1) {
+			if ($this->session->all_userdata()) {
+				$this->session->sess_destroy();
+				redirect(base_url('login'));
+			}
 		}
 	// check select language
 		$this->load->helper('language');

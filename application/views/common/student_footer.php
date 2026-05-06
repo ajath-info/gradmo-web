@@ -37,7 +37,7 @@
             <h4 class="edu_title padderBottom10"><?php echo html_escape($this->common->languageTranslator('ltr_active_live_class'));?></h4>
             <div class="liveclss_teacher_wrap">
                 <div class="liveclss_teacherimg">
-                    <img src="" class="img-fluid live_teacher_image" alt="image">
+                    <img src="" class="img-fluid live_teacher_image" alt="image" data-fallback-type="teacher" data-has-fallback="1">
                 </div>
                 <div class="liveclss_teachername">
                     <h3 class="tname_title"></h3>
@@ -55,7 +55,7 @@
             <h4 class="edu_title padderBottom10"><?php echo html_escape($this->common->languageTranslator('ltr_active_live_class_jetsi'));?></h4>
             <div class="liveclss_teacher_wrap">
                 <div class="liveclss_teacherimg">
-                    <img src="" class="img-fluid live_teacher_image" alt="image">
+                    <img src="" class="img-fluid live_teacher_image" alt="image" data-fallback-type="teacher" data-has-fallback="1">
                 </div>
                 <div class="liveclss_teachername">
                     <h3 class="tname_title"></h3>
@@ -83,6 +83,8 @@
 <script src="<?php echo base_url();?>assets/js/select2.min.js"></script>
 <script src="<?php echo base_url();?>assets/js/summernote.js"></script>
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>window.baseUrl = "<?php echo base_url(); ?>";</script>
+<script src="<?php echo base_url();?>assets/js/image-fallbacks.js?<?php echo time();?>"></script>
 <script src="<?php echo base_url();?>assets/js/backend.js?<?php echo time();?>"></script>
 <script src="<?php echo base_url();?>assets/js/custom.js?<?php echo time();?>"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js?config=TeX-AMS_HTML"></script>

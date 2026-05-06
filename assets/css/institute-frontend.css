@@ -34,12 +34,39 @@
 	display: grid;
 	grid-template-columns: 1fr;
 	gap: 16px;
+	align-items: stretch;
 }
 @media (min-width: 576px) {
 	.inst-card-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (min-width: 992px) {
 	.inst-card-grid { grid-template-columns: repeat(3, 1fr); }
+}
+.inst-card-grid > p {
+	grid-column: 1 / -1;
+}
+.inst-card-grid .inst-batch-card {
+	flex-direction: column;
+	align-items: stretch;
+	padding: 0;
+	overflow: hidden;
+	height: 100%;
+	border-radius: 16px;
+}
+.inst-card-grid .inst-batch-card .inst-mini-logo {
+	width: 100%;
+	height: 132px;
+	border-radius: 0;
+	flex-shrink: 0;
+}
+.inst-card-grid .inst-batch-card .inst-mini-logo img {
+	border-radius: 0;
+}
+.inst-card-grid .inst-batch-card .inst-card-body {
+	padding: 14px 14px 16px;
+}
+.inst-card-grid .inst-batch-card .inst-card-chevron {
+	display: none;
 }
 .inst-card {
 	background: var(--Secondary-Color, #f7f7fb);

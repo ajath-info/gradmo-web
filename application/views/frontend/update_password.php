@@ -18,7 +18,14 @@
 					<h4>Set new password by mobile</h4>
 					<div class="row">
 						<div class="col-md-6"><div class="edu_field_holder"><input id="upp_mobile" class="edu_form_field" type="text" placeholder="Mobile (10 digits)" maxlength="10" inputmode="numeric"></div></div>
-						<div class="col-md-6"><div class="edu_field_holder"><select id="upp_user_type" class="edu_form_field"><option value="student">Student</option><option value="teacher">Teacher</option><option value="institute">Institute</option></select></div></div>
+						<div class="col-md-6"><div class="edu_field_holder">
+							<select id="upp_user_type" class="edu_form_field">
+								<option value="student">Student</option>
+								<option value="teacher">Teacher</option>
+								<!-- <option value="institute">Institute</option> -->
+							</select>
+						</div>
+						<option value="institute">Institute</option></select></div></div>
 						<div class="col-12"><div class="edu_field_holder"><input id="upp_password" class="edu_form_field" type="password" placeholder="New Password"></div></div>
 						<div class="col-12"><div class="edu_field_holder"><input id="upp_confirm_password" class="edu_form_field" type="password" placeholder="Confirm Password"></div></div>
 						<div class="col-12 mt-2 text-md-right"><button id="upp_submit_btn" type="button" class="edu_btn edu_btn_black">Update Password</button></div>

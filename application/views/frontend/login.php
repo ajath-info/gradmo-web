@@ -32,8 +32,15 @@
 							<h4><?php echo html_escape($this->common->languageTranslator('ltr_p_login_continue'));?></h4>
 							<form class="form" method="post" action="<?php echo base_url('login-password'); ?>" data-redirect="yes">
 								<input type="hidden" name="login_redirect" value="index">
-								<input type="hidden" name="user_type" value="student">
 								<div class="row">
+									<div class="col-lg-12 col-md-12 col-sm-12 col-12">
+										<div class="edu_field_holder">
+											<select class="edu_form_field require" id="password_login_user_type" name="user_type" required>
+												<option value="student">Student</option>
+												<option value="teacher">Teacher</option>
+											</select>
+										</div>
+									</div>
 									<div class="col-lg-12 col-md-12 col-sm-12 col-12">
 										<div class="edu_field_holder">
 											<input type="text" class="edu_form_field require" id="email" name="email" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_p_email'));?>" autocomplete="username" value="<?php echo(isset($_COOKIE['UML'])) ? html_escape(base64_decode(urldecode(base64_decode($_COOKIE['UML'])))) : ''; ?>">
@@ -69,8 +76,15 @@
 						<div class="tab-pane fade" id="tab-otp" role="tabpanel">
 							<h4>OTP login</h4>
 							<p class="text-muted small mb-3">Enter your registered 10-digit mobile number (OTP is sent to mobile only), request OTP, then enter the code to sign in.</p>
-							<input type="hidden" id="otp_login_user_type" value="student">
 							<div class="row">
+								<div class="col-lg-12 col-md-12 col-sm-12 col-12">
+									<div class="edu_field_holder">
+										<select class="edu_form_field" id="otp_login_user_type">
+											<option value="student">Student</option>
+											<option value="teacher">Teacher</option>
+										</select>
+									</div>
+								</div>
 								<div class="col-lg-12 col-md-12 col-sm-12 col-12">
 									<div class="edu_field_holder">
 										<input type="text" class="edu_form_field" id="otp_login_mobile" placeholder="Mobile (10 digits)" inputmode="numeric" maxlength="10" autocomplete="tel">

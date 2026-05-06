@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="<?php echo base_url('assets/css/institute-frontend.css'); ?>?v=6">
+<link rel="stylesheet" href="<?php echo base_url('assets/css/institute-frontend.css'); ?>?v=7">
 <div class="inst-detail-page">
 	<div class="inst-detail-mobile-bar">
 		<a class="inst-back" href="<?php echo html_escape(rtrim(base_url(), '/') . '/'); ?>" aria-label="Back to home"><i class="fas fa-arrow-left"></i></a>
@@ -24,7 +24,7 @@
 				</div>
 			</div>
 			<div id="batch_list_msg" class="inst-muted small px-2 mb-2"></div>
-			<div id="batch_card_stack" class="inst-panel-stack"></div>
+			<div id="batch_card_stack" class="inst-card-grid"></div>
 			<div class="inst-list-pagination">
 				<button type="button" id="batch_prev" class="edu_btn edu_btn_black" disabled>Previous</button>
 				<span id="batch_page_info" class="inst-muted small"></span>
@@ -65,9 +65,7 @@
 			var href = detailsBase + '?batch_id=' + encodeURIComponent(id);
 			var name = it.batchName || it.title || it.batch_name || '';
 			var imgUrl = (it.batchImage || it.logo || '').trim();
-			var thumb = imgUrl
-				? '<div class="inst-mini-logo"><img src="' + esc(imgUrl) + '" alt=""></div>'
-				: '<div class="inst-mini-logo"><i class="fas fa-chalkboard-teacher" style="padding:12px;color:#f5a623;"></i></div>';
+			var thumb = '<div class="inst-mini-logo"><img src="' + esc(imgUrl) + '" alt="" data-fallback-type="batch" data-has-fallback="1"></div>';
 			var instructor = it.instructor || '';
 			var schedule = it.schedule || '';
 			var sd = it.start_date || '';

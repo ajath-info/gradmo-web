@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="<?php echo base_url('assets/css/institute-frontend.css'); ?>?v=4">
+<link rel="stylesheet" href="<?php echo base_url('assets/css/institute-frontend.css'); ?>?v=5">
 <div class="inst-detail-page">
 	<div class="inst-detail-mobile-bar">
 		<a class="inst-back" href="<?php echo html_escape(rtrim(base_url(), '/') . '/'); ?>" aria-label="Back to home"><i class="fas fa-arrow-left"></i></a>
@@ -39,7 +39,7 @@
 				</div>
 			</div>
 			<div id="inst_list_msg" class="inst-muted small px-2 mb-2"></div>
-			<div id="inst_card_stack" class="inst-panel-stack"></div>
+			<div id="inst_card_stack" class="inst-card-grid"></div>
 			<div class="inst-list-pagination">
 				<button type="button" id="inst_prev" class="edu_btn edu_btn_black" disabled>Previous</button>
 				<span id="inst_page_info" class="inst-muted small"></span>
@@ -113,9 +113,7 @@
 			var tr = it.rating && it.rating.totalReviews != null ? it.rating.totalReviews : 0;
 			var loc = [it.city, it.state].filter(Boolean).join(', ');
 			var imgUrl = (it.imageUrl || '').trim();
-			var thumb = imgUrl
-				? '<div class="inst-mini-logo"><img src="' + esc(imgUrl) + '" alt=""></div>'
-				: '<div class="inst-mini-logo"><i class="fas fa-building" style="padding:12px;color:#f5a623;"></i></div>';
+			var thumb = '<div class="inst-mini-logo"><img src="' + esc(imgUrl) + '" alt="" data-fallback-type="institute" data-has-fallback="1"></div>';
 			var a = document.createElement('a');
 			a.className = 'inst-batch-card';
 			a.href = href;

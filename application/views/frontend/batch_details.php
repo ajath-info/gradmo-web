@@ -13,6 +13,53 @@
 	color: #4d4a81;
 	font-weight: 600;
 }
+.bd-summary-mini {
+	margin: 4px 0 0;
+	font-size: 1.02rem;
+	font-weight: 600;
+	color: #2f2f2f;
+}
+.bd-mod-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 16px;
+}
+.bd-mod-tile {
+	display: block;
+	text-decoration: none !important;
+	background: #fff;
+	border-radius: 14px;
+	padding: 16px 12px 14px;
+	min-height: 132px;
+	box-shadow: 0 7px 20px rgba(17, 24, 39, 0.08);
+	border: 1px solid #edf0f5;
+	text-align: center;
+}
+.bd-mod-icon {
+	width: 62px;
+	height: 62px;
+	margin: 0 auto 10px;
+	border-radius: 12px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 26px;
+	background: #eff3ff;
+	color: #3f58cf;
+}
+.bd-mod-title {
+	display: block;
+	font-weight: 700;
+	font-size: 1rem;
+	line-height: 1.3;
+	color: #121212;
+}
+.bd-mod-sub {
+	display: block;
+	margin-top: 5px;
+	font-size: .86rem;
+	color: #606774;
+}
 </style>
 <div class="inst-detail-page">
 	<div class="inst-detail-mobile-bar">
@@ -29,6 +76,7 @@
 					<div id="bd_logo_ph" class="inst-detail-logo-lg inst-avatar-placeholder">B</div>
 					<div class="inst-detail-summary-main">
 						<h2 id="bd_name" class="inst-detail-name"></h2>
+						<p id="bd_teacher" class="bd-summary-mini"></p>
 						<p id="bd_schedule" class="batch-list-meta"></p>
 						<p id="bd_dates" class="batch-list-dates"></p>
 						<p id="bd_desc" class="inst-card-sub"></p>
@@ -56,11 +104,14 @@
 	function ok(s) { return s === true || s === 'true' || s === 1 || s === '1'; }
 	function truthy(v) { return v === true || v === 1 || v === '1' || v === 'true'; }
 	function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
-	function modCard(title, sub) {
-		return '<div class="inst-batch-card"><div class="inst-card-body"><p class="inst-card-title-sm">' + esc(title) + '</p><p class="inst-card-sub">' + esc(sub) + '</p></div></div>';
-	}
-	function modCardLink(title, sub, href) {
-		return '<a class="inst-batch-card" style="text-decoration:none;" href="' + esc(href) + '"><div class="inst-card-body"><p class="inst-card-title-sm">' + esc(title) + '</p><p class="inst-card-sub">' + esc(sub) + '</p></div></a>';
+	function modTile(title, sub, icon, href) {
+		var open = href ? '<a class="bd-mod-tile" href="' + esc(href) + '">' : '<div class="bd-mod-tile">';
+		var close = href ? '</a>' : '</div>';
+		return open +
+			'<span class="bd-mod-icon"><i class="' + esc(icon) + '"></i></span>' +
+			'<span class="bd-mod-title">' + esc(title) + '</span>' +
+			'<span class="bd-mod-sub">' + esc(sub) + '</span>' +
+			close;
 	}
 	function load() {
 		if (batchId < 1) {
@@ -89,6 +140,7 @@
 			document.getElementById('bd_msg').textContent = '';
 			document.getElementById('bd_body').classList.remove('inst-detail-hidden');
 			document.getElementById('bd_name').textContent = b.batchName || b.title || '';
+			document.getElementById('bd_teacher').textContent = b.instructor || b.teacherName || '';
 			document.getElementById('bd_schedule').textContent = b.schedule || '';
 			document.getElementById('bd_dates').textContent = [b.start_date || '', b.end_date || ''].filter(Boolean).join(' - ');
 			document.getElementById('bd_desc').textContent = b.description || '';
@@ -98,13 +150,14 @@
 				document.getElementById('bd_logo_ph').style.display = 'none';
 			}
 			var m = b.modules || {};
-			document.getElementById('bd_modules').innerHTML =
-				modCardLink('Live Classes', (m.live_classes && m.live_classes.is_live) ? 'Live now' : 'Not live', liveClassesUrl + '?batch_id=' + encodeURIComponent(batchId)) +
-				modCard('Video Lectures', (m.video_lectures && m.video_lectures.count != null) ? m.video_lectures.count : '0') +
-				modCardLink('Library', (m.library && m.library.book_count != null) ? ('Books: ' + m.library.book_count) : 'No data', libraryPageUrl + '?batch_id=' + encodeURIComponent(batchId)) +
-				modCard('Attendance', (m.attendance && m.attendance.marked != null) ? ('Marked: ' + m.attendance.marked) : 'No data') +
-				modCard('Upcoming Exams', (m.upcoming_exams && m.upcoming_exams.count != null) ? m.upcoming_exams.count : '0') +
-				modCard('Homework', (m.homework && m.homework.today_count != null) ? ('Today: ' + m.homework.today_count) : 'No data');
+			document.getElementById('bd_modules').innerHTML = '<div class="bd-mod-grid">' +
+				modTile('Live classes', (m.live_classes && m.live_classes.is_live) ? 'Live now' : 'Tap to open', 'fas fa-broadcast-tower', liveClassesUrl + '?batch_id=' + encodeURIComponent(batchId)) +
+				modTile('Video Lectures', (m.video_lectures && m.video_lectures.count != null) ? ('Videos: ' + m.video_lectures.count) : 'No data', 'fas fa-play-circle', null) +
+				modTile('Library', (m.library && m.library.book_count != null) ? ('Books: ' + m.library.book_count) : 'Tap to open', 'fas fa-book', libraryPageUrl + '?batch_id=' + encodeURIComponent(batchId)) +
+				modTile('Attendance', (m.attendance && m.attendance.marked != null) ? ('Marked: ' + m.attendance.marked) : 'No data', 'fas fa-clipboard-check', null) +
+				modTile('Exams', (m.upcoming_exams && m.upcoming_exams.count != null) ? ('Upcoming: ' + m.upcoming_exams.count) : 'No data', 'fas fa-file-alt', null) +
+				modTile('Homework', (m.homework && m.homework.today_count != null) ? ('Today: ' + m.homework.today_count) : 'No data', 'fas fa-pencil-alt', null) +
+			'</div>';
 			var canEnroll = truthy(b.canEnroll);
 			canEnrollForBatch = canEnroll;
 			document.getElementById('bd_next_btn').textContent = canEnroll ? 'Pay Now' : 'Continue';

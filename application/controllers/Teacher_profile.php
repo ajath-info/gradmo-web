@@ -21,13 +21,19 @@ class Teacher_profile extends CI_Controller {
 		
 		$uid = $this->session->userdata('uid');
         $teacherData = $this->db_model->select_data('token, brewers_check, status','users  use index (id)',array('id'=>$uid),'1',array('id','desc'));
-		if(!empty($teacherData)){
-    	   if(($teacherData[0]['token'] !=1) || ($teacherData[0]['status'] !=1) || ($teacherData[0]['brewers_check'] !=$_SESSION['brewers_check'])){
-        		if($this->session->all_userdata()){
-                    $this->session->sess_destroy();
-        			redirect(base_url('login'));
-        		}
-    	   }
+		$api_web_session = trim((string) $this->session->userdata('access_token')) !== '';
+		if (! empty($teacherData) && ! $api_web_session) {
+			if (($teacherData[0]['token'] != 1) || ($teacherData[0]['status'] != 1) || ($teacherData[0]['brewers_check'] != $_SESSION['brewers_check'])) {
+				if ($this->session->all_userdata()) {
+					$this->session->sess_destroy();
+					redirect(base_url('login'));
+				}
+			}
+		} elseif (! empty($teacherData) && (int) $teacherData[0]['status'] !== 1) {
+			if ($this->session->all_userdata()) {
+				$this->session->sess_destroy();
+				redirect(base_url('login'));
+			}
 		}
 		// check select language
 		$this->load->helper('language');

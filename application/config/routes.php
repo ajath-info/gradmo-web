@@ -225,6 +225,8 @@ $route['student/student-certificate/(:any)'] = 'student_profile/certificate_view
 
 /* Front End website Routes */
 $route['index'] = 'website/index';
+$route['website'] = 'website/index';
+$route['website/index'] = 'website/index';
 // Public website login (views/frontend/login.php) — separate from admin/login above.
 $route['login'] = 'website/login';
 $route['login-otp-send'] = 'website/login_otp_send';
