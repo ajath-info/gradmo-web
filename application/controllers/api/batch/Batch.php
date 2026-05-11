@@ -8,6 +8,16 @@ defined('BASEPATH') OR exit('No direct script access allowed');
  */
 class Batch extends MY_Controller
 {
+	private function api_json($status, $msg, $data = array(), $http_code = 200)
+	{
+		$this->output->set_status_header((int) $http_code);
+		$this->output->set_content_type('application/json')->set_output(json_encode(array(
+			'status' => $status ? 'true' : 'false',
+			'msg' => (string) $msg,
+			'data' => is_array($data) ? $data : array(),
+		), JSON_UNESCAPED_SLASHES));
+	}
+
 	private function read_request_data()
 	{
 		$data = json_decode(file_get_contents('php://input'), true);
@@ -205,6 +215,24 @@ class Batch extends MY_Controller
 			$this->db->where('status', 1);
 		}
 		$this->apply_book_pdf_batch_filter($batch_id);
+		$row = $this->db->get()->row_array();
+		return !empty($row) ? $row : null;
+	}
+
+	private function get_notes_pdf_for_batch($notes_id, $batch_id, $active_only = true)
+	{
+		$notes_id = (int) $notes_id;
+		$batch_id = (int) $batch_id;
+		if ($notes_id < 1 || $batch_id < 1) {
+			return null;
+		}
+		$this->db->reset_query();
+		$this->db->from('notes_pdf');
+		$this->db->where('id', $notes_id);
+		if ($active_only) {
+			$this->db->where('status', 1);
+		}
+		$this->apply_text_batch_filter('batch', $batch_id);
 		$row = $this->db->get()->row_array();
 		return !empty($row) ? $row : null;
 	}
@@ -431,7 +459,7 @@ class Batch extends MY_Controller
 
 		$logo = '';
 		if (!empty($b['batch_image'])) {
-			$logo = base_url('uploads/batch_image/') . $b['batch_image'];
+			$logo = batch_image_url($b['batch_image']);
 		}
 
 		$batch_fecherd = $this->db_model->select_data(
@@ -460,25 +488,18 @@ class Batch extends MY_Controller
 			}
 		}
 
-		$batch_like = '"' . $batch_id . '"';
 		$video_count = (int) $this->db_model->countAll(
 			'video_lectures use index (id)',
 			array('status' => 1, 'batch' => $batch_id)
 		);
-		$book_count = (int) $this->db_model->countAll(
-			'book_pdf use index (id)',
-			array('admin_id' => $admin_id),
-			'',
-			'',
-			array('batch', $batch_like)
-		);
-		$notes_count = (int) $this->db_model->countAll(
-			'notes_pdf use index (id)',
-			array('admin_id' => $admin_id),
-			'',
-			'',
-			array('batch', $batch_like)
-		);
+		$this->db->from('book_pdf');
+		$this->db->where('status', 1);
+		$this->apply_book_pdf_batch_filter($batch_id);
+		$book_count = (int) $this->db->count_all_results();
+		$this->db->from('notes_pdf');
+		$this->db->where('status', 1);
+		$this->apply_text_batch_filter('batch', $batch_id);
+		$notes_count = (int) $this->db->count_all_results();
 
 		if ($ut === 'student') {
 			$attendance_marked = (int) $this->db_model->countAll(
@@ -503,14 +524,22 @@ class Batch extends MY_Controller
 		);
 
 		$today = date('Y-m-d');
+		$homework_total = (int) $this->db_model->countAll(
+			'homeworks use index (id)',
+			array('batch_id' => $batch_id)
+		);
 		$homework_today = (int) $this->db_model->countAll(
 			'homeworks use index (id)',
-			array('admin_id' => $admin_id, 'batch_id' => $batch_id, 'date' => $today)
+			array('batch_id' => $batch_id, 'date' => $today)
 		);
 		$homework_upcoming = (int) $this->db_model->countAll(
 			'homeworks use index (id)',
-			array('admin_id' => $admin_id, 'batch_id' => $batch_id, 'date >=' => $today)
+			array('batch_id' => $batch_id, 'date >=' => $today)
 		);
+		if ($homework_today < 1 && $homework_total > 0) {
+			// Batch details tile should reflect available homework in listing, not only today's rows.
+			$homework_today = $homework_total;
+		}
 
 		$category = $this->db_model->select_data('name', 'batch_category use index (id)', array('id' => $b['cat_id']), 1);
 		$subcategory = $this->db_model->select_data('name', 'batch_subcategory use index (id)', array('id' => $b['sub_cat_id']), 1);
@@ -571,6 +600,7 @@ class Batch extends MY_Controller
 					'icon' => 'icofont-book'
 				),
 				'attendance' => array(
+					'marked' => $attendance_marked,
 					'marked_records' => $attendance_marked,
 					'icon' => 'icofont-check-circled'
 				),
@@ -801,6 +831,992 @@ class Batch extends MY_Controller
 			),
 		), JSON_UNESCAPED_SLASHES);
 		die;
+	}
+
+	/**
+	 * POST/GET api/batch/attendance-roster
+	 * Auth: teacher|institute. Required: batch_id, date(YYYY-MM-DD optional -> today).
+	 */
+	public function attendance_roster()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+		if ($batch_id < 1) {
+			$this->api_json(false, 'batch_id is required');
+			return;
+		}
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		$date = isset($data['date']) ? trim((string) $data['date']) : '';
+		if ($date === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+			$date = date('Y-m-d');
+		}
+		$pg = $this->parse_api_list_pagination($data);
+
+		$this->db->from('student_batchs sb');
+		$this->db->join('students s', 's.id = sb.student_id', 'inner');
+		$this->db->where('sb.batch_id', $batch_id);
+		$this->db->where('sb.status', 1);
+		$this->db->where('s.status', 1);
+		$total = (int) $this->db->count_all_results();
+
+		$this->db->select('s.id as studentId,s.name,s.image,s.email,s.contact_no as mobile,a.id as attendanceId,a.time,a.date');
+		$this->db->from('student_batchs sb');
+		$this->db->join('students s', 's.id = sb.student_id', 'inner');
+		$this->db->join('attendance a', 'a.student_id = s.id AND a.batch_id = ' . (int) $batch_id . ' AND a.date = ' . $this->db->escape($date), 'left');
+		$this->db->where('sb.batch_id', $batch_id);
+		$this->db->where('sb.status', 1);
+		$this->db->where('s.status', 1);
+		$this->db->order_by('s.name', 'asc');
+		$this->db->limit($pg['limit'], $pg['offset']);
+		$rows = $this->db->get()->result_array();
+
+		$list = array();
+		foreach ($rows as $r) {
+			$img = isset($r['image']) ? (string) $r['image'] : '';
+			$list[] = array(
+				'studentId' => (int) $r['studentId'],
+				'name' => isset($r['name']) ? $r['name'] : '',
+				'image' => $img,
+				'imageUrl' => $img !== '' ? base_url('uploads/students/') . $img : '',
+				'email' => isset($r['email']) ? $r['email'] : '',
+				'mobile' => isset($r['mobile']) ? $r['mobile'] : '',
+				'isPresent' => !empty($r['attendanceId']) ? 1 : 0,
+				'attendanceId' => !empty($r['attendanceId']) ? (int) $r['attendanceId'] : 0,
+				'time' => !empty($r['time']) ? $r['time'] : '',
+				'date' => $date,
+			);
+		}
+		$this->api_json(true, 'Success', array(
+			'batch_id' => $batch_id,
+			'date' => $date,
+			'students' => $list,
+			'pagination' => $this->build_api_list_pagination_meta($pg['page'], $pg['limit'], $total),
+		));
+	}
+
+	/** @var bool */
+	private $batch_attendance_day_status_checked = false;
+
+	private function batch_ensure_attendance_day_status_column()
+	{
+		if ($this->batch_attendance_day_status_checked) {
+			return;
+		}
+		$this->batch_attendance_day_status_checked = true;
+		if ($this->db->field_exists('day_status', 'attendance')) {
+			return;
+		}
+		@$this->db->query('ALTER TABLE `attendance` ADD COLUMN `day_status` VARCHAR(20) NOT NULL DEFAULT \'\' AFTER `time`');
+	}
+
+	private function batch_attendance_minutes_from_midnight($t)
+	{
+		$t = trim((string) $t);
+		if ($t === '') {
+			return null;
+		}
+		if (preg_match('/^\d{1,2}\.\d{2}$/', $t)) {
+			$t = preg_replace('/^(\d{1,2})\.(\d{2})$/', '$1:$2', $t);
+		} else {
+			$t = preg_replace('/^(\d{1,2}:\d{2}(?::\d{2})?)\.\d+$/', '$1', $t);
+		}
+		if (preg_match('/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/', $t, $m)) {
+			return (int) $m[1] * 60 + (int) $m[2];
+		}
+		$ts = strtotime('1970-01-01 ' . $t);
+		if ($ts) {
+			return ((int) date('G', $ts)) * 60 + (int) date('i', $ts);
+		}
+		return null;
+	}
+
+	private function batch_attendance_is_late($attendance_time, $batch_start_time)
+	{
+		$att = $this->batch_attendance_minutes_from_midnight($attendance_time);
+		$start = $this->batch_attendance_minutes_from_midnight($batch_start_time);
+		if ($att === null || $start === null) {
+			return 0;
+		}
+		return $att > $start ? 1 : 0;
+	}
+
+	private function batch_attendance_student_enrolled_in_batch($student_id, $batch_id)
+	{
+		$student_id = (int) $student_id;
+		$batch_id = (int) $batch_id;
+		if ($student_id < 1 || $batch_id < 1) {
+			return false;
+		}
+		if (!empty($this->db_model->select_data('id', 'student_batchs', array('student_id' => $student_id, 'batch_id' => $batch_id), 1))) {
+			return true;
+		}
+		$rows = $this->db_model->select_data('batch_id, multi_batch', 'students', array('id' => $student_id, 'status' => 1), 1);
+		if (empty($rows)) {
+			return false;
+		}
+		$r = $rows[0];
+		$sb = isset($r['batch_id']) ? trim((string) $r['batch_id']) : '';
+		if ($sb !== '' && ((int) $sb === $batch_id || preg_match('/\b' . $batch_id . '\b/', $sb))) {
+			return true;
+		}
+		$mb = isset($r['multi_batch']) ? trim((string) $r['multi_batch']) : '';
+		if ($mb !== '') {
+			$dec = json_decode($mb, true);
+			if (is_array($dec)) {
+				foreach ($dec as $v) {
+					if ((int) $v === $batch_id) {
+						return true;
+					}
+				}
+			}
+			if (strpos($mb, '"' . $batch_id . '"') !== false || strpos($mb, (string) $batch_id) !== false) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private function batch_normalize_attendance_day_status($raw)
+	{
+		$s = strtolower(trim((string) $raw));
+		if ($s === 'halfday') {
+			$s = 'half_day';
+		}
+		$allowed = array('present', 'late', 'absent', 'half_day');
+		return in_array($s, $allowed, true) ? $s : '';
+	}
+
+	/**
+	 * Map DB row + late flag to matrix status: present | late | half | absent | empty.
+	 */
+	private function batch_matrix_status_from_row($time, $day_status, $batch_start_time)
+	{
+		$ds = strtolower(trim((string) $day_status));
+		if ($ds === 'absent') {
+			return 'absent';
+		}
+		if ($ds === 'half_day' || $ds === 'halfday') {
+			return 'half';
+		}
+		if ($ds === 'late') {
+			return 'late';
+		}
+		if ($ds === 'present') {
+			return 'present';
+		}
+		if (trim((string) $time) === '') {
+			return 'empty';
+		}
+		return ((int) $this->batch_attendance_is_late($time, $batch_start_time) === 1) ? 'late' : 'present';
+	}
+
+	/**
+	 * POST/GET api/batch/attendance-roster-matrix
+	 * Auth: teacher|institute. Required: batch_id, year, month (1–12).
+	 * Returns students (rows), dates (columns), cells keyed "studentId_YYYY-MM-DD".
+	 */
+	public function attendance_roster_matrix()
+	{
+		$this->batch_ensure_attendance_day_status_column();
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+		if ($batch_id < 1) {
+			$this->api_json(false, 'batch_id is required');
+			return;
+		}
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		$year = isset($data['year']) ? (int) $data['year'] : (int) date('Y');
+		$month = isset($data['month']) ? (int) $data['month'] : (int) date('n');
+		if ($year < 2000 || $year > 2100) {
+			$this->api_json(false, 'Invalid year');
+			return;
+		}
+		if ($month < 1 || $month > 12) {
+			$this->api_json(false, 'Invalid month');
+			return;
+		}
+		$dim = cal_days_in_month(CAL_GREGORIAN, $month, $year);
+		$date_from = sprintf('%04d-%02d-01', $year, $month);
+		$date_to = sprintf('%04d-%02d-%02d', $year, $month, $dim);
+
+		$batch_row = $this->db_model->select_data('id,start_time', 'batches', array('id' => $batch_id, 'status' => 1), 1);
+		$batch_start = !empty($batch_row[0]['start_time']) ? (string) $batch_row[0]['start_time'] : '';
+
+		$this->db->select('s.id as studentId,s.name,s.email,s.contact_no as mobile');
+		$this->db->from('student_batchs sb');
+		$this->db->join('students s', 's.id = sb.student_id', 'inner');
+		$this->db->where('sb.batch_id', $batch_id);
+		$this->db->where('sb.status', 1);
+		$this->db->where('s.status', 1);
+		$this->db->order_by('s.name', 'asc');
+		$stu_rows = $this->db->get()->result_array();
+		$students = array();
+		foreach ($stu_rows as $r) {
+			$students[] = array(
+				'studentId' => (int) $r['studentId'],
+				'name' => isset($r['name']) ? $r['name'] : '',
+				'email' => isset($r['email']) ? $r['email'] : '',
+				'mobile' => isset($r['mobile']) ? $r['mobile'] : '',
+			);
+		}
+
+		$this->db->select('a.id as attendanceId,a.student_id as studentId,a.date,a.time,TRIM(IFNULL(a.day_status, \'\')) as day_status', false);
+		$this->db->from('attendance a');
+		$this->db->where('a.batch_id', $batch_id);
+		$this->db->where('a.date >=', $date_from);
+		$this->db->where('a.date <=', $date_to);
+		$this->db->order_by('a.date', 'asc');
+		$att_rows = $this->db->get()->result_array();
+
+		$cells = array();
+		foreach ($att_rows as $ar) {
+			$sid = isset($ar['studentId']) ? (int) $ar['studentId'] : 0;
+			$d = isset($ar['date']) ? (string) $ar['date'] : '';
+			if ($sid < 1 || $d === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) {
+				continue;
+			}
+			$time = isset($ar['time']) ? (string) $ar['time'] : '';
+			$ds = isset($ar['day_status']) ? (string) $ar['day_status'] : '';
+			$st = $this->batch_matrix_status_from_row($time, $ds, $batch_start);
+			$key = $sid . '_' . $d;
+			$cells[$key] = array(
+				'status' => $st,
+				'time' => $time,
+				'attendanceId' => !empty($ar['attendanceId']) ? (int) $ar['attendanceId'] : 0,
+				'dayStatus' => $ds,
+			);
+		}
+
+		$dates = array();
+		for ($d = 1; $d <= $dim; $d++) {
+			$ymd = sprintf('%04d-%02d-%02d', $year, $month, $d);
+			$ts = strtotime($ymd);
+			$dates[] = array(
+				'date' => $ymd,
+				'day' => $d,
+				'weekday' => $ts ? (int) date('N', $ts) : 0,
+				'label' => $d . ' ' . date('D', $ts),
+			);
+		}
+
+		$this->api_json(true, 'Success', array(
+			'batch_id' => $batch_id,
+			'year' => $year,
+			'month' => $month,
+			'dateFrom' => $date_from,
+			'dateTo' => $date_to,
+			'batchStartTime' => $batch_start,
+			'students' => $students,
+			'dates' => $dates,
+			'cells' => $cells,
+		));
+	}
+
+	/**
+	 * POST api/batch/attendance-matrix-save
+	 * Auth: teacher|institute. JSON: batch_id, entries: [{ student_id, date, status: present|late|half|absent|empty, time? }], default_time?.
+	 */
+	public function attendance_matrix_save()
+	{
+		$this->batch_ensure_attendance_day_status_column();
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$ut = strtolower(trim((string) $payload['ut']));
+		$actor_id = (int) $payload['uid'];
+		if ($actor_id < 1) {
+			$this->api_json(false, 'Invalid user');
+			return;
+		}
+
+		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+		if ($batch_id < 1) {
+			$this->api_json(false, 'batch_id is required');
+			return;
+		}
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		if ($ut === 'teacher' && !$this->teacher_assigned_for_attendance_batch($actor_id, $batch_id)) {
+			$this->api_json(false, 'You are not assigned to this batch');
+			return;
+		}
+
+		$batch_row = $this->db_model->select_data('id,admin_id,start_time', 'batches', array('id' => $batch_id, 'status' => 1), 1);
+		if (empty($batch_row)) {
+			$this->api_json(false, 'Batch not found');
+			return;
+		}
+		$admin_id = isset($batch_row[0]['admin_id']) ? (int) $batch_row[0]['admin_id'] : 0;
+		$batch_start_t = !empty($batch_row[0]['start_time']) ? (string) $batch_row[0]['start_time'] : '';
+
+		$default_time = isset($data['default_time']) ? trim((string) $data['default_time']) : '';
+		if ($default_time === '') {
+			$default_time = $batch_start_t !== '' ? $batch_start_t : '09:00';
+		}
+
+		$entries = isset($data['entries']) && is_array($data['entries']) ? $data['entries'] : array();
+		if (empty($entries)) {
+			$this->api_json(false, 'entries array is required');
+			return;
+		}
+
+		$results = array();
+		$any_ok = false;
+		foreach ($entries as $e) {
+			if (!is_array($e)) {
+				continue;
+			}
+			$student_id = isset($e['student_id']) ? (int) $e['student_id'] : (isset($e['studentId']) ? (int) $e['studentId'] : 0);
+			$date = isset($e['date']) ? trim((string) $e['date']) : '';
+			$status_raw = isset($e['status']) ? strtolower(trim((string) $e['status'])) : '';
+			if ($student_id < 1 || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+				$results[] = array('studentId' => $student_id, 'date' => $date, 'status' => 'false', 'msg' => 'Invalid student_id or date');
+				continue;
+			}
+
+			if ($status_raw === 'empty' || $status_raw === 'clear' || $status_raw === 'none' || $status_raw === '') {
+				$this->db_model->delete_data('attendance', array(
+					'student_id' => $student_id,
+					'batch_id' => $batch_id,
+					'date' => $date,
+				));
+				$results[] = array('studentId' => $student_id, 'date' => $date, 'status' => 'true', 'msg' => 'cleared');
+				$any_ok = true;
+				continue;
+			}
+
+			$map = array('present' => 'present', 'late' => 'late', 'half' => 'half_day', 'half_day' => 'half_day', 'absent' => 'absent');
+			if (!isset($map[$status_raw])) {
+				$results[] = array('studentId' => $student_id, 'date' => $date, 'status' => 'false', 'msg' => 'Invalid status');
+				continue;
+			}
+			$db_ds = $map[$status_raw];
+
+			$time_raw = isset($e['time']) ? trim((string) $e['time']) : '';
+			$time = $time_raw !== '' ? $time_raw : $default_time;
+			if ($time === '') {
+				$time = '09:00';
+			}
+
+			$ds_norm = $this->batch_normalize_attendance_day_status($db_ds);
+			$auto_status = ((int) $this->batch_attendance_is_late($time, $batch_start_t) === 1) ? 'late' : 'present';
+			$final_day_status = $ds_norm !== '' ? $ds_norm : $auto_status;
+
+			$student = $this->db_model->select_data('id,admin_id', 'students', array('id' => $student_id, 'status' => 1), 1);
+			if (empty($student)) {
+				$results[] = array('studentId' => $student_id, 'date' => $date, 'status' => 'false', 'msg' => 'Student not found');
+				continue;
+			}
+			if (!$this->batch_attendance_student_enrolled_in_batch($student_id, $batch_id)) {
+				$prior = $this->db_model->select_data('id', 'attendance', array('student_id' => $student_id, 'batch_id' => $batch_id), 1);
+				if (empty($prior)) {
+					$results[] = array('studentId' => $student_id, 'date' => $date, 'status' => 'false', 'msg' => 'Student is not enrolled in this batch');
+					continue;
+				}
+			}
+			$use_admin = $admin_id > 0 ? $admin_id : (int) $student[0]['admin_id'];
+
+			$existing = $this->db_model->select_data('id', 'attendance', array(
+				'student_id' => $student_id,
+				'date' => $date,
+				'batch_id' => $batch_id,
+			), 1);
+
+			if (!empty($existing)) {
+				$att_id = (int) $existing[0]['id'];
+				$upd = array(
+					'time' => $time,
+					'added_id' => $actor_id,
+					'admin_id' => $use_admin,
+				);
+				if ($this->db->field_exists('day_status', 'attendance')) {
+					$upd['day_status'] = $final_day_status;
+				}
+				$this->db_model->update_data_limit('attendance', $upd, array('id' => $att_id), 1);
+				$results[] = array(
+					'studentId' => $student_id,
+					'date' => $date,
+					'status' => 'true',
+					'msg' => 'updated',
+					'attendanceId' => $att_id,
+					'time' => $time,
+					'dayStatus' => $final_day_status,
+				);
+			} else {
+				$ins_row = $this->security->xss_clean(array(
+					'student_id' => $student_id,
+					'added_id' => $actor_id,
+					'date' => $date,
+					'time' => $time,
+					'batch_id' => $batch_id,
+					'admin_id' => $use_admin > 0 ? $use_admin : 1,
+				));
+				if ($this->db->field_exists('day_status', 'attendance')) {
+					$ins_row['day_status'] = $final_day_status;
+				}
+				$this->db_model->insert_data('attendance', $ins_row);
+				$att_id = (int) $this->db->insert_id();
+				$results[] = array(
+					'studentId' => $student_id,
+					'date' => $date,
+					'status' => 'true',
+					'msg' => 'added',
+					'attendanceId' => $att_id,
+					'time' => $time,
+					'dayStatus' => $final_day_status,
+				);
+			}
+			$any_ok = true;
+		}
+
+		$ok_count = count(array_filter($results, function ($r) {
+			return isset($r['status']) && $r['status'] === 'true';
+		}));
+		$this->api_json($any_ok, $any_ok ? 'Saved' : 'No changes saved', array(
+			'batch_id' => $batch_id,
+			'results' => $results,
+			'savedCount' => $ok_count,
+		));
+	}
+
+	/**
+	 * POST/GET api/batch/batch-subjects
+	 * Auth: teacher|institute. Required: batch_id.
+	 */
+	public function batch_subjects()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+		if ($batch_id < 1) {
+			$this->api_json(false, 'batch_id is required');
+			return;
+		}
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		$teacher_id = (int) $payload['uid'];
+		$this->db->distinct();
+		$this->db->select('bs.subject_id as subjectId,s.subject_name as subjectName');
+		$this->db->from('batch_subjects bs');
+		$this->db->join('subjects s', 's.id = bs.subject_id', 'left');
+		$this->db->where('bs.batch_id', $batch_id);
+		if (strtolower(trim((string) $payload['ut'])) === 'teacher') {
+			$this->db->where('bs.teacher_id', $teacher_id);
+		}
+		$this->db->order_by('s.subject_name', 'asc');
+		$rows = $this->db->get()->result_array();
+		$list = array();
+		foreach ($rows as $r) {
+			$sid = isset($r['subjectId']) ? (int) $r['subjectId'] : 0;
+			if ($sid < 1) {
+				continue;
+			}
+			$list[] = array(
+				'subjectId' => $sid,
+				'subjectName' => isset($r['subjectName']) ? (string) $r['subjectName'] : ('Subject #' . $sid),
+			);
+		}
+		$this->api_json(true, 'Success', array('batch_id' => $batch_id, 'subjects' => $list));
+	}
+
+	public function notes_list()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('student', 'teacher'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+		if ($batch_id < 1) {
+			$this->api_json(false, 'batch_id is required');
+			return;
+		}
+		if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id)) {
+			return;
+		}
+		$search = isset($data['search']) ? trim((string) $data['search']) : '';
+		$pg = $this->parse_api_list_pagination($data);
+
+		$this->db->from('notes_pdf');
+		$this->db->where('status', 1);
+		$this->apply_text_batch_filter('batch', $batch_id);
+		if ($search !== '') {
+			$this->db->group_start();
+			$this->db->like('title', $search);
+			$this->db->or_like('topic', $search);
+			$this->db->or_like('subject', $search);
+			$this->db->or_like('file_name', $search);
+			$this->db->group_end();
+		}
+		$total = (int) $this->db->count_all_results();
+
+		$this->db->select('id,title,topic,subject,file_name as fileName,added_at as addedAt');
+		$this->db->from('notes_pdf');
+		$this->db->where('status', 1);
+		$this->apply_text_batch_filter('batch', $batch_id);
+		if ($search !== '') {
+			$this->db->group_start();
+			$this->db->like('title', $search);
+			$this->db->or_like('topic', $search);
+			$this->db->or_like('subject', $search);
+			$this->db->or_like('file_name', $search);
+			$this->db->group_end();
+		}
+		$this->db->order_by('id', 'desc');
+		$this->db->limit($pg['limit'], $pg['offset']);
+		$rows = $this->db->get()->result_array();
+		foreach ($rows as &$r) {
+			$file = isset($r['fileName']) ? (string) $r['fileName'] : '';
+			$r['downloadUrl'] = $file !== '' ? base_url('uploads/notes/') . $file : '';
+		}
+		unset($r);
+
+		$this->api_json(true, 'Success', array(
+			'batch_id' => $batch_id,
+			'notes' => $rows,
+			'pagination' => $this->build_api_list_pagination_meta($pg['page'], $pg['limit'], $total),
+		));
+	}
+
+	public function notes_add()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+		$title = isset($data['title']) ? trim((string) $data['title']) : '';
+		if ($batch_id < 1 || $title === '') {
+			$this->api_json(false, 'batch_id and title are required');
+			return;
+		}
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		if (empty($_FILES['pdf_file']['name'])) {
+			$this->api_json(false, 'pdf_file is required');
+			return;
+		}
+		$batch = $this->db_model->select_data('admin_id', 'batches use index (id)', array('id' => $batch_id), 1);
+		$admin_id = !empty($batch[0]['admin_id']) ? (int) $batch[0]['admin_id'] : 0;
+
+		$config['upload_path'] = './uploads/notes/';
+		if (!is_dir($config['upload_path'])) {
+			@mkdir($config['upload_path'], 0777, true);
+		}
+		$config['allowed_types'] = '*';
+		$config['max_size'] = '0';
+		$this->load->library('upload', $config);
+		if (!$this->upload->do_upload('pdf_file')) {
+			$this->api_json(false, strip_tags($this->upload->display_errors('', '')));
+			return;
+		}
+		$uploaddata = $this->upload->data();
+		$raw = isset($uploaddata['raw_name']) ? (string) $uploaddata['raw_name'] : '';
+		$ext = isset($uploaddata['file_ext']) ? (string) $uploaddata['file_ext'] : '';
+		$image = $raw . date('ymdHis') . $ext;
+		$old_path = './uploads/notes/' . $raw . $ext;
+		$new_path = './uploads/notes/' . $image;
+		if (is_file($old_path)) {
+			@rename($old_path, $new_path);
+		} else {
+			$image = isset($uploaddata['file_name']) ? (string) $uploaddata['file_name'] : '';
+		}
+		$insert = $this->security->xss_clean(array(
+			'admin_id' => $admin_id,
+			'title' => $title,
+			'batch' => (string) $batch_id,
+			'topic' => isset($data['topic']) ? trim((string) $data['topic']) : '',
+			'subject' => isset($data['subject']) ? trim((string) $data['subject']) : '',
+			'file_name' => $image,
+			'status' => 1,
+			'added_by' => (int) $payload['uid'],
+			'added_at' => date('Y-m-d H:i:s'),
+		));
+		$new_id = (int) $this->db_model->insert_data('notes_pdf', $insert);
+		$this->api_json(true, 'Notes added successfully', array(
+			'id' => $new_id,
+			'batch_id' => $batch_id,
+			'downloadUrl' => $image !== '' ? base_url('uploads/notes/') . $image : '',
+		));
+	}
+
+	public function notes_edit()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$notes_id = isset($data['notes_id']) ? (int) $data['notes_id'] : 0;
+		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+		if ($notes_id < 1 || $batch_id < 1) {
+			$this->api_json(false, 'notes_id and batch_id are required');
+			return;
+		}
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		$row = $this->get_notes_pdf_for_batch($notes_id, $batch_id, true);
+		if (empty($row)) {
+			$this->api_json(false, 'Notes not found');
+			return;
+		}
+		$update = array();
+		if (isset($data['title']) && trim((string) $data['title']) !== '') {
+			$update['title'] = trim((string) $data['title']);
+		}
+		if (array_key_exists('subject', $data)) {
+			$update['subject'] = trim((string) $data['subject']);
+		}
+		if (array_key_exists('topic', $data)) {
+			$update['topic'] = trim((string) $data['topic']);
+		}
+		if (!empty($_FILES['pdf_file']['name'])) {
+			$config['upload_path'] = './uploads/notes/';
+			$config['allowed_types'] = '*';
+			$config['max_size'] = '0';
+			$this->load->library('upload', $config);
+			if (!$this->upload->do_upload('pdf_file')) {
+				$this->api_json(false, strip_tags($this->upload->display_errors('', '')));
+				return;
+			}
+			$uploaddata = $this->upload->data();
+			$raw = isset($uploaddata['raw_name']) ? (string) $uploaddata['raw_name'] : '';
+			$ext = isset($uploaddata['file_ext']) ? (string) $uploaddata['file_ext'] : '';
+			$image = $raw . date('ymdHis') . $ext;
+			$old_path = './uploads/notes/' . $raw . $ext;
+			$new_path = './uploads/notes/' . $image;
+			if (is_file($old_path)) {
+				@rename($old_path, $new_path);
+			} else {
+				$image = isset($uploaddata['file_name']) ? (string) $uploaddata['file_name'] : '';
+			}
+			$update['file_name'] = $image;
+		}
+		if (empty($update)) {
+			$this->api_json(false, 'No changes provided');
+			return;
+		}
+		$update = $this->security->xss_clean($update);
+		$this->db_model->update_data_limit('notes_pdf', $update, array('id' => $notes_id), 1);
+		$this->api_json(true, 'Notes updated successfully', array('id' => $notes_id));
+	}
+
+	public function notes_delete()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$notes_id = isset($data['notes_id']) ? (int) $data['notes_id'] : 0;
+		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+		if ($notes_id < 1 || $batch_id < 1) {
+			$this->api_json(false, 'notes_id and batch_id are required');
+			return;
+		}
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		$row = $this->get_notes_pdf_for_batch($notes_id, $batch_id, true);
+		if (empty($row)) {
+			$this->api_json(false, 'Notes not found');
+			return;
+		}
+		$this->db_model->update_data_limit('notes_pdf', array('status' => 0), array('id' => $notes_id), 1);
+		$this->api_json(true, 'Notes deleted', array('id' => $notes_id));
+	}
+
+	public function notes_details()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$notes_id = isset($data['notes_id']) ? (int) $data['notes_id'] : 0;
+		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+		if ($notes_id < 1 || $batch_id < 1) {
+			$this->api_json(false, 'notes_id and batch_id are required');
+			return;
+		}
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		$row = $this->get_notes_pdf_for_batch($notes_id, $batch_id, true);
+		if (empty($row)) {
+			$this->api_json(false, 'Notes not found');
+			return;
+		}
+		$file = isset($row['file_name']) ? (string) $row['file_name'] : '';
+		$this->api_json(true, 'Success', array(
+			'notes' => array(
+				'id' => (int) $row['id'],
+				'title' => isset($row['title']) ? $row['title'] : '',
+				'topic' => isset($row['topic']) ? $row['topic'] : '',
+				'subject' => isset($row['subject']) ? $row['subject'] : '',
+				'fileName' => $file,
+				'downloadUrl' => $file !== '' ? base_url('uploads/notes/') . $file : '',
+				'addedAt' => isset($row['added_at']) ? $row['added_at'] : '',
+			)
+		));
+	}
+
+	public function video_lecture_add()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+		$title = isset($data['title']) ? trim((string) $data['title']) : '';
+		if ($batch_id < 1 || $title === '') {
+			$this->api_json(false, 'batch_id and title are required');
+			return;
+		}
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		$url = isset($data['url']) ? trim((string) $data['url']) : '';
+		if ($url === '' && !empty($_FILES['video_file']['name'])) {
+			$config['upload_path'] = './uploads/video/';
+			if (!is_dir($config['upload_path'])) {
+				@mkdir($config['upload_path'], 0777, true);
+			}
+			$config['allowed_types'] = '*';
+			$config['max_size'] = '0';
+			$this->load->library('upload', $config);
+			if (!$this->upload->do_upload('video_file')) {
+				$this->api_json(false, strip_tags($this->upload->display_errors('', '')));
+				return;
+			}
+			$ud = $this->upload->data();
+			$url = base_url('uploads/video/') . $ud['file_name'];
+		}
+		if ($url === '') {
+			$this->api_json(false, 'url or video_file is required');
+			return;
+		}
+		$batch = $this->db_model->select_data('admin_id', 'batches use index (id)', array('id' => $batch_id), 1);
+		$admin_id = !empty($batch[0]['admin_id']) ? (int) $batch[0]['admin_id'] : 0;
+		$insert = $this->security->xss_clean(array(
+			'admin_id' => $admin_id,
+			'title' => $title,
+			'batch' => (string) $batch_id,
+			'topic' => isset($data['topic']) ? trim((string) $data['topic']) : '',
+			'subject' => isset($data['subject']) ? trim((string) $data['subject']) : '',
+			'description' => isset($data['description']) ? trim((string) $data['description']) : '',
+			'url' => $url,
+			'video_type' => isset($data['video_type']) ? (int) $data['video_type'] : 1,
+			'preview_type' => isset($data['preview_type']) ? (int) $data['preview_type'] : 1,
+			'status' => 1,
+			'added_by' => (int) $payload['uid'],
+			'added_at' => date('Y-m-d H:i:s'),
+		));
+		$new_id = (int) $this->db_model->insert_data('video_lectures', $insert);
+		$this->api_json(true, 'Video lecture added successfully', array('id' => $new_id, 'batch_id' => $batch_id));
+	}
+
+	public function video_lecture_edit()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$video_id = isset($data['video_lecture_id']) ? (int) $data['video_lecture_id'] : 0;
+		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+		if ($video_id < 1 || $batch_id < 1) {
+			$this->api_json(false, 'video_lecture_id and batch_id are required');
+			return;
+		}
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		$row = $this->db_model->select_data('id', 'video_lectures use index (id)', array('id' => $video_id, 'status' => 1), 1);
+		if (empty($row)) {
+			$this->api_json(false, 'Video lecture not found');
+			return;
+		}
+		$update = array();
+		foreach (array('title', 'topic', 'subject', 'description') as $f) {
+			if (isset($data[$f])) {
+				$update[$f] = trim((string) $data[$f]);
+			}
+		}
+		if (isset($data['video_type'])) {
+			$update['video_type'] = (int) $data['video_type'];
+		}
+		if (isset($data['preview_type'])) {
+			$update['preview_type'] = (int) $data['preview_type'];
+		}
+		if (isset($data['url']) && trim((string) $data['url']) !== '') {
+			$update['url'] = trim((string) $data['url']);
+		}
+		if (!empty($_FILES['video_file']['name'])) {
+			$config['upload_path'] = './uploads/video/';
+			$config['allowed_types'] = '*';
+			$config['max_size'] = '0';
+			$this->load->library('upload', $config);
+			if (!$this->upload->do_upload('video_file')) {
+				$this->api_json(false, strip_tags($this->upload->display_errors('', '')));
+				return;
+			}
+			$ud = $this->upload->data();
+			$update['url'] = base_url('uploads/video/') . $ud['file_name'];
+		}
+		if (empty($update)) {
+			$this->api_json(false, 'No changes provided');
+			return;
+		}
+		$update = $this->security->xss_clean($update);
+		$this->db_model->update_data_limit('video_lectures', $update, array('id' => $video_id), 1);
+		$this->api_json(true, 'Video lecture updated successfully', array('id' => $video_id));
+	}
+
+	public function video_lecture_delete()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$video_id = isset($data['video_lecture_id']) ? (int) $data['video_lecture_id'] : 0;
+		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+		if ($video_id < 1 || $batch_id < 1) {
+			$this->api_json(false, 'video_lecture_id and batch_id are required');
+			return;
+		}
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		$this->db_model->update_data_limit('video_lectures', array('status' => 0), array('id' => $video_id), 1);
+		$this->api_json(true, 'Video lecture deleted', array('id' => $video_id));
+	}
+
+	public function exam_add()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+		$name = isset($data['name']) ? trim((string) $data['name']) : '';
+		if ($batch_id < 1 || $name === '') {
+			$this->api_json(false, 'batch_id and name are required');
+			return;
+		}
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		$admin_id = ($payload['ut'] === 'teacher') ? (int) $this->teacher_tenant_admin_id((int) $payload['uid']) : (int) $payload['uid'];
+		$insert = $this->security->xss_clean(array(
+			'admin_id' => $admin_id > 0 ? $admin_id : 1,
+			'name' => $name,
+			'type' => isset($data['type']) ? (int) $data['type'] : 1,
+			'format' => isset($data['format']) ? (int) $data['format'] : 1,
+			'batch_id' => $batch_id,
+			'total_question' => isset($data['total_question']) ? (int) $data['total_question'] : 0,
+			'time_duration' => isset($data['time_duration']) ? trim((string) $data['time_duration']) : '',
+			'question_ids' => isset($data['question_ids']) ? trim((string) $data['question_ids']) : '',
+			'mock_sheduled_date' => isset($data['mock_sheduled_date']) ? trim((string) $data['mock_sheduled_date']) : date('Y-m-d'),
+			'mock_sheduled_time' => isset($data['mock_sheduled_time']) ? trim((string) $data['mock_sheduled_time']) : '',
+			'total_marks' => isset($data['total_marks']) ? (float) $data['total_marks'] : 0,
+			'marking_parcent' => isset($data['marking_parcent']) ? (float) $data['marking_parcent'] : 0,
+			'status' => 1,
+			'added_by' => (int) $payload['uid'],
+			'added_at' => date('Y-m-d H:i:s'),
+		));
+		$new_id = (int) $this->db_model->insert_data('exams', $insert);
+		$this->api_json(true, 'Exam added successfully', array('id' => $new_id, 'batch_id' => $batch_id));
+	}
+
+	public function exam_edit()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$exam_id = isset($data['exam_id']) ? (int) $data['exam_id'] : 0;
+		if ($exam_id < 1) {
+			$this->api_json(false, 'exam_id is required');
+			return;
+		}
+		$exam = $this->db_model->select_data('id,batch_id', 'exams use index (id)', array('id' => $exam_id, 'status' => 1), 1);
+		if (empty($exam)) {
+			$this->api_json(false, 'Exam not found');
+			return;
+		}
+		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : (int) $exam[0]['batch_id'];
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		$update = array();
+		foreach (array('name', 'time_duration', 'mock_sheduled_date', 'mock_sheduled_time', 'question_ids') as $f) {
+			if (isset($data[$f])) {
+				$update[$f] = trim((string) $data[$f]);
+			}
+		}
+		foreach (array('type', 'format', 'total_question', 'total_marks', 'marking_parcent', 'batch_id') as $f) {
+			if (isset($data[$f]) && $data[$f] !== '') {
+				$update[$f] = $data[$f];
+			}
+		}
+		if (empty($update)) {
+			$this->api_json(false, 'No changes provided');
+			return;
+		}
+		$update = $this->security->xss_clean($update);
+		$this->db_model->update_data_limit('exams', $update, array('id' => $exam_id), 1);
+		$this->api_json(true, 'Exam updated successfully', array('id' => $exam_id));
+	}
+
+	public function exam_delete()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$exam_id = isset($data['exam_id']) ? (int) $data['exam_id'] : 0;
+		if ($exam_id < 1) {
+			$this->api_json(false, 'exam_id is required');
+			return;
+		}
+		$exam = $this->db_model->select_data('id,batch_id', 'exams use index (id)', array('id' => $exam_id, 'status' => 1), 1);
+		if (empty($exam)) {
+			$this->api_json(false, 'Exam not found');
+			return;
+		}
+		if (!$this->assert_batch_access_teacher_or_institute($payload, (int) $exam[0]['batch_id'])) {
+			return;
+		}
+		$this->db_model->update_data_limit('exams', array('status' => 0), array('id' => $exam_id), 1);
+		$this->api_json(true, 'Exam deleted', array('id' => $exam_id));
 	}
 
 	/**
@@ -1506,35 +2522,56 @@ class Batch extends MY_Controller
 	 */
 	public function homework_list()
 	{
+		$this->ensure_homework_attachment_column();
 		$data = $this->read_request_data();
 		$payload = $this->require_auth_payload(array('student', 'teacher'), $data);
 		if ($payload === false) {
 			return;
 		}
 
-		if (empty($data['batch_id'])) {
+		$batch_ids = array();
+		if (!empty($data['batch_id'])) {
+			$batch_ids = array((int) $data['batch_id']);
+		} else {
 			if ($payload['ut'] === 'student') {
-				$student_row = $this->db_model->select_data('id,batch_id,admin_id', 'students use index (id)', array('id' => (int) $payload['uid']), 1);
-				if (!empty($student_row[0]['batch_id'])) {
-					$data['batch_id'] = $student_row[0]['batch_id'];
+				$rows = $this->db_model->select_data('batch_id', 'student_batchs', array('student_id' => (int) $payload['uid'], 'status' => 1), '');
+				if (!empty($rows)) {
+					foreach ($rows as $r) {
+						$bid = isset($r['batch_id']) ? (int) $r['batch_id'] : 0;
+						if ($bid > 0) {
+							$batch_ids[] = $bid;
+						}
+					}
 				}
-				if (empty($data['admin_id']) && !empty($student_row[0]['admin_id'])) {
-					$data['admin_id'] = $student_row[0]['admin_id'];
+				if (empty($batch_ids)) {
+					$student_row = $this->db_model->select_data('id,batch_id,admin_id', 'students use index (id)', array('id' => (int) $payload['uid']), 1);
+					if (!empty($student_row[0]['batch_id'])) {
+						$batch_ids[] = (int) $student_row[0]['batch_id'];
+					}
+				}
+			} elseif ($payload['ut'] === 'teacher') {
+				$rows = $this->db_model->select_data('batch_id', 'batch_subjects', array('teacher_id' => (int) $payload['uid']), '');
+				if (!empty($rows)) {
+					foreach ($rows as $r) {
+						$bid = isset($r['batch_id']) ? (int) $r['batch_id'] : 0;
+						if ($bid > 0) {
+							$batch_ids[] = $bid;
+						}
+					}
 				}
 			}
+			$batch_ids = array_values(array_unique(array_filter($batch_ids)));
 		}
 
-		if ($payload['ut'] === 'teacher') {
-			$teacher_row = $this->db_model->select_data('id,admin_id', 'users use index (id)', array('id' => (int) $payload['uid']), 1);
-			if (!empty($teacher_row[0]['admin_id'])) {
-				$data['admin_id'] = $teacher_row[0]['admin_id'];
-			}
-		}
+		$pg = $this->parse_api_list_pagination($data);
+		$pagination_empty = $this->build_api_list_pagination_meta($pg['page'], $pg['limit'], 0);
 
-		if (!isset($data['batch_id'])) {
+		if (empty($batch_ids)) {
 			echo json_encode(array(
 				'status' => 'false',
-				'msg' => $this->lang->line('ltr_missing_parameters_msg'),
+				'msg' => $this->lang->line('ltr_no_record_msg'),
+				'homeWork' => array(),
+				'pagination' => $pagination_empty,
 			), JSON_UNESCAPED_SLASHES);
 			die;
 		}
@@ -1543,28 +2580,36 @@ class Batch extends MY_Controller
 			$this->mark_homework_notification_viewed((int) $payload['uid']);
 		}
 
-		$cond = array(
-			'homeworks.admin_id' => $data['admin_id'],
-			'homeworks.batch_id' => $data['batch_id'],
-		);
+		$this->db->select('homeworks.id,homeworks.admin_id as adminId,homeworks.teacher_id as teacherId,homeworks.date,homeworks.subject_id as subjectId,homeworks.batch_id as batchId,homeworks.description,homeworks.attachment,homeworks.added_at as addedAt,users.name,users.teach_gender as teachGender,subjects.subject_name as subjectName');
+		$this->db->from('homeworks');
+		$this->db->join('users', 'users.id = homeworks.teacher_id', 'left');
+		$this->db->join('subjects', 'subjects.id = homeworks.subject_id', 'left');
+		$this->db->where_in('homeworks.batch_id', $batch_ids);
 		if ($payload['ut'] === 'teacher') {
-			$cond['homeworks.teacher_id'] = (int) $payload['uid'];
+			$this->db->where('homeworks.teacher_id', (int) $payload['uid']);
+		}
+		if (!empty($data['admin_id'])) {
+			$this->db->where('homeworks.admin_id', (int) $data['admin_id']);
+		}
+		if (!empty($data['date'])) {
+			$dts = strtotime((string) $data['date']);
+			if ($dts !== false) {
+				$this->db->where('homeworks.date', date('Y-m-d', $dts));
+			}
 		}
 
-		$pg = $this->parse_api_list_pagination($data);
-		$hw_join = array('multiple', array(array('users', 'users.id = homeworks.teacher_id'), array('subjects', 'subjects.id = homeworks.subject_id')));
-		$total = (int) $this->db_model->countAll('homeworks use index (id)', $cond, '', '', '', $hw_join);
+		$count_db = clone $this->db;
+		$total = (int) $count_db->count_all_results();
 
-		$homewrkData = $this->db_model->select_data(
-			'homeworks.id,homeworks.admin_id as adminId,homeworks.teacher_id as teacherId,homeworks.date,homeworks.subject_id as studentId,homeworks.batch_id as batchId,homeworks.description,homeworks.added_at as addedAt,users.name,users.teach_gender as teachGender,subjects.subject_name as subjectName',
-			'homeworks use index (id)',
-			$cond,
-			array($pg['limit'], $pg['offset']),
-			array('id', 'desc'),
-			'',
-			$hw_join,
-			''
-		);
+		$this->db->order_by('homeworks.id', 'desc');
+		$this->db->limit($pg['limit'], $pg['offset']);
+		$homewrkData = $this->db->get()->result_array();
+		if (!empty($homewrkData)) {
+			foreach ($homewrkData as $idx => $row) {
+				$fn = isset($row['attachment']) ? trim((string) $row['attachment']) : '';
+				$homewrkData[$idx]['attachmentUrl'] = $fn !== '' ? base_url('uploads/homework_teacher/') . $fn : '';
+			}
+		}
 
 		$pagination = $this->build_api_list_pagination_meta($pg['page'], $pg['limit'], $total);
 		if (!empty($homewrkData)) {
@@ -1609,12 +2654,97 @@ class Batch extends MY_Controller
 		}
 	}
 
+	private function ensure_homework_submissions_table()
+	{
+		$sql = "CREATE TABLE IF NOT EXISTS `homework_submissions` (
+			`id` int(11) NOT NULL AUTO_INCREMENT,
+			`homework_id` int(11) NOT NULL,
+			`admin_id` int(11) NOT NULL DEFAULT 0,
+			`teacher_id` int(11) NOT NULL DEFAULT 0,
+			`student_id` int(11) NOT NULL,
+			`batch_id` int(11) NOT NULL DEFAULT 0,
+			`subject_id` int(11) NOT NULL DEFAULT 0,
+			`submission_text` text,
+			`attachment` varchar(255) NOT NULL DEFAULT '',
+			`marks` decimal(10,2) DEFAULT NULL,
+			`remark` text,
+			`eval_status` tinyint(1) NOT NULL DEFAULT 0,
+			`submitted_at` datetime NOT NULL,
+			`evaluated_at` datetime DEFAULT NULL,
+			PRIMARY KEY (`id`),
+			KEY `idx_homework_id` (`homework_id`),
+			KEY `idx_student_id` (`student_id`),
+			KEY `idx_teacher_id` (`teacher_id`),
+			KEY `idx_eval_status` (`eval_status`)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
+		$this->db->query($sql);
+	}
+
+	/** @var bool */
+	private $homework_attachment_column_checked = false;
+
+	/**
+	 * Adds homeworks.attachment when missing (teacher assignment PDF).
+	 */
+	private function ensure_homework_attachment_column()
+	{
+		if ($this->homework_attachment_column_checked) {
+			return;
+		}
+		$this->homework_attachment_column_checked = true;
+		if ($this->db->field_exists('attachment', 'homeworks')) {
+			return;
+		}
+		$sql = 'ALTER TABLE `homeworks` ADD COLUMN `attachment` VARCHAR(255) NOT NULL DEFAULT \'\' AFTER `description`';
+		@$this->db->query($sql);
+	}
+
+	/**
+	 * Upload teacher homework handout (field name pdf_file). Returns [ok, filename_or_error_message].
+	 *
+	 * @return array
+	 */
+	private function upload_homework_teacher_pdf()
+	{
+		$path = './uploads/homework_teacher/';
+		if (!is_dir($path)) {
+			@mkdir($path, 0777, true);
+		}
+		$config = array(
+			'upload_path' => $path,
+			'allowed_types' => 'pdf',
+			'max_size' => 15360,
+		);
+		if (!isset($this->upload)) {
+			$this->load->library('upload', $config);
+		} else {
+			$this->upload->initialize($config);
+		}
+		if (!$this->upload->do_upload('pdf_file')) {
+			return array(false, strip_tags($this->upload->display_errors('', '')));
+		}
+		$uploaddata = $this->upload->data();
+		$pic = isset($uploaddata['raw_name']) ? (string) $uploaddata['raw_name'] : '';
+		$pic_ext = isset($uploaddata['file_ext']) ? (string) $uploaddata['file_ext'] : '';
+		$image = $pic . date('ymdHis') . $pic_ext;
+		$old_path = $path . $pic . $pic_ext;
+		$new_path = $path . $image;
+		if (is_file($old_path)) {
+			@rename($old_path, $new_path);
+		} else {
+			$image = isset($uploaddata['file_name']) ? (string) $uploaddata['file_name'] : '';
+		}
+		return array(true, $image);
+	}
+
 	/**
 	 * POST api/batch/homework-add
-	 * Auth: teacher only. Required: batch_id, subject_id, date, description.
+	 * Auth: teacher only. Required: batch_id, subject_id, date.
+	 * Body: JSON or multipart. description text and/or pdf_file (PDF). At least one of description or pdf_file is required.
 	 */
 	public function homework_add()
 	{
+		$this->ensure_homework_attachment_column();
 		$data = $this->read_request_data();
 		$payload = $this->require_auth_payload(array('teacher'), $data);
 		if ($payload === false) {
@@ -1625,8 +2755,8 @@ class Batch extends MY_Controller
 			echo json_encode(array('status' => 'false', 'msg' => 'Teacher not found'));
 			return;
 		}
-		if (empty($data['batch_id']) || empty($data['subject_id']) || empty($data['date']) || !isset($data['description']) || trim((string) $data['description']) === '') {
-			echo json_encode(array('status' => 'false', 'msg' => 'batch_id, subject_id, date, and description are required'));
+		if (empty($data['batch_id']) || empty($data['subject_id']) || empty($data['date'])) {
+			echo json_encode(array('status' => 'false', 'msg' => 'batch_id, subject_id, and date are required'));
 			return;
 		}
 		$batch_id = (int) $data['batch_id'];
@@ -1645,17 +2775,41 @@ class Batch extends MY_Controller
 			return;
 		}
 		$date = date('Y-m-d', $date_ts);
+		$desc = isset($data['description']) ? trim((string) $data['description']) : '';
+		$file_name = '';
+		if (!empty($_FILES['pdf_file']['name'])) {
+			list($ok, $res) = $this->upload_homework_teacher_pdf();
+			if (!$ok) {
+				echo json_encode(array('status' => 'false', 'msg' => $res));
+				return;
+			}
+			$file_name = $res;
+		}
+		if ($desc === '' && $file_name === '') {
+			echo json_encode(array('status' => 'false', 'msg' => 'Enter a description and/or upload a PDF'));
+			return;
+		}
+		if ($desc === '') {
+			$desc = 'See attached PDF.';
+		}
 		$insert = $this->security->xss_clean(array(
 			'admin_id' => $admin_id,
 			'teacher_id' => $teacher_id,
 			'date' => $date,
 			'subject_id' => $subject_id,
 			'batch_id' => (string) $batch_id,
-			'description' => trim((string) $data['description']),
+			'description' => $desc,
+			'attachment' => $file_name,
 			'added_at' => date('Y-m-d H:i:s'),
 		));
 		$new_id = $this->db_model->insert_data('homeworks', $insert);
 		if (empty($new_id)) {
+			if ($file_name !== '') {
+				$fp = './uploads/homework_teacher/' . $file_name;
+				if (is_file($fp)) {
+					@unlink($fp);
+				}
+			}
 			echo json_encode(array('status' => 'false', 'msg' => 'Failed to add homework'));
 			return;
 		}
@@ -1668,6 +2822,8 @@ class Batch extends MY_Controller
 				'batchId' => $batch_id,
 				'subjectId' => $subject_id,
 				'date' => $date,
+				'attachment' => $file_name,
+				'attachmentUrl' => $file_name !== '' ? base_url('uploads/homework_teacher/') . $file_name : '',
 			),
 		), JSON_UNESCAPED_SLASHES);
 		die;
@@ -1679,6 +2835,7 @@ class Batch extends MY_Controller
 	 */
 	public function homework_edit()
 	{
+		$this->ensure_homework_attachment_column();
 		$data = $this->read_request_data();
 		$payload = $this->require_auth_payload(array('teacher'), $data);
 		if ($payload === false) {
@@ -1716,22 +2873,44 @@ class Batch extends MY_Controller
 				$update['date'] = date('Y-m-d', $dts);
 			}
 		}
-		if (isset($data['description'])) {
-			$update['description'] = trim((string) $data['description']);
+		$old_attachment = isset($existing[0]['attachment']) ? trim((string) $existing[0]['attachment']) : '';
+		if (!empty($_FILES['pdf_file']['name'])) {
+			list($ok, $res) = $this->upload_homework_teacher_pdf();
+			if (!$ok) {
+				echo json_encode(array('status' => 'false', 'msg' => $res));
+				return;
+			}
+			$update['attachment'] = $res;
+			if ($old_attachment !== '' && $old_attachment !== $res) {
+				$p = './uploads/homework_teacher/' . $old_attachment;
+				if (is_file($p)) {
+					@unlink($p);
+				}
+			}
 		}
-		if (isset($update['description']) && $update['description'] === '') {
-			echo json_encode(array('status' => 'false', 'msg' => 'description cannot be empty'));
-			return;
+		if (isset($data['description'])) {
+			$d = trim((string) $data['description']);
+			if ($d === '') {
+				$has_file = !empty($update['attachment']) || $old_attachment !== '';
+				if (!$has_file) {
+					echo json_encode(array('status' => 'false', 'msg' => 'description cannot be empty unless a PDF is attached'));
+					return;
+				}
+				$update['description'] = 'See attached PDF.';
+			} else {
+				$update['description'] = $d;
+			}
 		}
 		$update['added_at'] = date('Y-m-d H:i:s');
 		$update = $this->security->xss_clean($update);
-		$this->db_model->update_data_limit('homeworks', $update, array('id' => $hid, 'teacher_id' => $teacher_id), 1);
-		echo json_encode(array(
-			'status' => 'true',
-			'message' => 'Success',
-			'msg' => $this->lang->line('ltr_homework_updated_msg'),
-			'data' => array('id' => $hid),
-		), JSON_UNESCAPED_SLASHES);
+		$this->db->where(array('id' => $hid, 'teacher_id' => $teacher_id));
+		$this->db->limit(1);
+		$this->db->update('homeworks', $update);
+		if ($this->db->affected_rows() < 1) {
+			$this->api_json(false, 'No changes applied or homework not found.');
+			return;
+		}
+		$this->api_json(true, $this->lang->line('ltr_homework_updated_msg'), array('id' => $hid));
 		die;
 	}
 
@@ -1741,6 +2920,7 @@ class Batch extends MY_Controller
 	 */
 	public function homework_delete()
 	{
+		$this->ensure_homework_attachment_column();
 		$data = $this->read_request_data();
 		$payload = $this->require_auth_payload(array('teacher'), $data);
 		if ($payload === false) {
@@ -1752,12 +2932,447 @@ class Batch extends MY_Controller
 			return;
 		}
 		$hid = (int) $data['homework_id'];
+		$existing = $this->db_model->select_data('id,attachment', 'homeworks use index (id)', array('id' => $hid, 'teacher_id' => $teacher_id), 1);
+		if (empty($existing)) {
+			$this->api_json(false, 'Homework not found');
+			return;
+		}
+		$att = isset($existing[0]['attachment']) ? trim((string) $existing[0]['attachment']) : '';
+		if ($att !== '') {
+			$p = './uploads/homework_teacher/' . $att;
+			if (is_file($p)) {
+				@unlink($p);
+			}
+		}
 		$this->db_model->delete_data('homeworks', array('id' => $hid, 'teacher_id' => $teacher_id), 1);
-		echo json_encode(array(
-			'status' => 'true',
-			'message' => 'Success',
-			'msg' => 'Homework deleted',
-		), JSON_UNESCAPED_SLASHES);
+		$this->api_json(true, 'Homework deleted', array('id' => $hid));
 		die;
+	}
+
+	/**
+	 * POST/GET api/batch/homework-details
+	 * Auth: student | teacher. Required: homework_id.
+	 */
+	public function homework_details()
+	{
+		$this->ensure_homework_attachment_column();
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('student', 'teacher'), $data);
+		if ($payload === false) {
+			return;
+		}
+		if (empty($data['homework_id'])) {
+			$this->api_json(false, 'homework_id is required');
+			return;
+		}
+		$hid = (int) $data['homework_id'];
+		if ($hid < 1) {
+			$this->api_json(false, 'Invalid homework_id');
+			return;
+		}
+
+		$this->db->select('homeworks.id,homeworks.admin_id as adminId,homeworks.teacher_id as teacherId,homeworks.subject_id as subjectId,homeworks.batch_id as batchId,homeworks.date,homeworks.description,homeworks.attachment,homeworks.added_at as addedAt,users.name as teacherName,users.teach_gender as teachGender,subjects.subject_name as subjectName');
+		$this->db->from('homeworks');
+		$this->db->join('users', 'users.id = homeworks.teacher_id', 'left');
+		$this->db->join('subjects', 'subjects.id = homeworks.subject_id', 'left');
+		$this->db->where('homeworks.id', $hid);
+		$row = $this->db->get()->row_array();
+		if (empty($row)) {
+			$this->api_json(false, 'Homework not found');
+			return;
+		}
+
+		$batch_id = (int) $row['batchId'];
+		if ($payload['ut'] === 'teacher') {
+			if ((int) $payload['uid'] !== (int) $row['teacherId']) {
+				$this->api_json(false, 'You are not allowed to access this homework');
+				return;
+			}
+		} else {
+			if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id)) {
+				return;
+			}
+		}
+
+		$att = isset($row['attachment']) ? trim((string) $row['attachment']) : '';
+		$row['attachmentUrl'] = $att !== '' ? base_url('uploads/homework_teacher/') . $att : '';
+
+		$this->api_json(true, 'Success', array('homework' => $row));
+	}
+
+	/**
+	 * POST api/batch/homework-submit
+	 * Auth: student only.
+	 * Required: homework_id. One submission per student per homework (update on re-submit).
+	 * Optional: submission_text, submission_file (multipart).
+	 */
+	public function homework_submit()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('student'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$student_id = (int) $payload['uid'];
+		if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
+			return;
+		}
+		if (empty($data['homework_id'])) {
+			$this->api_json(false, 'homework_id is required');
+			return;
+		}
+		$homework_id = (int) $data['homework_id'];
+		$submission_text = isset($data['submission_text']) ? trim((string) $data['submission_text']) : '';
+
+		$hw = $this->db_model->select_data('*', 'homeworks use index (id)', array('id' => $homework_id), 1);
+		if (empty($hw)) {
+			$this->api_json(false, 'Homework not found');
+			return;
+		}
+		$hw_row = $hw[0];
+		if (!$this->assert_batch_access_student_or_teacher($payload, (int) $hw_row['batch_id'])) {
+			return;
+		}
+
+		$file_name = '';
+		if (!empty($_FILES['submission_file']['name'])) {
+			$config['upload_path'] = './uploads/homework_submission/';
+			if (!is_dir($config['upload_path'])) {
+				@mkdir($config['upload_path'], 0777, true);
+			}
+			$config['allowed_types'] = '*';
+			$config['max_size'] = '0';
+			$this->load->library('upload', $config);
+			if (!$this->upload->do_upload('submission_file')) {
+				$this->api_json(false, strip_tags($this->upload->display_errors('', '')));
+				return;
+			}
+			$uploaddata = $this->upload->data();
+			$raw = isset($uploaddata['raw_name']) ? (string) $uploaddata['raw_name'] : '';
+			$ext = isset($uploaddata['file_ext']) ? (string) $uploaddata['file_ext'] : '';
+			$file_name = $raw . date('ymdHis') . $ext;
+			$old_path = './uploads/homework_submission/' . $raw . $ext;
+			$new_path = './uploads/homework_submission/' . $file_name;
+			if (is_file($old_path)) {
+				@rename($old_path, $new_path);
+			} else {
+				$file_name = isset($uploaddata['file_name']) ? (string) $uploaddata['file_name'] : '';
+			}
+		}
+
+		if ($submission_text === '' && $file_name === '') {
+			$this->api_json(false, 'submission_text or submission_file is required');
+			return;
+		}
+
+		$this->ensure_homework_submissions_table();
+		$existing = $this->db_model->select_data(
+			'id,attachment',
+			'homework_submissions use index (id)',
+			array('homework_id' => $homework_id, 'student_id' => $student_id),
+			1
+		);
+		$now = date('Y-m-d H:i:s');
+		if (!empty($existing)) {
+			$update = array(
+				'submission_text' => $submission_text,
+				'submitted_at' => $now,
+				'eval_status' => 0,
+				'marks' => null,
+				'remark' => null,
+				'evaluated_at' => null,
+			);
+			if ($file_name !== '') {
+				$update['attachment'] = $file_name;
+			}
+			$update = $this->security->xss_clean($update);
+			$this->db_model->update_data_limit('homework_submissions', $update, array('id' => (int) $existing[0]['id']), 1);
+			$submission_id = (int) $existing[0]['id'];
+		} else {
+			$insert = $this->security->xss_clean(array(
+				'homework_id' => $homework_id,
+				'admin_id' => (int) $hw_row['admin_id'],
+				'teacher_id' => (int) $hw_row['teacher_id'],
+				'student_id' => $student_id,
+				'batch_id' => (int) $hw_row['batch_id'],
+				'subject_id' => (int) $hw_row['subject_id'],
+				'submission_text' => $submission_text,
+				'attachment' => $file_name,
+				'submitted_at' => $now,
+			));
+			$submission_id = (int) $this->db_model->insert_data('homework_submissions', $insert);
+		}
+
+		$this->api_json(true, 'Homework submitted successfully', array(
+			'id' => $submission_id,
+			'homework_id' => $homework_id,
+			'student_id' => $student_id,
+			'submission_text' => $submission_text,
+			'attachment' => $file_name,
+			'attachment_url' => $file_name !== '' ? base_url('uploads/homework_submission/') . $file_name : '',
+		));
+	}
+
+	/**
+	 * POST/GET api/batch/homework-submissions
+	 * Auth: teacher only.
+	 * Required: homework_id
+	 */
+	public function homework_submissions()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$teacher_id = (int) $payload['uid'];
+		if (empty($data['homework_id'])) {
+			$this->api_json(false, 'homework_id is required');
+			return;
+		}
+		$homework_id = (int) $data['homework_id'];
+		$hw = $this->db_model->select_data('id,batch_id,teacher_id', 'homeworks use index (id)', array('id' => $homework_id), 1);
+		if (empty($hw)) {
+			$this->api_json(false, 'Homework not found');
+			return;
+		}
+		if ((int) $hw[0]['teacher_id'] !== $teacher_id) {
+			$this->api_json(false, 'You are not allowed to access submissions of this homework');
+			return;
+		}
+
+		$this->ensure_homework_submissions_table();
+		$pg = $this->parse_api_list_pagination($data);
+
+		$this->db->from('homework_submissions hs');
+		$this->db->where('hs.homework_id', $homework_id);
+		$total = (int) $this->db->count_all_results();
+
+		$this->db->select('hs.id,hs.homework_id as homeworkId,hs.student_id as studentId,hs.submission_text as submissionText,hs.attachment,hs.marks,hs.remark,hs.eval_status as evalStatus,hs.submitted_at as submittedAt,hs.evaluated_at as evaluatedAt,s.name as studentName,s.image as studentImage');
+		$this->db->from('homework_submissions hs');
+		$this->db->join('students s', 's.id = hs.student_id', 'left');
+		$this->db->where('hs.homework_id', $homework_id);
+		$this->db->order_by('hs.id', 'desc');
+		$this->db->limit($pg['limit'], $pg['offset']);
+		$rows = $this->db->get()->result_array();
+
+		$list = array();
+		if (!empty($rows)) {
+			foreach ($rows as $r) {
+				$file = isset($r['attachment']) ? (string) $r['attachment'] : '';
+				$r['attachmentUrl'] = $file !== '' ? base_url('uploads/homework_submission/') . $file : '';
+				$r['studentImageUrl'] = !empty($r['studentImage']) ? base_url('uploads/students/') . $r['studentImage'] : '';
+				$list[] = $r;
+			}
+		}
+
+		$this->api_json(true, 'Success', array(
+			'homework_id' => $homework_id,
+			'submissions' => $list,
+			'pagination' => $this->build_api_list_pagination_meta($pg['page'], $pg['limit'], $total),
+		));
+	}
+
+	/**
+	 * POST api/batch/homework-evaluate
+	 * Auth: teacher only.
+	 * Required: submission_id
+	 * Optional: marks, remark, eval_status (0|1)
+	 */
+	public function homework_evaluate()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$teacher_id = (int) $payload['uid'];
+		if (empty($data['submission_id'])) {
+			$this->api_json(false, 'submission_id is required');
+			return;
+		}
+		$submission_id = (int) $data['submission_id'];
+		$this->ensure_homework_submissions_table();
+
+		$this->db->select('hs.id,hs.homework_id,hw.teacher_id');
+		$this->db->from('homework_submissions hs');
+		$this->db->join('homeworks hw', 'hw.id = hs.homework_id', 'inner');
+		$this->db->where('hs.id', $submission_id);
+		$row = $this->db->get()->row_array();
+		if (empty($row)) {
+			$this->api_json(false, 'Submission not found');
+			return;
+		}
+		if ((int) $row['teacher_id'] !== $teacher_id) {
+			$this->api_json(false, 'You are not allowed to evaluate this submission');
+			return;
+		}
+
+		$update = array();
+		$max_marks = null;
+		if ($this->db->field_exists('max_marks', 'homeworks')) {
+			$hw_meta = $this->db_model->select_data('id,max_marks', 'homeworks use index (id)', array('id' => (int) $row['homework_id']), 1);
+			if (!empty($hw_meta) && isset($hw_meta[0]['max_marks']) && $hw_meta[0]['max_marks'] !== '') {
+				$max_marks = (float) $hw_meta[0]['max_marks'];
+			}
+		}
+		if (isset($data['marks']) && $data['marks'] !== '') {
+			$marks = (float) $data['marks'];
+			if ($max_marks !== null && $marks > $max_marks) {
+				$this->api_json(false, 'Marks cannot be greater than max_marks (' . $max_marks . ')');
+				return;
+			}
+			$update['marks'] = $marks;
+		}
+		if (isset($data['remark'])) {
+			$update['remark'] = trim((string) $data['remark']);
+		}
+		$eval_status = 1;
+		if (isset($data['eval_status'])) {
+			$eval_status = ((int) $data['eval_status'] === 1) ? 1 : 0;
+		}
+		$update['eval_status'] = $eval_status;
+		$update['evaluated_at'] = date('Y-m-d H:i:s');
+		$update = $this->security->xss_clean($update);
+		$this->db_model->update_data_limit('homework_submissions', $update, array('id' => $submission_id), 1);
+
+		$this->api_json(true, 'Submission evaluated successfully', array(
+			'submission_id' => $submission_id,
+			'homework_id' => (int) $row['homework_id'],
+			'eval_status' => $eval_status,
+		));
+	}
+
+	/**
+	 * POST/GET api/batch/my-homework-submissions
+	 * Auth: student only.
+	 * Optional: homework_id, batch_id, eval_status, page, limit
+	 */
+	public function my_homework_submissions()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('student'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$student_id = (int) $payload['uid'];
+		if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
+			return;
+		}
+		$this->ensure_homework_submissions_table();
+		$pg = $this->parse_api_list_pagination($data);
+
+		$this->db->from('homework_submissions hs');
+		$this->db->where('hs.student_id', $student_id);
+		if (!empty($data['homework_id'])) {
+			$this->db->where('hs.homework_id', (int) $data['homework_id']);
+		}
+		if (!empty($data['batch_id'])) {
+			$this->db->where('hs.batch_id', (int) $data['batch_id']);
+		}
+		if (isset($data['eval_status']) && $data['eval_status'] !== '') {
+			$this->db->where('hs.eval_status', ((int) $data['eval_status'] === 1) ? 1 : 0);
+		}
+		$total = (int) $this->db->count_all_results();
+
+		$this->db->select('hs.id,hs.homework_id as homeworkId,hs.batch_id as batchId,hs.subject_id as subjectId,hs.submission_text as submissionText,hs.attachment,hs.marks,hs.remark,hs.eval_status as evalStatus,hs.submitted_at as submittedAt,hs.evaluated_at as evaluatedAt,hw.date as homeworkDate,hw.description as homeworkDescription,su.subject_name as subjectName,u.name as teacherName');
+		$this->db->from('homework_submissions hs');
+		$this->db->join('homeworks hw', 'hw.id = hs.homework_id', 'left');
+		$this->db->join('subjects su', 'su.id = hs.subject_id', 'left');
+		$this->db->join('users u', 'u.id = hs.teacher_id', 'left');
+		$this->db->where('hs.student_id', $student_id);
+		if (!empty($data['homework_id'])) {
+			$this->db->where('hs.homework_id', (int) $data['homework_id']);
+		}
+		if (!empty($data['batch_id'])) {
+			$this->db->where('hs.batch_id', (int) $data['batch_id']);
+		}
+		if (isset($data['eval_status']) && $data['eval_status'] !== '') {
+			$this->db->where('hs.eval_status', ((int) $data['eval_status'] === 1) ? 1 : 0);
+		}
+		$this->db->order_by('hs.id', 'desc');
+		$this->db->limit($pg['limit'], $pg['offset']);
+		$rows = $this->db->get()->result_array();
+
+		$list = array();
+		if (!empty($rows)) {
+			foreach ($rows as $r) {
+				$file = isset($r['attachment']) ? (string) $r['attachment'] : '';
+				$r['attachmentUrl'] = $file !== '' ? base_url('uploads/homework_submission/') . $file : '';
+				$list[] = $r;
+			}
+		}
+
+		$this->api_json(true, 'Success', array(
+			'student_id' => $student_id,
+			'submissions' => $list,
+			'pagination' => $this->build_api_list_pagination_meta($pg['page'], $pg['limit'], $total),
+		));
+	}
+
+	/**
+	 * POST/GET api/batch/homework-submission-details
+	 * Auth: student | teacher.
+	 * Required: submission_id
+	 * - student: can only view own submission
+	 * - teacher: can only view submissions for own homework
+	 */
+	public function homework_submission_details()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('student', 'teacher'), $data);
+		if ($payload === false) {
+			return;
+		}
+		if (empty($data['submission_id'])) {
+			$this->api_json(false, 'submission_id is required');
+			return;
+		}
+		$submission_id = (int) $data['submission_id'];
+		if ($submission_id < 1) {
+			$this->api_json(false, 'Invalid submission_id');
+			return;
+		}
+
+		$this->ensure_homework_submissions_table();
+		$this->db->select('hs.id,hs.homework_id as homeworkId,hs.admin_id as adminId,hs.teacher_id as teacherId,hs.student_id as studentId,hs.batch_id as batchId,hs.subject_id as subjectId,hs.submission_text as submissionText,hs.attachment,hs.marks,hs.remark,hs.eval_status as evalStatus,hs.submitted_at as submittedAt,hs.evaluated_at as evaluatedAt,hw.date as homeworkDate,hw.description as homeworkDescription,su.subject_name as subjectName,st.name as studentName,st.image as studentImage,u.name as teacherName,u.teach_image as teacherImage');
+		$this->db->from('homework_submissions hs');
+		$this->db->join('homeworks hw', 'hw.id = hs.homework_id', 'left');
+		$this->db->join('subjects su', 'su.id = hs.subject_id', 'left');
+		$this->db->join('students st', 'st.id = hs.student_id', 'left');
+		$this->db->join('users u', 'u.id = hs.teacher_id', 'left');
+		$this->db->where('hs.id', $submission_id);
+		$row = $this->db->get()->row_array();
+		if (empty($row)) {
+			$this->api_json(false, 'Submission not found');
+			return;
+		}
+
+		$ut = strtolower(trim((string) $payload['ut']));
+		$uid = (int) $payload['uid'];
+		if ($ut === 'student') {
+			if ($uid < 1 || $this->authorize_student_request($uid) === false) {
+				return;
+			}
+			if ((int) $row['studentId'] !== $uid) {
+				$this->api_json(false, 'You are not allowed to view this submission');
+				return;
+			}
+		} elseif ($ut === 'teacher') {
+			if ((int) $row['teacherId'] !== $uid) {
+				$this->api_json(false, 'You are not allowed to view this submission');
+				return;
+			}
+		} else {
+			$this->api_json(false, 'This endpoint is available for student and teacher only');
+			return;
+		}
+
+		$file = isset($row['attachment']) ? (string) $row['attachment'] : '';
+		$row['attachmentUrl'] = $file !== '' ? base_url('uploads/homework_submission/') . $file : '';
+		$row['studentImageUrl'] = !empty($row['studentImage']) ? base_url('uploads/students/') . $row['studentImage'] : '';
+		$row['teacherImageUrl'] = !empty($row['teacherImage']) ? base_url('uploads/users/') . $row['teacherImage'] : '';
+
+		$this->api_json(true, 'Success', array('submission' => $row));
 	}
 }

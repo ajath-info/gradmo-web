@@ -16,7 +16,7 @@
 					</div>
 				</div>
 				<div id="libMsg" class="small text-muted"></div>
-				<div id="libList"></div>
+				<div id="libList" class="inst-card-grid"></div>
 			</div>
 		</div>
 	</div>

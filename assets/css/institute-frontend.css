@@ -42,6 +42,9 @@
 @media (min-width: 992px) {
 	.inst-card-grid { grid-template-columns: repeat(3, 1fr); }
 }
+@media (min-width: 1200px) {
+	.inst-card-grid { grid-template-columns: repeat(4, 1fr); }
+}
 .inst-card-grid > p {
 	grid-column: 1 / -1;
 }
@@ -600,7 +603,6 @@ a.inst-review-card:hover {
 	min-height: 42px;
 	border-radius: 10px;
 	font-weight: 600;
-	padding: 10px 16px;
 }
 @media (min-width: 768px) {
 	.inst-list-filter-bar {

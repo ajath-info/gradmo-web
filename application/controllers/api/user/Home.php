@@ -721,7 +721,7 @@ class Home extends MY_Controller {
     				if(!empty($batchData)){
     					foreach($batchData as $key=>$value){
     						if(!empty($value['batchImage'])){
-    							$batchData[$key]['batchImage']= base_url('uploads/batch_image/').$value['batchImage'];
+    							$batchData[$key]['batchImage']= batch_image_url($value['batchImage']);
     						}
     						$startDate =$value['startDate'];
     						$endDate =$value['endDate'];
@@ -873,7 +873,7 @@ class Home extends MY_Controller {
 			        
 			        foreach($yourBatch as $key=>$value){
 						if(!empty($value['batchImage'])){
-							$yourBatch[$key]['batchImage']= base_url('uploads/batch_image/').$value['batchImage'];
+							$yourBatch[$key]['batchImage']= batch_image_url($value['batchImage']);
 						}
 						$startDate =$value['startDate'];
 						$endDate =$value['endDate'];
@@ -971,7 +971,7 @@ class Home extends MY_Controller {
 			        
 			        foreach($recommendedBatch as $key=>$value){
 						if(!empty($value['batchImage'])){
-							$recommendedBatch[$key]['batchImage']= base_url('uploads/batch_image/').$value['batchImage'];
+							$recommendedBatch[$key]['batchImage']= batch_image_url($value['batchImage']);
 						}
 						$startDate =$value['startDate'];
 						$endDate =$value['endDate'];
@@ -1093,7 +1093,7 @@ public function otherBatchData($data){
 				if(!empty($batchData)){
 					foreach($batchData as $key=>$value){
 						if(!empty($value['batchImage'])){
-							$batchData[$key]['batchImage']= base_url('uploads/batch_image/').$value['batchImage'];
+							$batchData[$key]['batchImage']= batch_image_url($value['batchImage']);
 						}
 						$startDate =$value['startDate'];
 						$endDate =$value['endDate'];
@@ -2399,6 +2399,116 @@ public function otherBatchData($data){
 		return false;
 	}
 
+	/** @var bool */
+	private $attendance_day_status_column_checked = false;
+
+	/**
+	 * Optional explicit status per attendance row: present, late, absent, half_day (legacy rows derive from time).
+	 */
+	private function ensure_attendance_day_status_column()
+	{
+		if ($this->attendance_day_status_column_checked) {
+			return;
+		}
+		$this->attendance_day_status_column_checked = true;
+		if ($this->db->field_exists('day_status', 'attendance')) {
+			return;
+		}
+		@$this->db->query('ALTER TABLE `attendance` ADD COLUMN `day_status` VARCHAR(20) NOT NULL DEFAULT \'\' AFTER `time`');
+	}
+
+	private function normalize_attendance_day_status($raw)
+	{
+		$s = strtolower(trim((string) $raw));
+		if ($s === 'halfday') {
+			$s = 'half_day';
+		}
+		$allowed = array('present', 'late', 'absent', 'half_day');
+		return in_array($s, $allowed, true) ? $s : '';
+	}
+
+	private function attendance_status_rank($status)
+	{
+		switch ($status) {
+			case 'absent':
+				return 4;
+			case 'late':
+				return 3;
+			case 'half':
+				return 2;
+			case 'present':
+				return 1;
+			default:
+				return 0;
+		}
+	}
+
+	private function attendance_status_from_rank($rank)
+	{
+		$map = array(4 => 'absent', 3 => 'late', 2 => 'half', 1 => 'present');
+		return isset($map[$rank]) ? $map[$rank] : 'none';
+	}
+
+	/**
+	 * Map DB row + late flag to calendar status: present | late | half | absent.
+	 */
+	private function derive_student_attendance_status_row(array $ar, $is_late_int)
+	{
+		$ds = isset($ar['dayStatus']) ? strtolower(trim((string) $ar['dayStatus'])) : '';
+		if ($ds === 'absent') {
+			return 'absent';
+		}
+		if ($ds === 'half_day' || $ds === 'halfday') {
+			return 'half';
+		}
+		if ($ds === 'late') {
+			return 'late';
+		}
+		if ($ds === 'present') {
+			return 'present';
+		}
+		return ((int) $is_late_int === 1) ? 'late' : 'present';
+	}
+
+	/**
+	 * Per-date status for one calendar month (Y-m-d => status).
+	 * absent inferred only when batch_id filter + batch window: weekday, not future, no attendance row.
+	 */
+	private function student_attendance_calendar_for_month($year, $month_num, array $records_by_date, $filter_batch_id, $batch_window_or_null)
+	{
+		$dim = cal_days_in_month(CAL_GREGORIAN, (int) $month_num, (int) $year);
+		$cal = array();
+		$today = date('Y-m-d');
+		for ($d = 1; $d <= $dim; $d++) {
+			$ymd = sprintf('%04d-%02d-%02d', (int) $year, (int) $month_num, $d);
+			$ts = strtotime($ymd);
+			$dow = (int) date('N', $ts);
+			if (isset($records_by_date[$ymd])) {
+				$cal[$ymd] = $records_by_date[$ymd];
+				continue;
+			}
+			if ($dow >= 6) {
+				$cal[$ymd] = 'weekend';
+				continue;
+			}
+			if ($ymd > $today) {
+				$cal[$ymd] = 'future';
+				continue;
+			}
+			if ($filter_batch_id > 0 && is_array($batch_window_or_null)) {
+				$bs = isset($batch_window_or_null['start']) ? (string) $batch_window_or_null['start'] : '';
+				$be = isset($batch_window_or_null['end']) ? (string) $batch_window_or_null['end'] : '';
+				$be_cap = ($be !== '' && $be < $today) ? $be : $today;
+				if ($bs !== '' && $be_cap !== '' && $ymd >= $bs && $ymd <= $be_cap) {
+					$cal[$ymd] = 'absent';
+					continue;
+				}
+			}
+			$cal[$ymd] = 'none';
+		}
+		return $cal;
+	}
+
     function attendanceList()
     {
         $from_body = json_decode(file_get_contents('php://input'), true);
@@ -2421,6 +2531,7 @@ public function otherBatchData($data){
 
         // STUDENT VIEW: summary = selected month; attendance = whole year (calendar can show every month, e.g. March marks while viewing April).
         if ($ut === 'student') {
+			$this->ensure_attendance_day_status_column();
             $student_id = (int) $payload['uid'];
             $month_raw = isset($data['month']) ? $data['month'] : null;
             $year_raw = isset($data['year']) ? $data['year'] : null;
@@ -2433,36 +2544,89 @@ public function otherBatchData($data){
             $month = str_pad((string) $m, 2, '0', STR_PAD_LEFT);
             $month_prefix = $year . '-' . $month;
 
+			$filter_batch = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+			$batch_window = null;
+			if ($filter_batch > 0) {
+				$br = $this->db_model->select_data('start_date,end_date', 'batches', array('id' => $filter_batch, 'status' => 1), 1);
+				if (!empty($br[0])) {
+					$batch_window = array(
+						'start' => isset($br[0]['start_date']) ? (string) $br[0]['start_date'] : '',
+						'end' => isset($br[0]['end_date']) ? (string) $br[0]['end_date'] : '',
+					);
+				}
+			}
+
             $year_like = $year . '-%';
-            $sql_stu = "SELECT a.id, a.student_id AS studentId, a.added_id AS addedId, a.date, a.time,
+            $sql_stu = "SELECT a.id, a.student_id AS studentId, a.added_id AS addedId, a.date, a.time, a.batch_id AS batchId,
+                    TRIM(IFNULL(a.day_status, '')) AS dayStatus,
                     COALESCE(b.start_time, b2.start_time) AS batchStartTime
                 FROM attendance a
                 LEFT JOIN batches b ON b.id = a.batch_id AND IFNULL(a.batch_id, 0) > 0
                 LEFT JOIN students st ON st.id = a.student_id
                 LEFT JOIN batches b2 ON b2.id = st.batch_id
                 WHERE a.student_id = ?
-                  AND a.date LIKE ?
-                ORDER BY a.date DESC, a.id DESC";
-            $q_stu = $this->db->query($sql_stu, array($student_id, $year_like));
+                  AND a.date LIKE ?";
+			$params_stu = array($student_id, $year_like);
+			if ($filter_batch > 0) {
+				$sql_stu .= ' AND a.batch_id = ?';
+				$params_stu[] = $filter_batch;
+			}
+			$sql_stu .= ' ORDER BY a.date DESC, a.id DESC';
+            $q_stu = $this->db->query($sql_stu, $params_stu);
             $att_rows = $q_stu->result_array();
 
             $attendance = array();
-            $days_present = 0;
+			$records_by_date = array();
             foreach ($att_rows as $ar) {
                 $row_date = isset($ar['date']) ? (string) $ar['date'] : '';
+				$is_late = $this->attendance_is_late($ar['time'], isset($ar['batchStartTime']) ? $ar['batchStartTime'] : '');
+				$status = $this->derive_student_attendance_status_row($ar, $is_late);
                 if ($row_date !== '' && strncmp($row_date, $month_prefix, strlen($month_prefix)) === 0) {
-                    $days_present++;
+					$r = $this->attendance_status_rank(isset($records_by_date[$row_date]) ? $records_by_date[$row_date] : 'none');
+					$n = $this->attendance_status_rank($status);
+					if ($n >= $r) {
+						$records_by_date[$row_date] = $this->attendance_status_from_rank($n);
+					}
                 }
                 $attendance[] = array(
                     'id' => (int) $ar['id'],
                     'studentId' => (int) $ar['studentId'],
                     'addedId' => (int) $ar['addedId'],
+					'batchId' => isset($ar['batchId']) ? (int) $ar['batchId'] : 0,
                     'date' => $ar['date'],
                     'attendance_date' => $ar['date'],
                     'time' => $ar['time'],
-                    'is_late' => $this->attendance_is_late($ar['time'], isset($ar['batchStartTime']) ? $ar['batchStartTime'] : '')
+                    'is_late' => (int) $is_late,
+					'status' => $status,
+					'dayStatus' => isset($ar['dayStatus']) ? (string) $ar['dayStatus'] : ''
                 );
             }
+			$count_present_days = 0;
+			$count_late_days = 0;
+			$count_half_days = 0;
+			$count_absent_explicit_days = 0;
+			foreach ($records_by_date as $d => $st) {
+				if ($st === 'present') {
+					$count_present_days++;
+				} elseif ($st === 'late') {
+					$count_late_days++;
+				} elseif ($st === 'half') {
+					$count_half_days++;
+				} elseif ($st === 'absent') {
+					$count_absent_explicit_days++;
+				}
+			}
+			$days_present = $count_present_days + $count_late_days + $count_half_days;
+
+			$calendar = $this->student_attendance_calendar_for_month($year, $m, $records_by_date, $filter_batch, $batch_window);
+			$inferred_absent = 0;
+			foreach ($calendar as $ymd => $st) {
+				if ($st === 'absent') {
+					$inferred_absent++;
+				}
+			}
+			$count_absent_total = $inferred_absent;
+
             $days_in_month = cal_days_in_month(CAL_GREGORIAN, $m, (int) $year);
             $percentage = $days_in_month > 0 ? round(($days_present / $days_in_month) * 100, 2) : 0;
 
@@ -2480,8 +2644,13 @@ public function otherBatchData($data){
                     'month' => $m,
                     'daysPresent' => (int) $days_present,
                     'daysInMonth' => (int) $days_in_month,
-                    'attendancePercent' => (float) $percentage
+                    'attendancePercent' => (float) $percentage,
+					'countPresent' => (int) $count_present_days,
+					'countLate' => (int) $count_late_days,
+					'countHalf' => (int) $count_half_days,
+					'countAbsent' => (int) $count_absent_total
                 ),
+				'calendar' => $calendar,
                 'msg' => $this->lang->line('ltr_fetch_successfully')
             ));
             return;
@@ -2619,6 +2788,7 @@ public function otherBatchData($data){
 	 */
 	public function addAttendance()
 	{
+		$this->ensure_attendance_day_status_column();
 		$from_body = json_decode(file_get_contents('php://input'), true);
 		if (!is_array($from_body)) {
 			$from_body = array();
@@ -2647,7 +2817,7 @@ public function otherBatchData($data){
 			return;
 		}
 
-		$batch_row = $this->db_model->select_data('id,admin_id', 'batches', array('id' => $batch_id, 'status' => 1), 1);
+		$batch_row = $this->db_model->select_data('id,admin_id,start_time', 'batches', array('id' => $batch_id, 'status' => 1), 1);
 		if (empty($batch_row)) {
 			echo json_encode(array('status' => 'false', 'msg' => 'Batch not found'));
 			return;
@@ -2667,6 +2837,12 @@ public function otherBatchData($data){
 			return;
 		}
 		$time = $time_raw;
+
+		$batch_start_t = !empty($batch_row[0]['start_time']) ? (string) $batch_row[0]['start_time'] : '';
+		$ds_in = isset($data['day_status']) ? $data['day_status'] : (isset($data['attendance_status']) ? $data['attendance_status'] : '');
+		$ds_norm = $this->normalize_attendance_day_status($ds_in);
+		$auto_status = ((int) $this->attendance_is_late($time, $batch_start_t) === 1) ? 'late' : 'present';
+		$final_day_status = $ds_norm !== '' ? $ds_norm : $auto_status;
 
 		$student_ids = array();
 		if (!empty($data['student_ids']) && is_array($data['student_ids'])) {
@@ -2715,11 +2891,15 @@ public function otherBatchData($data){
 
 			if (!empty($existing)) {
 				$att_id = (int) $existing[0]['id'];
-				$this->db_model->update_data_limit('attendance', array(
+				$upd = array(
 					'time' => $time,
 					'added_id' => $teacher_id,
 					'admin_id' => $use_admin
-				), array('id' => $att_id), 1);
+				);
+				if ($this->db->field_exists('day_status', 'attendance')) {
+					$upd['day_status'] = $final_day_status;
+				}
+				$this->db_model->update_data_limit('attendance', $upd, array('id' => $att_id), 1);
 				$results[] = array(
 					'studentId' => $student_id,
 					'status' => 'true',
@@ -2738,6 +2918,9 @@ public function otherBatchData($data){
 					'batch_id' => $batch_id,
 					'admin_id' => $use_admin > 0 ? $use_admin : 1
 				));
+				if ($this->db->field_exists('day_status', 'attendance')) {
+					$ins_row['day_status'] = $final_day_status;
+				}
 				$this->db_model->insert_data('attendance', $ins_row);
 				$att_id = (int) $this->db->insert_id();
 				$results[] = array(
@@ -4036,7 +4219,7 @@ public function otherBatchData($data){
             if(!empty($batchData)){
                 foreach($batchData as $key=>$value){
                     if(!empty($value['batchImage'])){
-                        $batchData[$key]['batchImage']= base_url('uploads/batch_image/').$value['batchImage'];
+                        $batchData[$key]['batchImage']= batch_image_url($value['batchImage']);
                     }
                     $startDate =$value['startDate'];
                     $endDate =$value['endDate'];
@@ -4185,7 +4368,7 @@ public function otherBatchData($data){
             // if(!empty($batchData)){
             // 	foreach($batchData as $key=>$value){
             // 		if(!empty($value['batchImage'])){
-            // 			$batchData[$key]['batchImage']= base_url('uploads/batch_image/').$value['batchImage'];
+            // 			$batchData[$key]['batchImage']= batch_image_url($value['batchImage']);
             // 		}
             // 		$startDate =$value['startDate'];
             // 		$endDate =$value['endDate'];
@@ -4321,7 +4504,7 @@ public function otherBatchData($data){
             if(!empty($batchData)){
                 foreach($batchData as $key=>$value){
                     if(!empty($value['batchImage'])){
-                        $batchData[$key]['batchImage']= base_url('uploads/batch_image/').$value['batchImage'];
+                        $batchData[$key]['batchImage']= batch_image_url($value['batchImage']);
                     }
                     $startDate =$value['startDate'];
                     $endDate =$value['endDate'];

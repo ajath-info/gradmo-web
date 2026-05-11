@@ -1,40 +1,34 @@
-<!----- Page Title Start ----->
-<section class="edu_page_title_wrapper">
-	<div class="container">
-		<div class="row">
-			<div class="col-lg-12 col-md-12 col-sm-12 col-12 text-center">
-				<div class="edu_page_title_text">
-					<h1><?php echo html_escape($title); ?></h1>
-					<ul>
-						<li><a href="<?php echo base_url();?>"><?php echo html_escape($this->common->languageTranslator('ltr_home'));?></a></li>
-						<li><a href="javascript:void(0);"><?php echo html_escape($this->common->languageTranslator('ltr_forgot_password'));?></a></li>
-					</ul>
-				</div>
-			</div>
-		</div>
-	</div>
-</section>
-<section class="edu_form_wrapper enroll-wrapper contactpage">
-	<div class="container">
-		<div class="row">
-			<div class="col-lg-12 col-md-12 col-sm-12 col-12 p-0">
-				<div class="edu_form_container_main edu_form_container withoutMapFrm">
-					<h4><?php echo html_escape($this->common->languageTranslator('ltr_forgot_password'));?></h4>
-					<form class="form" method="post" action="<?php echo base_url('front_ajax/reset_password'); ?>" data-redirect="yes" id="forgotForm">
-						<div class="row">
-							<div class="col-lg-12 col-md-12 col-sm-12 col-12">
-								<div class="edu_field_holder">
-									<input type="text" class="edu_form_field require" name="email" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_email_address'));?>" autocomplete="off" data-valid="email" data-error="<?php echo html_escape($this->common->languageTranslator('ltr_valid_enter_your_email'));?>">
-								</div>
-							</div>
-							<div class="col-lg-6 col-md-6 col-sm-12 col-12 mt-3">
-								<a class="edu_btn edu_btn_black" href="<?php echo base_url('login');?>"><?php echo html_escape($this->common->languageTranslator('ltr_back_to_login'));?></a>
-							</div>
-							<div class="col-lg-6 col-md-6 col-sm-12 col-12 text-md-right mt-3">
-								<button class="edu_btn" id="auth_forgot" type="button" data-action="submitThisForm"><?php echo html_escape($this->common->languageTranslator('ltr_submit'));?></button>
+<section class="edu-auth-page">
+	<div class="container py-4 py-md-5">
+		<div class="row justify-content-center">
+			<div class="col-xl-6 col-lg-7 col-md-10">
+				<div class="edu-auth-shell">
+					<div class="edu-auth-main">
+						<div class="edu-auth-main-inner">
+							<nav class="edu-auth-breadcrumb" aria-label="Breadcrumb">
+								<a href="<?php echo base_url(); ?>"><?php echo html_escape($this->common->languageTranslator('ltr_home')); ?></a>
+								<span class="edu-auth-breadcrumb-sep" aria-hidden="true">/</span>
+								<span><?php echo html_escape($this->common->languageTranslator('ltr_forgot_password')); ?></span>
+							</nav>
+							<h1 class="edu-auth-heading"><?php echo html_escape($title); ?></h1>
+							<p class="edu-auth-sub"><?php echo html_escape($this->common->languageTranslator('ltr_forgot_password')); ?></p>
+
+							<div class="edu-auth-form-card edu_form_container_main edu_form_container withoutMapFrm">
+								<form class="form" method="post" action="<?php echo base_url('front_ajax/reset_password'); ?>" data-redirect="yes" id="forgotForm">
+									<div class="edu-auth-field">
+										<label class="edu-auth-label" for="forgot_email"><?php echo html_escape($this->common->languageTranslator('ltr_email_address')); ?></label>
+										<div class="edu_field_holder">
+											<input type="text" id="forgot_email" class="edu_form_field require edu-auth-input" name="email" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_email_address'));?>" autocomplete="off" data-valid="email" data-error="<?php echo html_escape($this->common->languageTranslator('ltr_valid_enter_your_email'));?>">
+										</div>
+									</div>
+									<div class="edu-auth-actions">
+										<a class="edu-auth-btn edu-auth-btn--ghost" href="<?php echo base_url('login');?>"><?php echo html_escape($this->common->languageTranslator('ltr_back_to_login'));?></a>
+										<button class="edu-auth-btn edu-auth-btn--primary" id="auth_forgot" type="button" data-action="submitThisForm"><?php echo html_escape($this->common->languageTranslator('ltr_submit'));?></button>
+									</div>
+								</form>
 							</div>
 						</div>
-					</form>
+					</div>
 				</div>
 			</div>
 		</div>

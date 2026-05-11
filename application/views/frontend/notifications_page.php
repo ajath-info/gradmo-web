@@ -21,7 +21,7 @@
 					</div>
 				</div>
 				<div id="notifMsg" class="small text-muted"></div>
-				<div id="notifList"></div>
+				<div id="notifList" class="inst-card-grid"></div>
 			</div>
 		</div>
 	</div>

@@ -30,6 +30,13 @@ if (strlen($ft_tel_href) < 5) {
 	$ft_tel_href = 'tel:+919999999999';
 }
 $ft_brand = html_escape(trim((string) $this->common->siteTitle) !== '' ? $this->common->siteTitle : 'Gradmo');
+$ft_logo = html_escape($this->common->siteLogo);
+if ($ft_logo === '' || stripos($ft_logo, 'favicon') !== false) {
+	$ft_logo = base_url('assets/images/logo.png');
+}
+$ft_facebook = !empty($fd0['facebook']) ? trim((string) $fd0['facebook']) : '';
+$ft_instagram = !empty($fd0['instagram']) ? trim((string) $fd0['instagram']) : '';
+$ft_twitter = !empty($fd0['twitter']) ? trim((string) $fd0['twitter']) : '';
 ?>
 <footer class="edu_footer_wrapper edu-footer-gradmo">
 		<div class="container-fluid edu-footer-gradmo__fluid">
@@ -37,7 +44,7 @@ $ft_brand = html_escape(trim((string) $this->common->siteTitle) !== '' ? $this->
 				<div class="edu-footer-gradmo__grid">
 					<div class="edu-footer-gradmo__logo-col">
 						<div class="edu-footer-gradmo__logo-icon" aria-hidden="true">
-							<i class="fas fa-book-open"></i>
+							<img src="<?php echo $ft_logo; ?>" alt="<?php echo $ft_brand; ?>">
 						</div>
 						<h2 class="edu-footer-gradmo__brand"><?php echo $ft_brand; ?></h2>
 					</div>
@@ -51,7 +58,7 @@ $ft_brand = html_escape(trim((string) $this->common->siteTitle) !== '' ? $this->
 							<div class="edu-footer-gradmo__links-col">
 								<p><a href="<?php echo base_url('about-us'); ?>">› <?php echo html_escape($this->common->languageTranslator('ltr_about_us')); ?></a></p>
 								<p><a href="<?php echo base_url('contact-us'); ?>">› <?php echo html_escape($this->common->languageTranslator('ltr_contact_us')); ?></a></p>
-								<p><a href="<?php echo base_url('courses-offered'); ?>">› <?php echo html_escape($this->common->languageTranslator('ltr_courses_offered')); ?></a></p>
+								<p><a href="<?php echo base_url('batch/list'); ?>">› Batches</a></p>
 							</div>
 							<div class="edu-footer-gradmo__links-col">
 								<p><a href="<?php echo base_url('institute/listing'); ?>">› <?php echo html_escape('Institute listing'); ?></a></p>
@@ -71,6 +78,11 @@ $ft_brand = html_escape(trim((string) $this->common->siteTitle) !== '' ? $this->
 			<div class="edu-footer-gradmo__bottom-wrap">
 				<div class="edu-footer-gradmo__bottom">
 					<p><?php echo html_escape($this->common->copyrightText); ?></p>
+					<div class="edu-footer-gradmo__social">
+						<?php if ($ft_facebook !== '') { ?><a href="<?php echo html_escape($ft_facebook); ?>" target="_blank" rel="noopener"><i class="fab fa-facebook-f"></i></a><?php } ?>
+						<?php if ($ft_instagram !== '') { ?><a href="<?php echo html_escape($ft_instagram); ?>" target="_blank" rel="noopener"><i class="fab fa-instagram"></i></a><?php } ?>
+						<?php if ($ft_twitter !== '') { ?><a href="<?php echo html_escape($ft_twitter); ?>" target="_blank" rel="noopener"><i class="fab fa-twitter"></i></a><?php } ?>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -90,6 +102,7 @@ $ft_brand = html_escape(trim((string) $this->common->siteTitle) !== '' ? $this->
 	<script src="<?php echo base_url();?>assets/js/tilt.js"></script>
 	<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 	<script src="<?php echo base_url();?>assets/js/front-custom.js?<?php echo time();?>"></script>
+	<script src="<?php echo base_url();?>assets/js/auth-select.js?<?php echo time();?>"></script>
 	<?php if (!empty($load_auth_form_assets)): ?>
 	<!-- Student re-login popup (used by login.js after AJAX login) -->
 	<div id="studentLogin" class="edu_popup_container mfp-hide">

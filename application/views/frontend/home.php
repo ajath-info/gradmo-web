@@ -4,11 +4,57 @@ if (!empty($site_Details) && is_array($site_Details) && !empty($site_Details[0][
 	$home_site_logo = base_url('uploads/site_data/' . $site_Details[0]['site_logo']);
 }
 $home_batches = (isset($batches) && is_array($batches)) ? $batches : array();
+$home_resolve_batch_image = function ($raw) use ($home_site_logo) {
+	$img = trim((string) $raw);
+	if ($img === '') {
+		return ($home_site_logo !== '') ? $home_site_logo : base_url('assets/images/home-banner-center.jpg');
+	}
+	$img = str_replace('\\', '/', $img);
+	if (preg_match('/^https?:\/\//i', $img)) {
+		return $img;
+	}
+	$img = ltrim($img, '/');
+	if (strpos($img, 'uploads/batch_image/') === 0) {
+		return batch_image_url(substr($img, strlen('uploads/batch_image/')));
+	}
+	if (strpos($img, 'batch_image/') === 0) {
+		return batch_image_url(substr($img, strlen('batch_image/')));
+	}
+	return batch_image_url($img);
+};
+$home_promos = array();
+if (!empty($home_batches)) {
+	$promo_max = min(3, count($home_batches));
+	for ($i = 0; $i < $promo_max; $i++) {
+		$p_batch = $home_batches[$i];
+		$p_name = isset($p_batch['batch_name']) ? trim((string) $p_batch['batch_name']) : ('Batch ' . ($i + 1));
+		$p_img = $home_resolve_batch_image(isset($p_batch['batch_image']) ? $p_batch['batch_image'] : '');
+		$home_promos[] = array(
+			'title' => ($p_name !== '') ? $p_name : ('Batch ' . ($i + 1)),
+			'subtitle' => 'Enroll now',
+			'image' => $p_img,
+		);
+	}
+}
+while (count($home_promos) < 3) {
+	$fallbacks = array(
+		base_url('assets/images/home-banner-left.jpg'),
+		base_url('assets/images/home-banner-center.jpg'),
+		base_url('assets/images/home-banner-right.jpg'),
+	);
+	$idx = count($home_promos);
+	$home_promos[] = array(
+		'title' => ($idx === 0 ? 'IELTS Coaching' : ($idx === 1 ? 'Gradmo 20% OFF' : 'Upgrade Classes')),
+		'subtitle' => ($idx === 1 ? 'Use code: XYZ123OFF' : 'Enroll now'),
+		'image' => $fallbacks[$idx],
+	);
+}
 $home_inst_listing = base_url('institute/listing');
 $home_batch_list = base_url('batch/list');
 $home_institute_api_url = isset($home_institute_api_url) ? $home_institute_api_url : site_url('api/institute/listing');
 $home_institute_details_url = isset($home_institute_details_url) ? $home_institute_details_url : site_url('institute/details');
 $home_api_access_token = isset($api_access_token) ? (string) $api_access_token : '';
+$home_slider_api_url = site_url('api/batch/slider-list');
 $home_login_url = base_url('login');
 $home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
 	'<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">' .
@@ -24,66 +70,172 @@ $home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
 );
 ?>
 <style>
-/* Home hero — matches landing banner (promo cards + search) */
+/* Home — full-bleed hero slider + search (do not duplicate .edu-home-promo-row rules in frontend-style.css) */
 .edu-home-page { overflow-x: hidden; }
 .edu-home-hero {
-	background: linear-gradient(180deg, #eef3ff 0%, #f8faff 64%, #f4f6fb 100%);
-	padding: 34px 16px 30px;
-	margin-bottom: 12px;
-	border-bottom: 1px solid #e7ebf5;
+	background: #ffffff;
+	padding: 0;
+	margin: 0;
+	border-bottom: 1px solid #dce7ff;
+}
+/* Edge-to-edge like the header bar */
+.edu-home-slider-bleed {
+	width: 100vw;
+	max-width: 100%;
+	margin-left: calc(50% - 50vw);
+	margin-right: calc(50% - 50vw);
+	position: relative;
+	background: #0f172a;
+}
+.edu-home-slider-viewport {
+	position: relative;
+	overflow: hidden;
+	width: 100%;
+	min-height: clamp(200px, 32vw, 460px);
+}
+.edu-home-promo-track {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: nowrap;
+	align-items: stretch;
+	box-sizing: border-box;
+	transition: transform 0.5s cubic-bezier(0.25, 0.1, 0.25, 1);
+	will-change: transform;
+}
+.edu-home-promo-page {
+	flex-shrink: 0;
+	box-sizing: border-box;
+	height: 100%;
+	min-height: clamp(200px, 32vw, 460px);
+}
+.edu-home-hero-slide {
+	position: relative;
+	width: 100%;
+	height: 100%;
+	min-height: clamp(200px, 32vw, 460px);
+	overflow: hidden;
+}
+.edu-home-hero-slide__media {
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+}
+.edu-home-hero-slide__media img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	object-position: center;
+	display: block;
+}
+.edu-home-hero-slide__overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	background: linear-gradient(105deg, rgba(15, 23, 42, 0.72) 0%, rgba(15, 23, 42, 0.35) 42%, rgba(15, 23, 42, 0.12) 100%);
+}
+.edu-home-hero-slide--i1 .edu-home-hero-slide__overlay {
+	background: linear-gradient(105deg, rgba(30, 58, 138, 0.55) 0%, rgba(15, 23, 42, 0.25) 55%, rgba(15, 23, 42, 0.1) 100%);
+}
+.edu-home-hero-slide--i2 .edu-home-hero-slide__overlay {
+	background: linear-gradient(105deg, rgba(180, 83, 9, 0.45) 0%, rgba(15, 23, 42, 0.35) 50%, rgba(15, 23, 42, 0.15) 100%);
+}
+.edu-home-hero-slide__content {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	padding: 22px 20px 26px;
+	z-index: 2;
+	max-width: 720px;
+	box-sizing: border-box;
+}
+@media (min-width: 768px) {
+	.edu-home-hero-slide__content { padding-left: 36px; padding-right: 36px; padding-bottom: 34px; }
+}
+.edu-home-hero-slide__title {
+	margin: 0 0 8px;
+	font-size: clamp(1.2rem, 2.8vw, 2.05rem);
+	font-weight: 800;
+	color: #fff;
+	line-height: 1.2;
+	text-shadow: 0 2px 18px rgba(0, 0, 0, 0.45);
+	font-family: 'Montserrat', sans-serif;
+	text-transform: none;
+}
+.edu-home-hero-slide__subtitle {
+	margin: 0;
+	font-size: clamp(0.88rem, 1.5vw, 1.08rem);
+	font-weight: 500;
+	color: rgba(255, 255, 255, 0.94);
+	line-height: 1.45;
+	text-shadow: 0 1px 10px rgba(0, 0, 0, 0.4);
+}
+.edu-home-slider-nav {
+	position: absolute;
+	top: 50%;
+	transform: translateY(-50%);
+	z-index: 5;
+	width: 44px;
+	height: 44px;
+	border: 0;
+	border-radius: 50%;
+	background: rgba(255, 255, 255, 0.94);
+	color: #1e3a5f;
+	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18);
+	cursor: pointer;
+	display: none;
+	align-items: center;
+	justify-content: center;
+	font-size: 14px;
+	transition: background 0.2s ease, transform 0.2s ease;
+}
+.edu-home-slider-nav:hover {
+	background: #fff;
+	color: #0b8df7;
+}
+.edu-home-slider-nav.is-visible {
+	display: flex;
+}
+.edu-home-slider-nav--prev { left: 14px; }
+.edu-home-slider-nav--next { right: 14px; }
+@media (max-width: 575px) {
+	.edu-home-slider-nav { width: 38px; height: 38px; left: 8px; }
+	.edu-home-slider-nav--next { right: 8px; }
+}
+.edu-home-hero-bottom {
+	padding: 12px 16px 14px;
+	background: #ffffff;
 }
 .edu-home-hero-inner {
 	max-width: 1200px;
 	margin: 0 auto;
+	width: 100%;
+	box-sizing: border-box;
 }
-.edu-home-promo-row {
+.edu-home-promo-dots {
 	display: flex;
-	flex-wrap: nowrap;
-	gap: 14px;
-	margin-bottom: 22px;
-	align-items: stretch;
-}
-.edu-home-promo {
-	flex: 1 1 0;
-	min-width: 0;
-	min-height: 96px;
-	border-radius: 20px;
-	padding: 20px 16px;
-	text-align: center;
-	font-weight: 700;
-	font-size: 1.05rem;
-	line-height: 1.35;
-	display: flex;
-	align-items: center;
 	justify-content: center;
-	box-shadow: 0 2px 14px rgba(15, 23, 42, 0.06);
-	border: none;
+	align-items: center;
+	gap: 8px;
+	margin: 0 0 12px;
+	flex-wrap: wrap;
 }
-.edu-home-promo-row .edu-home-promo:nth-child(1),
-.edu-home-promo-row .edu-home-promo:nth-child(3) {
-	flex: 0 0 calc((100% - 28px) * 0.30);
+.edu-home-promo-dot {
+	width: 9px;
+	height: 9px;
+	border-radius: 50%;
+	border: 0;
+	background: #cfd8ea;
+	padding: 0;
+	cursor: pointer;
+	transition: transform 0.2s ease, background 0.2s ease;
 }
-.edu-home-promo-row .edu-home-promo:nth-child(2) {
-	flex: 0 0 calc((100% - 28px) * 0.40);
+.edu-home-promo-dot.is-active {
+	background: #0b8df7;
+	transform: scale(1.15);
 }
-.edu-home-promo--blue {
-	background: #4b6cf2;
-	color: #fff;
-}
-.edu-home-promo--outline {
-	background: #fff;
-	color: #111827;
-	border: 1px solid #e8ecf4;
-	box-shadow: 0 2px 14px rgba(15, 23, 42, 0.05);
-}
-.edu-home-promo--orange {
-	background: #f59e0b;
-	color: #fff;
-	box-shadow: 0 2px 14px rgba(245, 158, 11, 0.25);
-}
-@media (max-width: 767px) {
-	.edu-home-promo-row { flex-direction: column; flex-wrap: nowrap; }
-	.edu-home-promo { flex: 1 1 auto; min-height: 84px; }
+.edu-home-promo-dots.is-hidden {
+	display: none;
 }
 .edu-home-search {
 	display: flex;
@@ -91,9 +243,9 @@ $home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
 	flex-wrap: nowrap;
 	background: #fff;
 	border: 1px solid #e8ecf4;
-	border-radius: 22px;
+	border-radius: 4px;
 	overflow: hidden;
-	box-shadow: 0 4px 20px rgba(15, 23, 42, 0.07);
+	box-shadow: 0 6px 18px rgba(9, 18, 63, 0.24);
 	max-width: 100%;
 }
 .edu-home-search input[type="search"],
@@ -113,7 +265,7 @@ $home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
 }
 .edu-home-search button {
 	flex: 0 0 auto;
-	background: #3b5bdb;
+	background: #0b8df7;
 	color: #fff;
 	border: 0;
 	padding: 16px 28px;
@@ -124,7 +276,7 @@ $home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
 	white-space: nowrap;
 }
 .edu-home-search button:hover {
-	background: #324fd1;
+	background: #0878d2;
 	color: #fff;
 }
 @media (max-width: 480px) {
@@ -140,6 +292,18 @@ $home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
 	max-width: 1200px;
 	margin: 0 auto;
 	padding: 14px 16px 44px;
+	background: #ffffff;
+}
+.edu-home-nearby,
+.edu-home-live {
+	margin-bottom: 14px;
+}
+.edu-home-nearby .edu-home-scroll-row,
+.edu-home-live .edu-home-live-stack {
+	background: #ffffff;
+	border-radius: 0;
+	padding: 6px 0;
+	border: 0;
 }
 .edu-home-section-head {
 	display: flex;
@@ -327,20 +491,24 @@ $home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
 
 <div class="edu-home-page">
 	<div class="edu-home-hero">
-		<div class="edu-home-hero-inner">
-			<div class="edu-home-promo-row" aria-label="Promotions">
-				<div class="edu-home-promo edu-home-promo--blue">IELTS Coaching</div>
-				<div class="edu-home-promo edu-home-promo--outline">20% OFF</div>
-				<div class="edu-home-promo edu-home-promo--orange">Join Now</div>
+		<div class="edu-home-slider-bleed">
+			<div id="edu_home_slider_viewport" class="edu-home-slider-viewport" aria-label="Featured banners">
+				<button type="button" id="edu_home_slider_prev" class="edu-home-slider-nav edu-home-slider-nav--prev" aria-label="Previous slide"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
+				<button type="button" id="edu_home_slider_next" class="edu-home-slider-nav edu-home-slider-nav--next" aria-label="Next slide"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
+				<div id="edu_home_promo_track" class="edu-home-promo-track"></div>
 			</div>
-			<form class="edu-home-search" id="edu_home_search_form" action="<?php echo html_escape($home_inst_listing); ?>" method="get" role="search">
-				<label for="edu_home_search_q" class="sr-only">Search institutes and batches</label>
-				<input type="search" name="search" id="edu_home_search_q" placeholder="Search by City, Topic, or Institute Name" autocomplete="off">
-				<button type="submit">Search</button>
-			</form>
+		</div>
+		<div class="edu-home-hero-bottom">
+			<div class="edu-home-hero-inner">
+				<div id="edu_home_promo_dots" class="edu-home-promo-dots" aria-label="Slide indicators"></div>
+				<form class="edu-home-search" id="edu_home_search_form" action="<?php echo html_escape($home_inst_listing); ?>" method="get" role="search">
+					<label for="edu_home_search_q" class="sr-only">Search institutes and batches</label>
+					<input type="search" name="search" id="edu_home_search_q" placeholder="Search by City, Topic, or Institute Name" autocomplete="off">
+					<button type="submit">Search</button>
+				</form>
+			</div>
 		</div>
 	</div>
-
 	<div class="edu-home-wrap">
 	<section class="edu-home-nearby" aria-labelledby="edu-home-nearby-title">
 		<div class="edu-home-section-head">
@@ -352,15 +520,21 @@ $home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
 	</section>
 	<script>
 	(function () {
+		var sliderApiUrl = <?php echo json_encode($home_slider_api_url); ?>;
 		var apiUrl = <?php echo json_encode($home_institute_api_url); ?>;
 		var token = <?php echo json_encode($home_api_access_token); ?>;
 		var detailsBase = <?php echo json_encode(rtrim($home_institute_details_url, '/') . '/'); ?>;
 		var listingUrl = <?php echo json_encode($home_inst_listing); ?>;
 		var loginUrl = <?php echo json_encode($home_login_url); ?>;
 		var defaultImage = <?php echo json_encode($home_default_card_image); ?>;
+		var promoViewport = document.getElementById('edu_home_slider_viewport');
+		var promoTrack = document.getElementById('edu_home_promo_track');
+		var promoDots = document.getElementById('edu_home_promo_dots');
+		var promoPrev = document.getElementById('edu_home_slider_prev');
+		var promoNext = document.getElementById('edu_home_slider_next');
 		var row = document.getElementById('edu_home_nearby_row');
 		var msg = document.getElementById('edu_home_nearby_msg');
-		if (!row || !msg) { return; }
+		if (!row || !msg || !promoViewport || !promoTrack || !promoDots) { return; }
 		function ok(s) { return s === true || s === 'true' || s === 1 || s === '1'; }
 		function esc(t) {
 			var d = document.createElement('div');
@@ -390,6 +564,181 @@ $home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
 			}
 			return parts.join(', ') || (it.city ? String(it.city) : '');
 		}
+		function normalizeBanners(items) {
+			var list = Array.isArray(items) ? items : [];
+			if (!list.length) {
+				return <?php echo json_encode($home_promos); ?>;
+			}
+			return list.map(function (it, i) {
+				var title = (it.heading || '').trim() || ('Banner ' + (i + 1));
+				var subtitle = (it.subheading || '').trim() || 'Enroll now';
+				var image = (it.image_url || '').trim() || defaultImage;
+				if (!it.subheading && it.description) {
+					subtitle = String(it.description).trim();
+				}
+				return { title: title, subtitle: subtitle, image: image };
+			});
+		}
+		var promoState = { page: 0, pages: 0, timer: null, raw: [] };
+		function applyPromoLayout() {
+			var w = promoViewport.offsetWidth;
+			var n = promoState.pages;
+			if (n < 1) { n = 1; }
+			if (w < 1) { return; }
+			promoTrack.style.width = (w * n) + 'px';
+			var pageEls = promoTrack.querySelectorAll('.edu-home-promo-page');
+			for (var pi = 0; pi < pageEls.length; pi++) {
+				pageEls[pi].style.flex = '0 0 ' + w + 'px';
+				pageEls[pi].style.width = w + 'px';
+				pageEls[pi].style.minWidth = w + 'px';
+				pageEls[pi].style.maxWidth = w + 'px';
+			}
+			promoTrack.style.transform = 'translateX(-' + (promoState.page * w) + 'px)';
+		}
+		function renderPromoPages() {
+			var items = promoState.raw.slice();
+			if (!items.length) {
+				items = <?php echo json_encode($home_promos); ?>;
+			}
+			var pages = [];
+			for (var i = 0; i < items.length; i++) {
+				pages.push([items[i]]);
+			}
+			if (!pages.length) {
+				var fb = <?php echo json_encode($home_promos); ?>;
+				for (var j = 0; j < fb.length; j++) {
+					pages.push([fb[j]]);
+				}
+			}
+			promoState.pages = pages.length;
+			if (promoState.page >= promoState.pages) {
+				promoState.page = 0;
+			}
+			promoTrack.innerHTML = '';
+			promoDots.innerHTML = '';
+			pages.forEach(function (group, pIdx) {
+				var page = document.createElement('div');
+				page.className = 'edu-home-promo-page';
+				var item = group[0];
+				var card = document.createElement('div');
+				card.className = 'edu-home-hero-slide edu-home-hero-slide--i' + (pIdx % 3);
+				card.innerHTML =
+					'<div class="edu-home-hero-slide__media"><img src="' + esc(item.image) + '" alt="' + esc(item.title) + '"></div>' +
+					'<div class="edu-home-hero-slide__overlay" aria-hidden="true"></div>' +
+					'<div class="edu-home-hero-slide__content">' +
+					'<div class="edu-home-hero-slide__title">' + esc(item.title) + '</div>' +
+					'<p class="edu-home-hero-slide__subtitle">' + esc(item.subtitle) + '</p>' +
+					'</div>';
+				var img = card.querySelector('img');
+				if (img) {
+					img.onerror = function () { this.onerror = null; this.src = defaultImage; };
+				}
+				page.appendChild(card);
+				promoTrack.appendChild(page);
+				var dot = document.createElement('button');
+				dot.type = 'button';
+				dot.className = 'edu-home-promo-dot' + (pIdx === promoState.page ? ' is-active' : '');
+				dot.setAttribute('aria-label', 'Go to slide ' + (pIdx + 1));
+				dot.addEventListener('click', function () {
+					promoState.page = pIdx;
+					updatePromoPosition(true);
+				});
+				promoDots.appendChild(dot);
+			});
+			var n = promoState.pages;
+			if (n <= 1) {
+				promoDots.classList.add('is-hidden');
+			} else {
+				promoDots.classList.remove('is-hidden');
+			}
+			var showNav = n > 1;
+			if (promoPrev) {
+				if (showNav) { promoPrev.classList.add('is-visible'); } else { promoPrev.classList.remove('is-visible'); }
+			}
+			if (promoNext) {
+				if (showNav) { promoNext.classList.add('is-visible'); } else { promoNext.classList.remove('is-visible'); }
+			}
+			window.requestAnimationFrame(function () {
+				window.requestAnimationFrame(applyPromoLayout);
+			});
+			syncPromoDots();
+		}
+		function syncPromoDots() {
+			var dots = promoDots.querySelectorAll('.edu-home-promo-dot');
+			for (var i = 0; i < dots.length; i++) {
+				if (i === promoState.page) { dots[i].classList.add('is-active'); }
+				else { dots[i].classList.remove('is-active'); }
+			}
+		}
+		function updatePromoPosition(restartTimer) {
+			applyPromoLayout();
+			syncPromoDots();
+			if (restartTimer) {
+				startPromoAutoplay();
+			}
+		}
+		function startPromoAutoplay() {
+			if (promoState.timer) {
+				window.clearInterval(promoState.timer);
+				promoState.timer = null;
+			}
+			if (promoState.pages <= 1) { return; }
+			promoState.timer = window.setInterval(function () {
+				promoState.page = (promoState.page + 1) % promoState.pages;
+				updatePromoPosition(false);
+			}, 4000);
+		}
+		function fetchPromos() {
+			if (!token) {
+				promoState.raw = <?php echo json_encode($home_promos); ?>;
+				renderPromoPages();
+				startPromoAutoplay();
+				return;
+			}
+			fetch(sliderApiUrl, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Accept': 'application/json',
+					'Authorization': 'Bearer ' + token
+				},
+				body: JSON.stringify({ page: 1, limit: 30 })
+			}).then(function (r) { return r.json(); }).then(function (j) {
+				if (ok(j.status) && j.data && Array.isArray(j.data.banners)) {
+					promoState.raw = normalizeBanners(j.data.banners);
+				} else {
+					promoState.raw = <?php echo json_encode($home_promos); ?>;
+				}
+				renderPromoPages();
+				startPromoAutoplay();
+			}).catch(function () {
+				promoState.raw = <?php echo json_encode($home_promos); ?>;
+				renderPromoPages();
+				startPromoAutoplay();
+			});
+		}
+		if (promoPrev) {
+			promoPrev.addEventListener('click', function () {
+				var n = promoState.pages;
+				if (n < 2) { return; }
+				promoState.page = (promoState.page - 1 + n) % n;
+				updatePromoPosition(true);
+			});
+		}
+		if (promoNext) {
+			promoNext.addEventListener('click', function () {
+				var n = promoState.pages;
+				if (n < 2) { return; }
+				promoState.page = (promoState.page + 1) % n;
+				updatePromoPosition(true);
+			});
+		}
+		var promoResizeTimer = null;
+		window.addEventListener('resize', function () {
+			if (promoResizeTimer) { window.clearTimeout(promoResizeTimer); }
+			promoResizeTimer = window.setTimeout(applyPromoLayout, 120);
+		});
+		fetchPromos();
 		function renderCards(list) {
 			row.innerHTML = '';
 			if (!list || !list.length) {
@@ -494,12 +843,7 @@ $home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
 				foreach ($home_batches as $hb) {
 					$bid = isset($hb['id']) ? (int) $hb['id'] : 0;
 					$bname = isset($hb['batch_name']) ? $hb['batch_name'] : 'Live Class';
-					$bimg = '';
-					if (!empty($hb['batch_image'])) {
-						$bimg = base_url('uploads/batch_image/' . $hb['batch_image']);
-					} elseif ($home_site_logo !== '') {
-						$bimg = $home_site_logo;
-					}
+					$bimg = $home_resolve_batch_image(isset($hb['batch_image']) ? $hb['batch_image'] : '');
 					$dt = '';
 					if (!empty($hb['start_date']) && $hb['start_date'] !== '0000-00-00') {
 						$ts = strtotime($hb['start_date']);
@@ -510,7 +854,7 @@ $home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
 					if ($dt === '') {
 						$dt = date('F jS, Y');
 					}
-					$detail_url = $bid > 0 ? base_url('courses-details/' . $bid) : base_url('courses-offered');
+					$detail_url = $bid > 0 ? base_url('batch/details?batch_id=' . $bid) : base_url('batch/list');
 					?>
 			<article class="edu-home-live-card">
 				<div class="edu-home-live-body">
@@ -551,7 +895,7 @@ $home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
 						<span class="edu-home-tag edu-home-tag--blue">Live Class</span>
 						<span class="edu-home-tag edu-home-tag--orange">Start Learning</span>
 					</div>
-					<a class="edu-home-btn-join" href="<?php echo html_escape(base_url('courses-offered')); ?>">View Details</a>
+					<a class="edu-home-btn-join" href="<?php echo html_escape(base_url('batch/list')); ?>">View Details</a>
 				</div>
 			</article>
 				<?php

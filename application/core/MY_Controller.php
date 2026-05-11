@@ -397,7 +397,7 @@ class MY_Controller extends CI_Controller
 			'batchOfferPrice' => isset($b['batch_offer_price']) ? $b['batch_offer_price'] : '',
 			'description' => isset($b['description']) ? $b['description'] : '',
 			'batchImage' => $img,
-			'batchImageUrl' => $img !== '' ? base_url('uploads/batch_image/') . $img : '',
+			'batchImageUrl' => $img !== '' ? batch_image_url($img) : '',
 			'noOfStudents' => isset($b['no_of_student']) ? (int) $b['no_of_student'] : 0,
 			'status' => isset($b['status']) ? (int) $b['status'] : 0,
 			'catId' => isset($b['cat_id']) ? (int) $b['cat_id'] : 0,
@@ -463,7 +463,7 @@ class MY_Controller extends CI_Controller
 	{
 		$bid = (int) (isset($b['id']) ? $b['id'] : 0);
 		$img = isset($b['batch_image']) ? trim((string) $b['batch_image']) : '';
-		$logo = $img !== '' ? base_url('uploads/batch_image/') . $img : '';
+		$logo = $img !== '' ? batch_image_url($img) : '';
 		return array(
 			'batch_id' => $bid,
 			'title' => isset($b['batch_name']) ? $b['batch_name'] : '',

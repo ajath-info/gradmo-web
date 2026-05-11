@@ -7,7 +7,7 @@
 	
 	<div class="inst-detail-container">
 		<div id="lc_msg" class="inst-muted text-center py-3">Loading...</div>
-		<div id="lc_list" class="inst-panel-stack"></div>
+		<div id="lc_list" class="inst-card-grid"></div>
 	</div>
 </div>
 <script>

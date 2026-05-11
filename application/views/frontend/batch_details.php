@@ -96,10 +96,21 @@
 (function () {
 	var batchId = <?php echo (int) (isset($batch_id) ? $batch_id : 0); ?>;
 	var accessToken = <?php echo json_encode(isset($api_access_token) ? $api_access_token : ''); ?>;
+	var isTeacher = <?php echo (($this->session->userdata('role') === 3 || $this->session->userdata('role') === '3' || strtolower((string) $this->session->userdata('api_user_type')) === 'teacher') ? 'true' : 'false'); ?>;
 	var dataUrl = <?php echo json_encode(isset($batch_details_data_url) ? $batch_details_data_url : ''); ?>;
 	var paymentPlanUrl = <?php echo json_encode(isset($batch_payment_plan_url) ? $batch_payment_plan_url : ''); ?>;
 	var liveClassesUrl = <?php echo json_encode(site_url('batch/live-classes')); ?>;
+	var videoLecturesPageUrl = <?php echo json_encode(site_url('batch/video-lectures')); ?>;
+	var examsPageUrl = <?php echo json_encode(site_url('batch/exams')); ?>;
 	var libraryPageUrl = <?php echo json_encode(site_url('library')); ?>;
+	var attendancePageUrl = <?php echo json_encode(site_url('attendance')); ?>;
+	var homeworkPageUrl = <?php echo json_encode(site_url('homework-list')); ?>;
+	var teacherAttendanceUrl = <?php echo json_encode(site_url('teacher/attendance')); ?>;
+	var teacherVideosUrl = <?php echo json_encode(site_url('teacher/videos')); ?>;
+	var teacherBooksUrl = <?php echo json_encode(site_url('teacher/books')); ?>;
+	var teacherNotesUrl = <?php echo json_encode(site_url('teacher/notes')); ?>;
+	var teacherHomeworkUrl = <?php echo json_encode(site_url('teacher/homework')); ?>;
+	var teacherExamsUrl = <?php echo json_encode(site_url('teacher/exams')); ?>;
 	var canEnrollForBatch = true;
 	function ok(s) { return s === true || s === 'true' || s === 1 || s === '1'; }
 	function truthy(v) { return v === true || v === 1 || v === '1' || v === 'true'; }
@@ -150,13 +161,20 @@
 				document.getElementById('bd_logo_ph').style.display = 'none';
 			}
 			var m = b.modules || {};
+			var videoHref = isTeacher ? (teacherVideosUrl + '?batch_id=' + encodeURIComponent(batchId)) : (videoLecturesPageUrl + '?batch_id=' + encodeURIComponent(batchId));
+			var libraryHref = isTeacher ? (teacherBooksUrl + '?batch_id=' + encodeURIComponent(batchId)) : (libraryPageUrl + '?batch_id=' + encodeURIComponent(batchId));
+			var attendanceHref = isTeacher ? (teacherAttendanceUrl + '?batch_id=' + encodeURIComponent(batchId)) : (attendancePageUrl + '?batch_id=' + encodeURIComponent(batchId));
+			var examHref = isTeacher ? (teacherExamsUrl + '?batch_id=' + encodeURIComponent(batchId)) : (examsPageUrl + '?batch_id=' + encodeURIComponent(batchId));
+			var homeworkHref = isTeacher ? (teacherHomeworkUrl + '?batch_id=' + encodeURIComponent(batchId)) : (homeworkPageUrl + '?batch_id=' + encodeURIComponent(batchId));
+			var notesTile = isTeacher ? modTile('Notes', 'Tap to manage', 'fas fa-sticky-note', teacherNotesUrl + '?batch_id=' + encodeURIComponent(batchId)) : '';
 			document.getElementById('bd_modules').innerHTML = '<div class="bd-mod-grid">' +
 				modTile('Live classes', (m.live_classes && m.live_classes.is_live) ? 'Live now' : 'Tap to open', 'fas fa-broadcast-tower', liveClassesUrl + '?batch_id=' + encodeURIComponent(batchId)) +
-				modTile('Video Lectures', (m.video_lectures && m.video_lectures.count != null) ? ('Videos: ' + m.video_lectures.count) : 'No data', 'fas fa-play-circle', null) +
-				modTile('Library', (m.library && m.library.book_count != null) ? ('Books: ' + m.library.book_count) : 'Tap to open', 'fas fa-book', libraryPageUrl + '?batch_id=' + encodeURIComponent(batchId)) +
-				modTile('Attendance', (m.attendance && m.attendance.marked != null) ? ('Marked: ' + m.attendance.marked) : 'No data', 'fas fa-clipboard-check', null) +
-				modTile('Exams', (m.upcoming_exams && m.upcoming_exams.count != null) ? ('Upcoming: ' + m.upcoming_exams.count) : 'No data', 'fas fa-file-alt', null) +
-				modTile('Homework', (m.homework && m.homework.today_count != null) ? ('Today: ' + m.homework.today_count) : 'No data', 'fas fa-pencil-alt', null) +
+				modTile('Video Lectures', (m.video_lectures && m.video_lectures.count != null) ? ('Videos: ' + m.video_lectures.count) : 'No data', 'fas fa-play-circle', videoHref) +
+				modTile('Library', (m.library && m.library.book_count != null) ? ('Books: ' + m.library.book_count) : 'Tap to open', 'fas fa-book', libraryHref) +
+				modTile('Attendance', (m.attendance && m.attendance.marked != null) ? ('Marked: ' + m.attendance.marked) : 'Tap to open', 'fas fa-clipboard-check', attendanceHref) +
+				modTile('Exams', (m.upcoming_exams && m.upcoming_exams.count != null) ? ('Upcoming: ' + m.upcoming_exams.count) : 'No data', 'fas fa-file-alt', examHref) +
+				modTile('Homework', (m.homework && m.homework.today_count != null) ? ('Today: ' + m.homework.today_count) : 'Tap to open', 'fas fa-pencil-alt', homeworkHref) +
+				notesTile +
 			'</div>';
 			var canEnroll = truthy(b.canEnroll);
 			canEnrollForBatch = canEnroll;

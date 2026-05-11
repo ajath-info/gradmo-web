@@ -685,6 +685,16 @@ class Website extends MY_Controller
 			return ($role === 4 || $role === '4');
 		}
 
+		private function website_session_is_teacher()
+		{
+			$ut = strtolower(trim((string) $this->session->userdata('api_user_type')));
+			if ($ut === 'teacher') {
+				return true;
+			}
+			$role = $this->session->userdata('role');
+			return ($role === 3 || $role === '3');
+		}
+
 		private function website_is_truthy($value)
 		{
 			if ($value === true || $value === 1 || $value === '1') {
@@ -902,6 +912,48 @@ class Website extends MY_Controller
 			$this->render_frontend_layout('frontend/batch_live_classes', $data);
 		}
 
+		public function batch_video_lectures()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$batch_id = (int) $this->input->get('batch_id');
+			if ($batch_id < 1) {
+				$batch_id = (int) $this->input->get('id');
+			}
+			$data = $this->frontend_shell_data('Video lectures');
+			$data['batch_id'] = $batch_id;
+			$data['api_access_token'] = $this->website_session_access_token();
+			$data['video_list_api_url'] = site_url('api/batch/video-lecture-list');
+			$this->render_frontend_layout('frontend/batch_video_lectures', $data);
+		}
+
+		public function batch_exams()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$batch_id = (int) $this->input->get('batch_id');
+			if ($batch_id < 1) {
+				$batch_id = (int) $this->input->get('id');
+			}
+			$data = $this->frontend_shell_data('Exams');
+			$data['batch_id'] = $batch_id;
+			$data['api_access_token'] = $this->website_session_access_token();
+			$data['upcoming_exam_list_api_url'] = site_url('api/batch/upcoming-exam-list');
+			$this->render_frontend_layout('frontend/batch_exams', $data);
+		}
+
 		public function batch_live_room()
 		{
 			if (! isset($this->session->userdata['role'])) {
@@ -993,6 +1045,129 @@ class Website extends MY_Controller
 			$data['api_access_token'] = $this->website_session_access_token();
 			$data['my_batches_url'] = site_url('batch/mylist');
 			$this->render_frontend_layout('frontend/library_page', $data);
+		}
+
+		public function teacher_attendance_page()
+		{
+			if (! isset($this->session->userdata['role']) || ! $this->website_session_is_teacher()) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$data = $this->frontend_shell_data('Teacher Attendance');
+			$data['batch_id'] = (int) $this->input->get('batch_id');
+			$data['api_access_token'] = $this->website_session_access_token();
+			$data['attendance_roster_api_url'] = site_url('api/batch/attendance-roster');
+			$data['attendance_save_api_url'] = site_url('api/user/add-attendance');
+			$data['attendance_matrix_api_url'] = site_url('api/batch/attendance-roster-matrix');
+			$data['attendance_matrix_save_api_url'] = site_url('api/batch/attendance-matrix-save');
+			$this->render_frontend_layout('frontend/teacher/teacher_attendance', $data);
+		}
+
+		public function teacher_videos_page()
+		{
+			if (! isset($this->session->userdata['role']) || ! $this->website_session_is_teacher()) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$data = $this->frontend_shell_data('Teacher Videos');
+			$data['batch_id'] = (int) $this->input->get('batch_id');
+			$data['api_access_token'] = $this->website_session_access_token();
+			$data['video_list_api_url'] = site_url('api/batch/video-lecture-list');
+			$data['video_add_api_url'] = site_url('api/batch/video-lecture-add');
+			$data['video_edit_api_url'] = site_url('api/batch/video-lecture-edit');
+			$data['video_delete_api_url'] = site_url('api/batch/video-lecture-delete');
+			$data['student_video_lectures_url'] = site_url('batch/video-lectures?batch_id=' . (int) $data['batch_id']);
+			$this->render_frontend_layout('frontend/teacher/teacher_videos', $data);
+		}
+
+		public function teacher_books_page()
+		{
+			if (! isset($this->session->userdata['role']) || ! $this->website_session_is_teacher()) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$data = $this->frontend_shell_data('Teacher Library Books');
+			$data['batch_id'] = (int) $this->input->get('batch_id');
+			$data['api_access_token'] = $this->website_session_access_token();
+			$data['library_list_api_url'] = site_url('api/batch/library-list');
+			$data['library_add_api_url'] = site_url('api/batch/library-add-book');
+			$data['library_edit_api_url'] = site_url('api/batch/library-edit-book');
+			$data['library_delete_api_url'] = site_url('api/batch/library-delete-book');
+			$this->render_frontend_layout('frontend/teacher/teacher_books', $data);
+		}
+
+		public function teacher_notes_page()
+		{
+			if (! isset($this->session->userdata['role']) || ! $this->website_session_is_teacher()) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$data = $this->frontend_shell_data('Teacher Notes');
+			$data['batch_id'] = (int) $this->input->get('batch_id');
+			$data['api_access_token'] = $this->website_session_access_token();
+			$data['notes_list_api_url'] = site_url('api/batch/notes-list');
+			$data['notes_add_api_url'] = site_url('api/batch/notes-add');
+			$data['notes_edit_api_url'] = site_url('api/batch/notes-edit');
+			$data['notes_delete_api_url'] = site_url('api/batch/notes-delete');
+			$this->render_frontend_layout('frontend/teacher/teacher_notes', $data);
+		}
+
+		public function teacher_homework_page()
+		{
+			if (! isset($this->session->userdata['role']) || ! $this->website_session_is_teacher()) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$data = $this->frontend_shell_data('Teacher Homework');
+			$data['batch_id'] = (int) $this->input->get('batch_id');
+			$data['api_access_token'] = $this->website_session_access_token();
+			$data['homework_list_api_url'] = site_url('api/batch/homework-list');
+			$data['batch_subjects_api_url'] = site_url('api/batch/batch-subjects');
+			$data['homework_add_api_url'] = site_url('api/batch/homework-add');
+			$data['homework_edit_api_url'] = site_url('api/batch/homework-edit');
+			$data['homework_delete_api_url'] = site_url('api/batch/homework-delete');
+			$this->render_frontend_layout('frontend/teacher/teacher_homework', $data);
+		}
+
+		public function teacher_exams_page()
+		{
+			if (! isset($this->session->userdata['role']) || ! $this->website_session_is_teacher()) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$data = $this->frontend_shell_data('Teacher Exams');
+			$data['batch_id'] = (int) $this->input->get('batch_id');
+			$data['api_access_token'] = $this->website_session_access_token();
+			$data['exam_list_api_url'] = site_url('api/batch/upcoming-exam-list');
+			$data['exam_add_api_url'] = site_url('api/batch/exam-add');
+			$data['exam_edit_api_url'] = site_url('api/batch/exam-edit');
+			$data['exam_delete_api_url'] = site_url('api/batch/exam-delete');
+			$data['legacy_question_manage_url'] = site_url('teacher/exam-manage');
+			$this->render_frontend_layout('frontend/teacher/teacher_exams', $data);
 		}
 
 		public function institute_listing()

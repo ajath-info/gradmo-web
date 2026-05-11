@@ -1,0 +1,36 @@
+<div class="inst-detail-page">
+	<div class="inst-detail-container">
+		<div class="inst-detail-panel">
+			<div class="inst-panel-head"><h3>Homework</h3></div>
+			<p class="inst-panel-intro">Create assignments by subject and date. Add instructions and/or attach a PDF handout. Students see homework on the batch homework page.</p>
+			<div class="inst-list-filter-bar">
+				<div class="inst-list-filter-fields">
+					<div class="inst-list-filter-item"><label>Subject</label><select id="th_subject_id" class="edu_form_field"><option value="">Select subject</option></select></div>
+					<div class="inst-list-filter-item"><label>Date</label><input type="date" id="th_date" class="edu_form_field"></div>
+					<div class="inst-list-filter-item inst-list-filter-grow"><label>Description</label><textarea id="th_desc" class="edu_form_field" rows="3" placeholder="Instructions for students (optional if you attach a PDF)"></textarea></div>
+					<div class="inst-list-filter-item"><label>Handout PDF (optional)</label><input type="file" id="th_pdf" class="edu_form_field" accept=".pdf,application/pdf"></div>
+				</div>
+				<div class="inst-list-filter-actions"><button type="button" class="btn btn-primary" id="th_add">Add homework</button></div>
+			</div>
+			<div id="th_msg" class="inst-muted small px-2 mb-2"></div>
+			<div id="th_list" class="inst-card-grid"></div>
+		</div>
+	</div>
+</div>
+<script>
+(function () {
+	var token=<?php echo json_encode(isset($api_access_token)?$api_access_token:''); ?>;
+	var batchId=<?php echo (int)(isset($batch_id)?$batch_id:0); ?>;
+	var listUrl=<?php echo json_encode(isset($homework_list_api_url)?$homework_list_api_url:''); ?>;
+	var subjectsUrl=<?php echo json_encode(isset($batch_subjects_api_url)?$batch_subjects_api_url:''); ?>;
+	var addUrl=<?php echo json_encode(isset($homework_add_api_url)?$homework_add_api_url:''); ?>;
+	var delUrl=<?php echo json_encode(isset($homework_delete_api_url)?$homework_delete_api_url:''); ?>;
+	function esc(v){var d=document.createElement('div');d.textContent=v==null?'':String(v);return d.innerHTML;}
+	function msg(t,e){var x=document.getElementById('th_msg');x.className=e?'small text-danger px-2 mb-2':'small text-success px-2 mb-2';x.textContent=t||'';}
+	function loadSubjects(){fetch(subjectsUrl,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({access_token:token,batch_id:batchId})}).then(function(r){return r.json();}).then(function(j){var sel=document.getElementById('th_subject_id');var rows=(j.data&&j.data.subjects)?j.data.subjects:[];var html='<option value=\"\">Select subject</option>';for(var i=0;i<rows.length;i++){html+='<option value=\"'+esc(rows[i].subjectId)+'\">'+esc(rows[i].subjectName)+'</option>';}sel.innerHTML=html;});}
+	function load(){fetch(listUrl,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({access_token:token,batch_id:batchId,page:1,limit:200})}).then(function(r){return r.json();}).then(function(j){var rows=j&&j.homeWork?j.homeWork:[];var html='';for(var i=0;i<rows.length;i++){var r=rows[i];var desc=(r.description||'').toString();var pdfUrl=(r.attachmentUrl||'').toString();var showDesc=desc!==''&&!(pdfUrl&&desc==='See attached PDF.');var pdfLink=pdfUrl?'<a class="btn btn-sm btn-outline-primary" href="'+esc(pdfUrl)+'" target="_blank" rel="noopener"><i class="fas fa-file-pdf"></i>Handout PDF</a>':'';html+='<div class="inst-batch-card"><div class="inst-card-body"><p class="inst-card-title-sm">'+esc(r.subjectName||('Subject #'+r.subjectId))+'</p><p class="inst-card-sub">'+esc(r.date||'')+'</p>'+(showDesc?'<p class="inst-teacher-card-text">'+esc(desc)+'</p>':'')+'<div class="inst-teacher-card-actions">'+pdfLink+'<button type="button" class="btn btn-sm btn-outline-danger th_del" data-id="'+esc(r.id)+'"><i class="fas fa-trash-alt"></i>Delete</button></div></div></div>';}document.getElementById('th_list').innerHTML=html||'<p class="inst-muted">No homework found.</p>';var b=document.querySelectorAll('.th_del');for(var k=0;k<b.length;k++){b[k].addEventListener('click',function(){remove(this.getAttribute('data-id'));});}});}
+	function remove(id){fetch(delUrl,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({access_token:token,homework_id:parseInt(id,10)})}).then(function(r){return r.json();}).then(function(j){msg((j&&j.msg)||'Deleted',!(j&&(j.status==='true'||j.status===true)));load();});}
+	function add(){var subjectId=parseInt(document.getElementById('th_subject_id').value||0,10);if(!subjectId){msg('Please select subject.',true);return;}var f=document.getElementById('th_pdf').files[0];var desc=document.getElementById('th_desc').value.trim();if(!desc&&!f){msg('Enter a description and/or choose a PDF.',true);return;}var fd=new FormData();fd.append('access_token',token);fd.append('batch_id',batchId);fd.append('subject_id',subjectId);fd.append('date',document.getElementById('th_date').value);fd.append('description',desc);if(f){fd.append('pdf_file',f);}fetch(addUrl,{method:'POST',headers:{'Authorization':'Bearer '+token},body:fd}).then(function(r){return r.json();}).then(function(j){var ok=j&&(j.status==='true'||j.status===true);msg((j&&j.msg)||'Added',!ok);if(ok){document.getElementById('th_pdf').value='';document.getElementById('th_desc').value='';}load();});}
+	document.addEventListener('DOMContentLoaded',function(){document.getElementById('th_date').value=(new Date()).toISOString().slice(0,10);document.getElementById('th_add').addEventListener('click',add);loadSubjects();load();});
+})();
+</script>

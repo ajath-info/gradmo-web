@@ -651,8 +651,11 @@ class Ajaxcall extends CI_Controller{
 							}
 						}
                        
-						
+						$preserve_batch_image = isset($data_arr['batch_image']) ? $data_arr['batch_image'] : null;
                         $data_arr = $this->security->xss_clean($data_arr);
+						if ($preserve_batch_image !== null) {
+							$data_arr['batch_image'] = $preserve_batch_image;
+						}
                       
                         $ins = $this->db_model->update_data_limit('batches',$data_arr,array('id'=>$this->input->post('batch_id',TRUE)),1);
 
@@ -774,7 +777,11 @@ class Ajaxcall extends CI_Controller{
 							}
 						}
                        
+						$preserve_batch_image_ins = isset($data_arr['batch_image']) ? $data_arr['batch_image'] : null;
                         $data_arr = $this->security->xss_clean($data_arr);
+						if ($preserve_batch_image_ins !== null) {
+							$data_arr['batch_image'] = $preserve_batch_image_ins;
+						}
                         $ins = $this->db_model->insert_data('batches',$data_arr);
                        
                         if($ins){

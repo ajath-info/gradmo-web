@@ -646,7 +646,7 @@ class Home extends CI_Controller {
     				if(!empty($batchData)){
     					foreach($batchData as $key=>$value){
     						if(!empty($value['batchImage'])){
-    							$batchData[$key]['batchImage']= base_url('uploads/batch_image/').$value['batchImage'];
+    							$batchData[$key]['batchImage']= batch_image_url($value['batchImage']);
     						}
     						$startDate =$value['startDate'];
     						$endDate =$value['endDate'];
@@ -798,7 +798,7 @@ class Home extends CI_Controller {
 			        
 			        foreach($yourBatch as $key=>$value){
 						if(!empty($value['batchImage'])){
-							$yourBatch[$key]['batchImage']= base_url('uploads/batch_image/').$value['batchImage'];
+							$yourBatch[$key]['batchImage']= batch_image_url($value['batchImage']);
 						}
 						$startDate =$value['startDate'];
 						$endDate =$value['endDate'];
@@ -896,7 +896,7 @@ class Home extends CI_Controller {
 			        
 			        foreach($recommendedBatch as $key=>$value){
 						if(!empty($value['batchImage'])){
-							$recommendedBatch[$key]['batchImage']= base_url('uploads/batch_image/').$value['batchImage'];
+							$recommendedBatch[$key]['batchImage']= batch_image_url($value['batchImage']);
 						}
 						$startDate =$value['startDate'];
 						$endDate =$value['endDate'];
@@ -1018,7 +1018,7 @@ public function otherBatchData($data){
 				if(!empty($batchData)){
 					foreach($batchData as $key=>$value){
 						if(!empty($value['batchImage'])){
-							$batchData[$key]['batchImage']= base_url('uploads/batch_image/').$value['batchImage'];
+							$batchData[$key]['batchImage']= batch_image_url($value['batchImage']);
 						}
 						$startDate =$value['startDate'];
 						$endDate =$value['endDate'];
@@ -3038,7 +3038,7 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
             if(!empty($batchData)){
                 foreach($batchData as $key=>$value){
                     if(!empty($value['batchImage'])){
-                        $batchData[$key]['batchImage']= base_url('uploads/batch_image/').$value['batchImage'];
+                        $batchData[$key]['batchImage']= batch_image_url($value['batchImage']);
                     }
                     $startDate =$value['startDate'];
                     $endDate =$value['endDate'];
@@ -3187,7 +3187,7 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
             // if(!empty($batchData)){
             // 	foreach($batchData as $key=>$value){
             // 		if(!empty($value['batchImage'])){
-            // 			$batchData[$key]['batchImage']= base_url('uploads/batch_image/').$value['batchImage'];
+            // 			$batchData[$key]['batchImage']= batch_image_url($value['batchImage']);
             // 		}
             // 		$startDate =$value['startDate'];
             // 		$endDate =$value['endDate'];
@@ -3323,7 +3323,7 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
             if(!empty($batchData)){
                 foreach($batchData as $key=>$value){
                     if(!empty($value['batchImage'])){
-                        $batchData[$key]['batchImage']= base_url('uploads/batch_image/').$value['batchImage'];
+                        $batchData[$key]['batchImage']= batch_image_url($value['batchImage']);
                     }
                     $startDate =$value['startDate'];
                     $endDate =$value['endDate'];

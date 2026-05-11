@@ -23,14 +23,14 @@
 					<h3>Batches</h3>
 					<a href="javascript:void(0)" class="inst-see-all" id="inst_batches_toggle" style="display:none;">See all</a>
 				</div>
-				<div id="inst_d_batches" class="inst-panel-stack"></div>
+				<div id="inst_d_batches" class="inst-card-grid"></div>
 			</div>
 			<div class="inst-detail-panel" id="inst_panel_reviews">
 				<div class="inst-panel-head">
 					<h3>Ratings &amp; reviews</h3>
 					<a href="javascript:void(0)" class="inst-see-all" id="inst_reviews_toggle" style="display:none;">See all</a>
 				</div>
-				<div id="inst_d_reviews" class="inst-panel-stack"></div>
+				<div id="inst_d_reviews" class="inst-card-grid"></div>
 				<?php if (! empty($web_logged_in)) { ?>
 				<a id="inst_d_add_review" class="inst-write-review-cta" href="#">Write a review</a>
 				<?php } ?>
@@ -84,7 +84,8 @@
 		var bid = b.id || b.batchId || '';
 		var title = b.batch_name || b.title || b.name || ('Batch #' + bid);
 		var sub = timeRange(b) || '';
-		var href = '<?php echo rtrim(base_url(), '/'); ?>/courses-offered';
+		var batchListBase = '<?php echo rtrim(base_url(), '/'); ?>/batch';
+		var href = bid ? (batchListBase + '/details?batch_id=' + encodeURIComponent(bid)) : (batchListBase + '/list');
 		var cls = 'inst-batch-card' + (extraHidden ? ' inst-b-extra inst-detail-hidden' : '');
 		return '<a class="' + cls + '" href="' + esc(href) + '">' +
 			'<div class="inst-mini-logo"><i class="fas fa-layer-group" style="padding:12px;color:#f5a623;"></i></div>' +

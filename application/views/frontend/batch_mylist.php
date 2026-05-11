@@ -24,7 +24,7 @@
 				</div>
 			</div>
 			<div id="batch_my_list_msg" class="inst-muted small px-2 mb-2"></div>
-			<div id="batch_my_card_stack" class="inst-panel-stack"></div>
+			<div id="batch_my_card_stack" class="inst-card-grid"></div>
 			<div class="inst-list-pagination">
 				<button type="button" id="batch_my_prev" class="edu_btn edu_btn_black" disabled>Previous</button>
 				<span id="batch_my_page_info" class="inst-muted small"></span>

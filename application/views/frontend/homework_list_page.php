@@ -15,7 +15,7 @@
 					</div>
 				</div>
 				<div id="hwMsg" class="small text-muted"></div>
-				<div id="hwList"></div>
+				<div id="hwList" class="inst-card-grid"></div>
 			</div>
 		</div>
 	</div>
@@ -47,6 +47,8 @@
 		var teacher = item.name || '';
 		var date = item.date || '';
 		var desc = item.description || '';
+		var pdfUrl = item.attachmentUrl || '';
+		var pdfBlock = pdfUrl ? '<p class="inst-batch-meta"><a class="btn btn-sm btn-outline-primary" href="' + esc(pdfUrl) + '" target="_blank" rel="noopener"><i class="fas fa-file-pdf"></i> Handout PDF</a></p>' : '';
 		return '' +
 			'<div class="inst-batch-card">' +
 				'<div class="inst-batch-logo"><i class="fas fa-book-open"></i></div>' +
@@ -54,6 +56,7 @@
 					'<h4>' + esc(title) + '</h4>' +
 					'<p class="inst-batch-meta">' + esc(teacher) + (date ? ' | ' + esc(date) : '') + '</p>' +
 					'<p class="inst-batch-desc">' + esc(desc) + '</p>' +
+					pdfBlock +
 				'</div>' +
 			'</div>';
 	}
@@ -79,13 +82,11 @@
 		})
 		.then(function (r) { return r.json(); })
 		.then(function (res) {
-			if (!res || !(res.status === true || res.status === 'true')) {
-				throw new Error((res && (res.msg || res.message)) || 'Unable to load homework');
-			}
-			var rows = Array.isArray(res.homeWork) ? res.homeWork : [];
+			var rows = (res && Array.isArray(res.homeWork)) ? res.homeWork : [];
 			if (!rows.length) {
+				var infoMsg = (res && (res.msg || res.message)) ? String(res.msg || res.message) : '';
 				listEl.innerHTML = '<div class="inst-detail-summary-card text-muted">No homework found.</div>';
-				setMsg('', false);
+				setMsg(infoMsg, false);
 				return;
 			}
 			var html = '';

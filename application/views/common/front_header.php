@@ -191,48 +191,45 @@
 		date_default_timezone_set($timezoneDB[0]['timezone']);
 	}
 	?>
+	<?php
+		$front_logo_src = trim((string) $this->common->siteLogo);
+		if ($front_logo_src === '' || stripos($front_logo_src, 'favicon') !== false) {
+			$front_logo_src = base_url('assets/images/logo.png');
+		}
+	?>
 	<!----- Main Wraapper ----->
 	<section class="main_wrapper">
 		<!----- Header Start ----->
-		<header>
+		<header class="edu-header-gradmo">
 			<div class="edu_header_top edu_header_top1">
 				<div class="container-fluid">
-					<div class="row">
-						
-					<div class="col-xl-2 col-lg-2 col-md-12 col-sm-12 col-12">
-					<div class="edu_logo">
-								<a href="<?php echo base_url();?>"><img class="front_logo" src="<?php echo html_escape($this->common->siteLogo); ?>" alt="logo" /></a>
+					<div class="row align-items-center">
+						<div class="col-xl-2 col-lg-2 col-md-4 col-sm-6 col-6">
+							<div class="edu_logo">
+								<a href="<?php echo base_url();?>"><img class="front_logo" src="<?php echo html_escape($front_logo_src); ?>" alt="logo" /></a>
 							</div>
-					</div>
-					<div class="col-xl-8 col-lg-8 col-md-12 col-sm-12 col-12">
-					<div class="edu_main_menu main_menu_parent">
-								<!----- Header Menus ----->
-								<div class="edu_nav_items main_menu_wrapper text-right">
+						</div>
+						<div class="col-xl-8 col-lg-8 d-none d-lg-block">
+							<div class="edu_main_menu main_menu_parent">
+								<div class="edu_nav_items main_menu_wrapper text-left">
 									<ul>
-										<li><a href="<?php echo base_url('institute/listing');?>">Institutes</a></li>
-										<li><a href="<?php echo base_url('batch/list');?>">Batches</a></li>
-										<li><a href="<?php echo base_url('contact-us');?>"><?php echo html_escape($this->common->languageTranslator('ltr_contact_us')); ?></a></li>
+										<li><a href="<?php echo base_url(); ?>">Home</a></li>
+										<?php if(!empty($_SESSION['role'])){ ?>
+											<li><a href="<?php echo base_url('batch/mylist');?>">My Batches</a></li>
+											<li><a href="<?php echo base_url('batch/video-lectures');?>">Recorded Lectures</a></li>
+											<li><a href="<?php echo base_url('homework-list');?>">Homework</a></li>
+											<li><a href="<?php echo base_url('attendance');?>">Attendance</a></li>
+											<li><a href="<?php echo base_url('batch/exams');?>">Assignments</a></li>
+										<?php } else { ?>
+											<li><a href="<?php echo base_url('contact-us');?>"><?php echo html_escape($this->common->languageTranslator('ltr_contact_us')); ?></a></li>
+										<?php } ?>
 									</ul>
 								</div>
-								<div class="menu_btn_wrap">
-								<?php 
-								if(!empty($frontend_details[0]['header_btn_txt']) && !empty($frontend_details[0]['header_btn_url'])){
-									echo '<a class="edu_btn" href="'.$frontend_details[0]['header_btn_url'].'">'.$frontend_details[0]['header_btn_txt'].'</a>';
-								}
-								?>
-									<a href="javascript:void(0);" class="menu_btn">
-										<span></span>
-										<span></span>
-										<span></span>
-									</a>
-								</div>
 							</div>
-					</div>
-
-						<div class="col-xl-2 col-lg-2 col-md-12 col-sm-12 col-12">
+						</div>
+						<div class="col-xl-2 col-lg-2 col-md-8 col-sm-6 col-6">
 							<div class="edu_header_info">
 								<ul>
-									
 									<li>
 									  <?php if(!empty($_SESSION['role'])){ ?>
 										<?php
@@ -245,35 +242,30 @@
 											$front_role_s = strtolower(trim((string) $front_role_raw));
 											$is_front_student = ($front_api_ut === 'student' || $front_role_s === 'student' || $front_role_raw === 2 || $front_role_raw === '2');
 											$is_front_teacher = ($front_api_ut === 'teacher' || $front_role_s === 'teacher' || $front_role_raw === 3 || $front_role_raw === '3');
-											$front_my_batches_url = base_url('courses-offered');
+											$front_my_batches_url = base_url('batch/list');
 											if ($is_front_student || $is_front_teacher) {
 												$front_my_batches_url = base_url('batch/mylist');
 											}
-											$front_notifications_url = base_url('contact-us');
 											$front_notifications_url = base_url('notifications');
 											$front_profile_img = trim((string) $this->session->userdata('profile_img'));
 											$front_avatar_url = ($front_profile_img !== '') ? (base_url('uploads/users/' . $front_profile_img)) : '';
 										?>
 										<div class="dropdown d-inline-block front-profile-wrap">
 											<a href="javascript:void(0);" class="dropdown-toggle front-profile-trigger" id="frontUserMenu" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-												<!-- <?php if ($front_avatar_url !== '') { ?>
-												<span class="front-profile-trigger-avatar"><img src="<?php echo html_escape($front_avatar_url); ?>" alt=""></span>
+												<?php if ($front_avatar_url !== '') { ?>
+													<span class="front-profile-trigger-avatar"><img src="<?php echo html_escape($front_avatar_url); ?>" alt=""></span>
 												<?php } else { ?>
-												<span class="front-profile-trigger-avatar front-profile-trigger-avatar--ph"><i class="fas fa-user"></i></span>
-												<?php } ?> -->
-												<span class="front-profile-trigger-name"><?php echo html_escape($front_user_name); ?></span>
+													<span class="front-profile-trigger-avatar front-profile-trigger-avatar--ph"><i class="fas fa-user"></i></span>
+												<?php } ?>
+												<span class="front-profile-trigger-name">Hello, <?php echo html_escape($front_user_name); ?>!</span>
 											</a>
 											<div class="dropdown-menu dropdown-menu-right front-profile-dropdown" aria-labelledby="frontUserMenu">
 												<div class="front-profile-dropdown-inner">
 													<nav class="front-profile-links" aria-label="Account menu">
 														<a class="front-profile-link" href="<?php echo base_url('update-profile'); ?>"><i class="fas fa-user-circle"></i> View Profile</a>
 														<a class="front-profile-link" href="<?php echo html_escape($front_my_batches_url); ?>"><i class="fas fa-layer-group"></i> My Batches</a>
-														<a class="front-profile-link" href="<?php echo base_url('attendance'); ?>"><i class="fas fa-calendar-check"></i> Attendance</a>
-														<a class="front-profile-link" href="<?php echo base_url('homework-list'); ?>"><i class="fas fa-book-reader"></i> Homework</a>
-														<a class="front-profile-link" href="<?php echo base_url('library'); ?>"><i class="fas fa-book"></i> Library</a>
 														<a class="front-profile-link" href="<?php echo base_url('payment-history'); ?>"><i class="fas fa-receipt"></i> Payment History</a>
 														<a class="front-profile-link" href="<?php echo base_url('update-password'); ?>"><i class="fas fa-key"></i> Update Password</a>
-														<a class="front-profile-link" href="<?php echo base_url('courses-offered'); ?>"><i class="fas fa-book"></i> Course</a>
 														<a class="front-profile-link" href="<?php echo html_escape($front_notifications_url); ?>"><i class="fas fa-bell"></i> Notifications</a>
 														<div class="front-profile-divider"></div>
 														<a class="front-profile-link front-profile-link--danger" href="<?php echo base_url('delete-account'); ?>"><i class="fas fa-user-times"></i> Delete Account</a>
@@ -283,7 +275,7 @@
 											</div>
 										</div>
 									  <?php }else{ ?>
-										<a href="<?php echo base_url('login');?>"><i class="fas fa-sign-in-alt"></i><?php echo html_escape($this->common->languageTranslator('ltr_login')); ?></a>
+										<a class="edu-header-login-link" href="<?php echo base_url('login');?>"><i class="fas fa-sign-in-alt"></i><?php echo html_escape($this->common->languageTranslator('ltr_login')); ?></a>
 									<?php } ?>
 									</li>
 								</ul>
@@ -292,5 +284,4 @@
 					</div>
 				</div>
 			</div>
-			
 		</header>

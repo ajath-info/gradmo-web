@@ -10,7 +10,7 @@
 		<div class="inst-detail-summary-card bp-summary-card">
 			<h3 class="bp-title">Payment Summary</h3>
 			<div id="bp_msg" class="inst-muted small mb-2"></div>
-			<div id="bp_plans" class="inst-panel-stack mb-2"></div>
+			<div id="bp_plans" class="inst-card-grid mb-2"></div>
 			<div class="bp-break"></div>
 			<div class="bp-row"><span>Tuition Fee</span><strong id="bp_monthly_fee">Rs 0/mo</strong></div>
 			<div class="bp-row bp-row-mini"><span>x <span id="bp_months">1</span> month(s)</span><strong id="bp_subtotal_multi">Rs 0</strong></div>
