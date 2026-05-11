@@ -103,23 +103,26 @@
 		var stack = document.getElementById('inst_card_stack');
 		stack.innerHTML = '';
 		if (!list || !list.length) {
-			stack.innerHTML = '<p class="inst-muted mb-0 px-2">No institutes found.</p>';
+			stack.innerHTML = '<p class="inst-muted mb-0 px-2">No institutes or teachers found.</p>';
 			return;
 		}
 		list.forEach(function (it) {
 			var id = it.instituteId || it.institute_id || 0;
 			var href = detailsBase + (detailsBase.indexOf('?') >= 0 ? '&' : '?') + 'institute_id=' + encodeURIComponent(id);
+			var profileType = (it.profileType || it.userType || '').toString().toLowerCase() === 'teacher' ? 'teacher' : 'institute';
+			var profileLabel = it.profileTypeLabel || (profileType === 'teacher' ? 'Teacher' : 'Institute');
 			var avg = it.rating && typeof it.rating.averageRating !== 'undefined' ? Number(it.rating.averageRating) : 0;
 			var tr = it.rating && it.rating.totalReviews != null ? it.rating.totalReviews : 0;
 			var loc = [it.city, it.state].filter(Boolean).join(', ');
 			var imgUrl = (it.imageUrl || '').trim();
-			var thumb = '<div class="inst-mini-logo"><img src="' + esc(imgUrl) + '" alt="" data-fallback-type="institute" data-has-fallback="1"></div>';
+			var thumb = '<div class="inst-mini-logo"><img src="' + esc(imgUrl) + '" alt="" data-fallback-type="' + esc(profileType) + '" data-has-fallback="1"></div>';
 			var a = document.createElement('a');
 			a.className = 'inst-batch-card';
 			a.href = href;
 			a.innerHTML = thumb +
 				'<div class="inst-card-body">' +
 				'<p class="inst-card-title-sm">' + esc(it.name || '') + '</p>' +
+				'<p class="inst-card-sub"><strong>Type:</strong> ' + esc(profileLabel) + '</p>' +
 				(loc ? '<p class="inst-card-sub">' + esc(loc) + '</p>' : '') +
 				'<p class="inst-card-sub">' + starsHtml(Math.round(avg)) + ' <strong>' + esc(avg.toFixed(1)) + '</strong> (' + esc(tr) + ')</p>' +
 				'</div><span class="inst-card-chevron"><i class="fas fa-chevron-right"></i></span>';

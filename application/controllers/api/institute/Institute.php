@@ -16,17 +16,42 @@ class Institute extends MY_Controller
 		return array_merge($data, $this->input->post(), $this->input->get());
 	}
 
-	private function institute_where_active()
+	private function institute_where_active($include_teachers = false)
 	{
 		$this->db->where('users.status', 1);
+		if ($include_teachers) {
+			$this->db->where("(users.role IN (3,4) OR LOWER(IFNULL(users.user_type,'')) IN ('teacher','institute'))", null, false);
+			return;
+		}
 		$this->db->where("(users.role = 4 OR LOWER(IFNULL(users.user_type,'')) = 'institute')", null, false);
 	}
 
 
+	private function institute_profile_type(array $row)
+	{
+		$user_type = strtolower(trim((string) (isset($row['user_type']) ? $row['user_type'] : '')));
+		$role = isset($row['role']) ? (int) $row['role'] : 0;
+		if ($role === 3 || $user_type === 'teacher') {
+			return 'teacher';
+		}
+		return 'institute';
+	}
+
+	private function institute_profile_type_label($type)
+	{
+		return ($type === 'teacher') ? 'Teacher' : 'Institute';
+	}
+
+	private function institute_profile_image_url($filename, $type)
+	{
+		return profile_image_url($filename, $type === 'teacher' ? 3 : 4, $type);
+	}
+
 	private function format_institute_row($row)
 	{
 		$img = isset($row['teach_image']) ? trim((string) $row['teach_image']) : '';
-		$imageUrl = $img !== '' ? base_url('uploads/users/') . $img : '';
+		$profile_type = $this->institute_profile_type($row);
+		$imageUrl = $this->institute_profile_image_url($img, $profile_type);
 
 		return array(
 			'instituteId' => (int) $row['id'],
@@ -36,6 +61,8 @@ class Institute extends MY_Controller
 			'pincode' => isset($row['pincode']) ? $row['pincode'] : '',
 			'role' => isset($row['role']) ? (int) $row['role'] : 0,
 			'userType' => isset($row['user_type']) ? $row['user_type'] : '',
+			'profileType' => $profile_type,
+			'profileTypeLabel' => $this->institute_profile_type_label($profile_type),
 			'image' => $img,
 			'imageUrl' => $imageUrl,
 			'updatedAt' => isset($row['updated_at']) ? $row['updated_at'] : ''
@@ -381,7 +408,7 @@ class Institute extends MY_Controller
 				'orderType' => strtoupper(isset($order_type) ? $order_type : 'asc'),
 				'institutes' => array(),
 				'pagination' => $this->build_api_list_pagination_meta($page, $limit, 0),
-				'msg' => 'No institutes found for your enrollments',
+				'msg' => 'No directory entries found for your enrollments',
 			), JSON_UNESCAPED_SLASHES);
 			return;
 		}
@@ -389,8 +416,7 @@ class Institute extends MY_Controller
 		$users_flip = $this->users_table_field_flip();
 
 		$this->db->from('users users');
-		$this->db->where('users.status', 1);
-		$this->db->where("(users.role = 4 OR LOWER(IFNULL(users.user_type,'')) = 'institute')", null, false);
+		$this->institute_where_active(true);
 		if ($want_my_institutes) {
 			$this->db->where_in('users.id', $my_institute_ids);
 		}
@@ -402,9 +428,7 @@ class Institute extends MY_Controller
 		$select = $this->institute_user_select_columns($users_flip);
 		$this->db->select($select, false);
 		$this->db->from('users users');
-		$this->db->where('users.status', 1);
-		$this->db->where('users.role !=', 1);
-		//$this->db->where("(users.role = 4 OR LOWER(IFNULL(users.user_type,'')) = 'institute')", null, false);
+		$this->institute_where_active(true);
 		if ($want_my_institutes) {
 			$this->db->where_in('users.id', $my_institute_ids);
 		}
@@ -442,7 +466,10 @@ class Institute extends MY_Controller
 				}
 
 				$img = isset($r['teach_image']) ? trim((string) $r['teach_image']) : '';
-				$review_data = $this->fetch_institute_approved_reviews_for_api((int) $r['id'], array('reviews_limit' => 1));
+				$profile_type = $this->institute_profile_type($r);
+				$review_data = ($profile_type === 'institute')
+					? $this->fetch_institute_approved_reviews_for_api((int) $r['id'], array('reviews_limit' => 1))
+					: array('averageRating' => 0, 'totalReviews' => 0);
 				$out[] = array(
 					'instituteId' => (int) $r['id'],
 					'name' => isset($r['name']) ? $r['name'] : '',
@@ -458,9 +485,11 @@ class Institute extends MY_Controller
 					'instituteCode' => $institute_code,
 					'role' => isset($r['role']) ? (int) $r['role'] : 0,
 					'userType' => isset($r['user_type']) ? $r['user_type'] : '',
+					'profileType' => $profile_type,
+					'profileTypeLabel' => $this->institute_profile_type_label($profile_type),
 					'pay_mode' => isset($r['pay_mode']) ? $r['pay_mode'] : '',
 					'image' => $img,
-					'imageUrl' => $img !== '' ? base_url('uploads/users/') . $img : '',
+					'imageUrl' => $this->institute_profile_image_url($img, $profile_type),
 					'instituteLatitude' => $ilat,
 					'instituteLongitude' => $ilon,
 					'distanceKm' => $compute_distance ? $dist_km : null,
@@ -506,7 +535,7 @@ class Institute extends MY_Controller
 			'orderType' => strtoupper($order_type),
 			'institutes' => $out,
 			'pagination' => $this->build_api_list_pagination_meta($page, $limit, $total_records),
-			'msg' => !empty($out) ? 'Success' : 'No institutes found',
+			'msg' => !empty($out) ? 'Success' : 'No institutes or teachers found',
 		);
 		if ($ref_lat !== null && $ref_lon !== null) {
 			$response['referenceLatitude'] = $ref_lat;
@@ -540,10 +569,10 @@ class Institute extends MY_Controller
 			$reviews_limit = 100;
 		}
 
-		$this->db->select('users.id,users.name,users.email,users.mobile,users.role,users.user_type,users.teach_image,users.teach_education,users.teach_gender,users.pincode,users.parent_id,users.admin_id,users.updated_at');
+		$this->db->select('users.id,users.name,users.email,users.mobile,users.role,users.user_type,users.teach_image,users.teach_education,users.teach_gender,users.pincode,users.parent_id,users.admin_id,users.updated_at,users.country,users.state,users.city,users.address,users.school_college_name');
 		$this->db->from('users users');
 		$this->db->where('users.id', $id);
-		$this->institute_where_active();
+		$this->institute_where_active(true);
 		$row = $this->db->get()->row_array();
 
 		if (empty($row)) {
@@ -558,13 +587,27 @@ class Institute extends MY_Controller
 		$base['teachEducation'] = isset($row['teach_education']) ? $row['teach_education'] : '';
 		$base['teachGender'] = isset($row['teach_gender']) ? $row['teach_gender'] : '';
 		$base['parentId'] = isset($row['parent_id']) ? (int) $row['parent_id'] : 0;
+		$base['country'] = isset($row['country']) ? $row['country'] : '';
+		$base['state'] = isset($row['state']) ? $row['state'] : '';
+		$base['city'] = isset($row['city']) ? $row['city'] : '';
+		$base['address'] = isset($row['address']) ? $row['address'] : '';
+		$base['schoolCollegeName'] = isset($row['school_college_name']) ? $row['school_college_name'] : '';
 
-		$batch_owner_ids = $this->resolve_institute_batch_owner_user_ids($id, $row);
-		$batches = $this->fetch_institute_batches_for_api($id, array(
-			'active_only' => true,
-			'owner_ids' => $batch_owner_ids,
-		));
-		$review_data = $this->fetch_institute_approved_reviews_for_api($id, array('reviews_limit' => $reviews_limit));
+		if ($base['profileType'] === 'teacher') {
+			$batches = $this->fetch_teacher_assigned_batches_raw($id);
+			$review_data = array(
+				'averageRating' => 0,
+				'totalReviews' => 0,
+				'reviews' => array(),
+			);
+		} else {
+			$batch_owner_ids = $this->resolve_institute_batch_owner_user_ids($id, $row);
+			$batches = $this->fetch_institute_batches_for_api($id, array(
+				'active_only' => true,
+				'owner_ids' => $batch_owner_ids,
+			));
+			$review_data = $this->fetch_institute_approved_reviews_for_api($id, array('reviews_limit' => $reviews_limit));
+		}
 
 		echo json_encode(array(
 			'status' => 'true',
@@ -584,7 +627,7 @@ class Institute extends MY_Controller
 		$this->db->reset_query();
 		$this->db->select('city');
 		$this->db->from('users');
-		$this->institute_where_active();
+		$this->institute_where_active(true);
 		$this->db->where("CHAR_LENGTH(TRIM(IFNULL(users.city,''))) >", 0, false);
 		$this->db->group_by('city');
 		$this->db->order_by('city', 'asc');

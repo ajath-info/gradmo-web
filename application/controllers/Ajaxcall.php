@@ -370,6 +370,19 @@ class Ajaxcall extends CI_Controller{
         } 
     }
 
+    private function normalize_uploaded_media_filename($raw_name, $file_ext)
+    {
+        $raw_name = trim((string) $raw_name);
+        $file_ext = strtolower(ltrim((string) $file_ext, '.'));
+        $raw_name = preg_replace('/[\x{00A0}\x{1680}\x{180E}\x{2000}-\x{200A}\x{202F}\x{205F}\x{3000}\s]+/u', '_', $raw_name);
+        $raw_name = preg_replace('/[^A-Za-z0-9._-]+/', '_', $raw_name);
+        $raw_name = trim($raw_name, '._-');
+        if ($raw_name === '') {
+            $raw_name = 'file';
+        }
+        return ($file_ext !== '') ? ($raw_name . '.' . $file_ext) : $raw_name;
+    }
+
     function upload_media($files,$path,$file){   
         $config['upload_path'] =$path;
         $config['allowed_types'] = 'jpeg|jpg|png|SVG|svg|avi|mpeg|mp3|mp4|3gp';
@@ -379,6 +392,21 @@ class Ajaxcall extends CI_Controller{
         if ($this->upload->do_upload($file)){
             $uploadData = $this->upload->data();
             $filename = $uploadData['file_name'];
+            $safe_name = $this->normalize_uploaded_media_filename($uploadData['raw_name'], $uploadData['file_ext']);
+            $upload_dir = rtrim((string) $path, '\\/');
+            if ($safe_name !== '' && $filename !== $safe_name) {
+                $source = $upload_dir . DIRECTORY_SEPARATOR . $filename;
+                $target = $upload_dir . DIRECTORY_SEPARATOR . $safe_name;
+                if (is_file($source)) {
+                    if (is_file($target)) {
+                        $safe_name = $this->normalize_uploaded_media_filename($uploadData['raw_name'] . '_' . date('YmdHis'), $uploadData['file_ext']);
+                        $target = $upload_dir . DIRECTORY_SEPARATOR . $safe_name;
+                    }
+                    if (@rename($source, $target)) {
+                        $filename = $safe_name;
+                    }
+                }
+            }
             return $filename;
         }else{
             $resp = array('status'=>'2', 'msg' => $this->upload->display_errors());
@@ -5847,7 +5875,11 @@ function subcategory_table(){
                         unset($data_arr['teach_education']);
                     }
                     $data_arr = $this->filter_users_payload($data_arr);
+                    $preserve_teach_image = isset($data_arr['teach_image']) ? $data_arr['teach_image'] : null;
                     $data_arr = $this->security->xss_clean($data_arr);
+                    if ($preserve_teach_image !== null) {
+                        $data_arr['teach_image'] = $preserve_teach_image;
+                    }
                     if (!is_array($data_arr) || count($data_arr) < 1) {
                         echo json_encode(array('status' => 2, 'msg' => 'No valid fields to save. Ensure your database `users` table includes the institute columns (e.g. contact_no, country, lat/long) or run the migration SQL.'), JSON_UNESCAPED_SLASHES);
                         return;
@@ -5906,7 +5938,11 @@ function subcategory_table(){
                             unset($data_arr['teach_education']);
                         }
                         $data_arr = $this->filter_users_payload($data_arr);
+                        $preserve_teach_image = isset($data_arr['teach_image']) ? $data_arr['teach_image'] : null;
                         $data_arr = $this->security->xss_clean($data_arr);
+                        if ($preserve_teach_image !== null) {
+                            $data_arr['teach_image'] = $preserve_teach_image;
+                        }
                         $ins = $this->db_model->insert_data('users',$data_arr);
                         $resp = ((is_numeric($ins) && (int) $ins > 0) || $ins === true)
                             ? array('status' => 1, 'msg' => 'Institute added successfully.')
@@ -6189,7 +6225,11 @@ function subcategory_table(){
                         unset($data_arr['student_leave']);
                         unset($data_arr['student_manage']);
                         
+                    $preserve_teach_image = isset($data_arr['teach_image']) ? $data_arr['teach_image'] : null;
                     $data_arr = $this->security->xss_clean($data_arr);
+                    if ($preserve_teach_image !== null) {
+                        $data_arr['teach_image'] = $preserve_teach_image;
+                    }
                     $ins = $this->db_model->update_data_limit('users',$data_arr,array('id'=>$id),1);
                     if($ins==true){
                         $resp = array('status'=>1,'msg'=>'Teacher updated sucessfully.');
@@ -6245,7 +6285,11 @@ function subcategory_table(){
                         unset($data_arr['student_leave']);
                         unset($data_arr['student_manage']);
                        
+                        $preserve_teach_image = isset($data_arr['teach_image']) ? $data_arr['teach_image'] : null;
                         $data_arr = $this->security->xss_clean($data_arr);
+                        if ($preserve_teach_image !== null) {
+                            $data_arr['teach_image'] = $preserve_teach_image;
+                        }
                         
                         $ins = $this->db_model->insert_data('users',$data_arr);               
                         if($ins==true){
@@ -13170,7 +13214,11 @@ function themesOption(){
                         unset($data_arr['id']);    
                                        
                   
+                    $preserve_teach_image = isset($data_arr1['teach_image']) ? $data_arr1['teach_image'] : null;
                     $data_arr = $this->security->xss_clean($data_arr1);
+                    if ($preserve_teach_image !== null) {
+                        $data_arr['teach_image'] = $preserve_teach_image;
+                    }
                   
                     $ins = $this->db_model->update_data_limit('users',$data_arr,array('id'=>$id),1);
                     
@@ -13216,7 +13264,11 @@ function themesOption(){
                             }
                         }        
                         
+                        $preserve_teach_image = isset($data_arr1['teach_image']) ? $data_arr1['teach_image'] : null;
                         $data_arr = $this->security->xss_clean($data_arr1);
+                        if ($preserve_teach_image !== null) {
+                            $data_arr['teach_image'] = $preserve_teach_image;
+                        }
                         $ins = $this->db_model->insert_data('users',$data_arr);  
                         if(isset($_POST['sendMail'])==1){
                             $url = base_url('login');

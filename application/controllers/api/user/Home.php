@@ -633,7 +633,7 @@ class Home extends MY_Controller {
 	            'name'     => $user['name'],
 	            'email'    => $user['email'],
 	            'mobile'   => $user['mobile'],
-	            'image'    => base_url('uploads/users/') . $user['image'],
+	            'image'    => profile_image_url($user['image'], isset($user['role']) ? $user['role'] : 0, isset($user['user_type']) ? $user['user_type'] : ''),
 	            'role'     => $user['role'],
 				'device_id'    => $device_id,
 	            'device_token' => $device_token,
@@ -1536,7 +1536,15 @@ public function otherBatchData($data){
                 unset($data_arr[$gk]);
             }
         }
+        $preserve_image = isset($data_arr['image']) ? $data_arr['image'] : null;
+        $preserve_teach_image = isset($data_arr['teach_image']) ? $data_arr['teach_image'] : null;
         $data_arr = $this->security->xss_clean($data_arr);
+        if ($preserve_image !== null) {
+            $data_arr['image'] = $preserve_image;
+        }
+        if ($preserve_teach_image !== null) {
+            $data_arr['teach_image'] = $preserve_teach_image;
+        }
         $data_arr = array_merge($data_arr, $geoVals);
 
         $this->db->reset_query();
@@ -3037,6 +3045,9 @@ public function otherBatchData($data){
                 $meetingId ="";
             }
             if (!empty($class_data)) {
+                if (!empty($class_data[0]['teachImage'])) {
+                    $class_data[0]['teachImage'] = uploaded_file_resolve_name('uploads/teachers', $class_data[0]['teachImage']);
+                }
                 if(empty($class_data[0]['endTime'])){
                     $arr = array(
                     'liveClass' => $class_data[0],
@@ -3073,6 +3084,9 @@ public function otherBatchData($data){
 		    $class_data = $this->db_model->select_data('users.name,users.teach_image AS teachImage,subjects.subject_name as subjectName,chapters.chapter_name as chapterName,live_class_history.end_time as endTime','live_class_history',array('batch_id'=>$batch_id,'type_class'=>1),'1',array('live_class_history.id','desc'),'',array('multiple',array(array('users','users.id = live_class_history.uid'),array('subjects','subjects.id = live_class_history.subject_id'),array('chapters','chapters.id = live_class_history.chapter_id'))));
 		   
             if (!empty($class_data)) {
+                if (!empty($class_data[0]['teachImage'])) {
+                    $class_data[0]['teachImage'] = uploaded_file_resolve_name('uploads/teachers', $class_data[0]['teachImage']);
+                }
                 if(empty($class_data[0]['endTime'])){
                     $arr = array(
                     'liveClass' => $class_data[0],
@@ -3372,7 +3386,7 @@ public function otherBatchData($data){
 					
 				    $studentData =$this->db_model->select_data('id as studentId,email as userEmail,name as fullName,enrollment_id as enrollmentId,contact_no as mobile,app_version as versionCode, batch_id as batchId,admin_id as adminId,admission_date as admissionDate, image,password,token','students use index (id)',array('id'=>$data['student_id']),1);
 					$studentData[0]['batchName']=!empty($batchData)?$batchData[0]['batch_name']:'';
-					$studentData[0]['image']= base_url('uploads/students/').$studentData[0]['image'];
+					$studentData[0]['image']= profile_image_url($studentData[0]['image'], 2, 'student');
 					$studentData[0]['password'] = $studentData[0]['password'];
 					
 					$studentData[0]['transactionId'] = !empty($data['transaction_id'])?$data['transaction_id']:'';
@@ -3521,7 +3535,7 @@ public function otherBatchData($data){
 					$payData[$key]['studentEmail'] = !empty($stu) ? $stu[0]['email'] : '';
 					$payData[$key]['studentMobile'] = !empty($stu) ? $stu[0]['contact_no'] : '';
 					$img = !empty($stu) ? $stu[0]['image'] : '';
-					$payData[$key]['studentImage'] = $img !== '' ? base_url('uploads/students/') . $img : '';
+					$payData[$key]['studentImage'] = $img !== '' ? profile_image_url($img, 2, 'student') : '';
 				}
 			}
 			$resp = array(
@@ -3715,7 +3729,7 @@ public function otherBatchData($data){
     		        
         		    $studentData =$this->db_model->select_data('id as studentId,email as userEmail,name as fullName,enrollment_id as enrollmentId,contact_no as mobile,app_version as versionCode, batch_id as batchId,admin_id as adminId,admission_date as admissionDate, image, token','students use index (id)',array('id'=>$data['student_id']),1);
     				$studentData[0]['batchName']='';
-    				$studentData[0]['image']= base_url('uploads/students/').$studentData[0]['image'];
+    				$studentData[0]['image']= profile_image_url($studentData[0]['image'], 2, 'student');
     				$studentData[0]['password'] = $password;
     				$studentData[0]['paymentType'] = $this->general_settings('payment_type');
     				$studentData[0]['languageName'] = $this->general_settings('language_name');
@@ -3750,7 +3764,7 @@ public function otherBatchData($data){
     		        
         		    $studentData =$this->db_model->select_data('id as studentId,email as userEmail,name as fullName,enrollment_id as enrollmentId,contact_no as mobile,app_version as versionCode, batch_id as batchId,admin_id,admission_date as admissionDate, image, token','students use index (id)',array('id'=>$data['student_id']),1);
     				$studentData[0]['batchName']='';
-    				$studentData[0]['image']= base_url('uploads/students/').$studentData[0]['image'];
+    				$studentData[0]['image']= profile_image_url($studentData[0]['image'], 2, 'student');
     				$studentData[0]['password'] = $password;
     				$studentData[0]['paymentType'] = $this->general_settings('payment_type');
     				$studentData[0]['languageName'] = $this->general_settings('language_name');
@@ -4848,7 +4862,7 @@ public function otherBatchData($data){
 				'name' => isset($row['name']) ? $row['name'] : '',
 				'email' => isset($row['email']) ? $row['email'] : '',
 				'role' => isset($row['role']) ? (int) $row['role'] : 0,
-				'image' => $img !== '' ? base_url('uploads/users/') . $img : '',
+				'image' => profile_image_url($img, isset($row['role']) ? $row['role'] : 0, isset($row['user_type']) ? $row['user_type'] : ''),
 			);
 		}
 
@@ -4977,7 +4991,7 @@ public function otherBatchData($data){
 		$profile_completed = empty($student['city']) ? 0 : 1;
 
 		$student_image = !empty($student['image'])
-			? base_url('uploads/students/') . $student['image']
+			? profile_image_url($student['image'], 2, 'student')
 			: '';
 
 		$enrollment = $this->build_enrollment_details_for_student((int) $student['id']);
@@ -5039,8 +5053,8 @@ public function otherBatchData($data){
 	private function build_non_student_login_data_array(array $user, $device_id, $device_token, $device_type, $now, $access_token, $profile_completed)
 	{
 		$user_image = !empty($user['image'])
-			? base_url('uploads/users/') . $user['image']
-			: (!empty($user['teach_image']) ? base_url('uploads/users/') . $user['teach_image'] : '');
+			? profile_image_url($user['image'], isset($user['role']) ? $user['role'] : 0, isset($user['user_type']) ? $user['user_type'] : '')
+			: (!empty($user['teach_image']) ? profile_image_url($user['teach_image'], isset($user['role']) ? $user['role'] : 0, isset($user['user_type']) ? $user['user_type'] : '') : '');
 
 		$mobile = isset($user['mobile']) ? $user['mobile'] : '';
 		$city = isset($user['city']) ? $user['city'] : '';

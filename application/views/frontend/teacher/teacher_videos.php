@@ -238,6 +238,9 @@
 	var addUrl = <?php echo json_encode(isset($video_add_api_url) ? $video_add_api_url : ''); ?>;
 	var delUrl = <?php echo json_encode(isset($video_delete_api_url) ? $video_delete_api_url : ''); ?>;
 	var subjectsUrl = <?php echo json_encode(site_url('api/batch/batch-subjects')); ?>;
+	var addBtn = null;
+	var addBtnDefaultText = '';
+	var addInFlight = false;
 
 	var modalEl = document.getElementById('tvPlayerModal');
 	var playerBodyEl = document.getElementById('tvPlayerBody');
@@ -252,6 +255,20 @@
 		var x = document.getElementById('tv_msg');
 		x.className = err ? 'small text-danger px-2 mb-0 mt-2' : 'small text-success px-2 mb-0 mt-2';
 		x.textContent = t || '';
+	}
+	function setLoader(show) {
+		var nodes = document.querySelectorAll('.edu_preloader');
+		Array.prototype.forEach.call(nodes, function (el) {
+			el.style.backgroundColor = 'rgba(255,255,255,0.80)';
+			el.style.display = show ? 'block' : 'none';
+		});
+	}
+	function setAddBusy(busy) {
+		if (!addBtn) return;
+		addInFlight = !!busy;
+		addBtn.disabled = !!busy;
+		addBtn.textContent = busy ? 'Saving...' : addBtnDefaultText;
+		setLoader(!!busy);
 	}
 	function youtubeId(raw) {
 		var u = String(raw || '');
@@ -516,6 +533,7 @@
 	}
 
 	function add() {
+		if (addInFlight) return;
 		var fd = new FormData();
 		fd.append('access_token', token);
 		fd.append('batch_id', batchId);
@@ -526,17 +544,31 @@
 		fd.append('url', document.getElementById('tv_url').value.trim());
 		var f = document.getElementById('tv_file').files[0];
 		if (f) fd.append('video_file', f);
+		setAddBusy(true);
 		fetch(addUrl, { method: 'POST', headers: { 'Authorization': 'Bearer ' + token }, body: fd })
 			.then(function (r) { return r.json(); })
 			.then(function (j) {
-				msg((j && j.msg) || 'Saved', !(j && (j.status === 'true' || j.status === true)));
-				document.getElementById('tv_file').value = '';
+				var ok = !!(j && (j.status === 'true' || j.status === true));
+				msg((j && j.msg) || 'Saved', !ok);
+				if (ok) {
+					document.getElementById('tv_title').value = '';
+					document.getElementById('tv_topic').value = '';
+					document.getElementById('tv_subject').value = '';
+					document.getElementById('tv_url').value = '';
+					document.getElementById('tv_file').value = '';
+				}
 				load();
+				setAddBusy(false);
+			}, function () {
+				msg('Could not save video.', true);
+				setAddBusy(false);
 			});
 	}
 
 	document.addEventListener('DOMContentLoaded', function () {
-		document.getElementById('tv_add').addEventListener('click', add);
+		addBtn = document.getElementById('tv_add');
+		addBtnDefaultText = addBtn ? addBtn.textContent : 'Save video';
+		if (addBtn) addBtn.addEventListener('click', add);
 		document.getElementById('tvPlayerClose').addEventListener('click', closePlayer);
 		modalEl.addEventListener('click', function (ev) {
 			if (ev.target === modalEl) closePlayer();

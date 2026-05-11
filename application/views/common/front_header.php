@@ -248,7 +248,7 @@
 											}
 											$front_notifications_url = base_url('notifications');
 											$front_profile_img = trim((string) $this->session->userdata('profile_img'));
-											$front_avatar_url = ($front_profile_img !== '') ? (base_url('uploads/users/' . $front_profile_img)) : '';
+											$front_avatar_url = ($front_profile_img !== '') ? profile_image_url($front_profile_img, $front_role_raw, $front_api_ut) : '';
 										?>
 										<div class="dropdown d-inline-block front-profile-wrap">
 											<a href="javascript:void(0);" class="dropdown-toggle front-profile-trigger" id="frontUserMenu" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">

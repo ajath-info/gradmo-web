@@ -559,7 +559,7 @@ class Website extends MY_Controller
 			if ($path === false || $path === null || $path === '') {
 				return '';
 			}
-			return basename($path);
+			return rawurldecode(basename($path));
 		}
 
 		private function web_login_random_string($length = 10)

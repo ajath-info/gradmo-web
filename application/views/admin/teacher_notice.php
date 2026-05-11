@@ -40,7 +40,7 @@
 							
 							echo '
 								<div class="col-xl-4 col-lg-4 col-md-4 col-sm-12 col-xs-12">
-									<img src="'.base_url('uploads/teachers/'.$teacher_data[0]['teach_image']).'" alt="Teacher Image" class="noticeStImage">
+									<img src="'.profile_image_url($teacher_data[0]['teach_image'], 3, 'teacher').'" alt="Teacher Image" class="noticeStImage">
 								</div>
 								<div class="col-xl-8 col-lg-8 col-md-8 col-sm-12 col-xs-12">
 								<div class="edu_extra_class padderTop20">

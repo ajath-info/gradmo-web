@@ -85,6 +85,7 @@
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script>window.baseUrl = "<?php echo base_url(); ?>";</script>
 <script src="<?php echo base_url();?>assets/js/image-fallbacks.js?<?php echo time();?>"></script>
+<script src="<?php echo base_url();?>assets/js/form-submit-loader.js?<?php echo time();?>"></script>
 <script src="<?php echo base_url();?>assets/js/backend.js?<?php echo time();?>"></script>
 <script src="<?php echo base_url();?>assets/js/custom.js?<?php echo time();?>"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js?config=TeX-AMS_HTML"></script>

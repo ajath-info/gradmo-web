@@ -883,7 +883,7 @@ class Batch extends MY_Controller
 				'studentId' => (int) $r['studentId'],
 				'name' => isset($r['name']) ? $r['name'] : '',
 				'image' => $img,
-				'imageUrl' => $img !== '' ? base_url('uploads/students/') . $img : '',
+				'imageUrl' => $img !== '' ? profile_image_url($img, 2, 'student') : '',
 				'email' => isset($r['email']) ? $r['email'] : '',
 				'mobile' => isset($r['mobile']) ? $r['mobile'] : '',
 				'isPresent' => !empty($r['attendanceId']) ? 1 : 0,
@@ -2078,7 +2078,7 @@ class Batch extends MY_Controller
 			foreach ($rows as $r) {
 				$type = isset($r['typeClass']) ? (int) $r['typeClass'] : 0;
 				$r['typeLabel'] = ($type === 1) ? 'Zoom' : (($type === 2) ? 'Jetsi' : '');
-				$r['teacherImageUrl'] = !empty($r['teacherImage']) ? base_url('uploads/users/') . $r['teacherImage'] : '';
+				$r['teacherImageUrl'] = !empty($r['teacherImage']) ? profile_image_url($r['teacherImage'], 3, 'teacher') : '';
 				$r['isLive'] = (isset($r['endTime']) && (trim((string) $r['endTime']) === '' || $r['endTime'] === '0000-00-00 00:00:00')) ? 1 : 0;
 				$list[] = $r;
 			}
@@ -2138,7 +2138,7 @@ class Batch extends MY_Controller
 
 		$type = isset($row['typeClass']) ? (int) $row['typeClass'] : 0;
 		$row['typeLabel'] = ($type === 1) ? 'Zoom' : (($type === 2) ? 'Jetsi' : '');
-		$row['teacherImageUrl'] = !empty($row['teacherImage']) ? base_url('uploads/users/') . $row['teacherImage'] : '';
+		$row['teacherImageUrl'] = !empty($row['teacherImage']) ? profile_image_url($row['teacherImage'], 3, 'teacher') : '';
 		$row['isLive'] = (isset($row['endTime']) && (trim((string) $row['endTime']) === '' || $row['endTime'] === '0000-00-00 00:00:00')) ? 1 : 0;
 
 		// Attach meeting settings by class type.
@@ -3161,7 +3161,7 @@ class Batch extends MY_Controller
 			foreach ($rows as $r) {
 				$file = isset($r['attachment']) ? (string) $r['attachment'] : '';
 				$r['attachmentUrl'] = $file !== '' ? base_url('uploads/homework_submission/') . $file : '';
-				$r['studentImageUrl'] = !empty($r['studentImage']) ? base_url('uploads/students/') . $r['studentImage'] : '';
+				$r['studentImageUrl'] = !empty($r['studentImage']) ? profile_image_url($r['studentImage'], 2, 'student') : '';
 				$list[] = $r;
 			}
 		}
@@ -3370,8 +3370,8 @@ class Batch extends MY_Controller
 
 		$file = isset($row['attachment']) ? (string) $row['attachment'] : '';
 		$row['attachmentUrl'] = $file !== '' ? base_url('uploads/homework_submission/') . $file : '';
-		$row['studentImageUrl'] = !empty($row['studentImage']) ? base_url('uploads/students/') . $row['studentImage'] : '';
-		$row['teacherImageUrl'] = !empty($row['teacherImage']) ? base_url('uploads/users/') . $row['teacherImage'] : '';
+		$row['studentImageUrl'] = !empty($row['studentImage']) ? profile_image_url($row['studentImage'], 2, 'student') : '';
+		$row['teacherImageUrl'] = !empty($row['teacherImage']) ? profile_image_url($row['teacherImage'], 3, 'teacher') : '';
 
 		$this->api_json(true, 'Success', array('submission' => $row));
 	}

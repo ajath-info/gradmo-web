@@ -858,7 +858,7 @@
                 <a class="edu_admin_bar edu_admin_with_img" href="javascript:void(0);"> 
 					<?php 
 					if(isset($this->session->userdata['profile_img']) && !empty($this->session->userdata['profile_img'])){
-						echo '<img src="'.base_url('uploads/students/').$this->session->userdata['profile_img'].'" />';
+						echo '<img src="'.profile_image_url($this->session->userdata['profile_img'], 2, 'student').'" />';
 					}else{
 						echo '<span class="icofont-user-alt-4"></span>';
 					} 

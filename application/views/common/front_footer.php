@@ -102,6 +102,7 @@ $ft_twitter = !empty($fd0['twitter']) ? trim((string) $fd0['twitter']) : '';
 	<script src="<?php echo base_url();?>assets/js/tilt.js"></script>
 	<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 	<script src="<?php echo base_url();?>assets/js/front-custom.js?<?php echo time();?>"></script>
+	<script src="<?php echo base_url();?>assets/js/form-submit-loader.js?<?php echo time();?>"></script>
 	<script src="<?php echo base_url();?>assets/js/auth-select.js?<?php echo time();?>"></script>
 	<?php if (!empty($load_auth_form_assets)): ?>
 	<!-- Student re-login popup (used by login.js after AJAX login) -->

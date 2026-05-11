@@ -143,6 +143,13 @@
 	var cellMap = {};
 	var baseline = {};
 	var batchStartTime = '';
+	var activeRequests = 0;
+	var bulkBtn = null;
+	var bulkBtnDefaultText = '';
+	var bulkInFlight = false;
+	var matrixSaveBtn = null;
+	var matrixSaveBtnDefaultText = '';
+	var matrixSaveInFlight = false;
 
 	var cycle = ['empty', 'present', 'late', 'half', 'absent'];
 
@@ -263,6 +270,34 @@
 		m.className = err ? 'small text-danger px-2 mb-2' : 'small text-success px-2 mb-2';
 		m.textContent = t || '';
 	}
+	function setLoader(show) {
+		var nodes = document.querySelectorAll('.edu_preloader');
+		Array.prototype.forEach.call(nodes, function (el) {
+			el.style.backgroundColor = 'rgba(255,255,255,0.80)';
+			el.style.display = show ? 'block' : 'none';
+		});
+	}
+	function syncLoader() {
+		setLoader(activeRequests > 0);
+	}
+	function setBulkBusy(busy) {
+		if (!bulkBtn) return;
+		bulkInFlight = !!busy;
+		bulkBtn.disabled = !!busy;
+		bulkBtn.textContent = busy ? 'Saving...' : bulkBtnDefaultText;
+		activeRequests += busy ? 1 : -1;
+		if (activeRequests < 0) activeRequests = 0;
+		syncLoader();
+	}
+	function setMatrixSaveBusy(busy) {
+		if (!matrixSaveBtn) return;
+		matrixSaveInFlight = !!busy;
+		matrixSaveBtn.disabled = !!busy;
+		matrixSaveBtn.textContent = busy ? 'Saving...' : matrixSaveBtnDefaultText;
+		activeRequests += busy ? 1 : -1;
+		if (activeRequests < 0) activeRequests = 0;
+		syncLoader();
+	}
 	function renderBulkStudents() {
 		var wrap = document.getElementById('ta_add_students_wrap');
 		if (!students.length) {
@@ -296,6 +331,9 @@
 		for (var i = 0; i < list.length; i++) list[i].checked = !!on;
 	}
 	function submitBulkAttendance() {
+		if (bulkInFlight) {
+			return;
+		}
 		if (!addUrl) {
 			addMsg('Add attendance API URL is not configured.', true);
 			return;
@@ -316,6 +354,7 @@
 			student_ids: ids
 		};
 		if (dayStatus) payload.day_status = dayStatus;
+		setBulkBusy(true);
 		fetch(addUrl, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
@@ -323,12 +362,15 @@
 		}).then(function (r) { return r.json(); }).then(function (j) {
 			if (!(j && (j.status === 'true' || j.status === true))) {
 				addMsg((j && j.msg) || 'Attendance save failed.', true);
+				setBulkBusy(false);
 				return;
 			}
 			addMsg((j && j.msg) ? j.msg : 'Attendance saved.', false);
 			loadMatrix();
+			setBulkBusy(false);
 		}).catch(function () {
 			addMsg('Network error while saving attendance.', true);
+			setBulkBusy(false);
 		});
 	}
 	function loadMatrix() {
@@ -375,6 +417,9 @@
 		});
 	}
 	function saveMatrix() {
+		if (matrixSaveInFlight) {
+			return;
+		}
 		var dirty = collectDirtyKeys();
 		if (!dirty.length) {
 			msg('No changes to save.', false);
@@ -392,6 +437,7 @@
 			entries.push({ student_id: sid, date: ymd, status: st });
 		}
 		msg('Saving…', false);
+		setMatrixSaveBusy(true);
 		fetch(matrixSaveUrl, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
@@ -404,6 +450,7 @@
 		}).then(function (r) { return r.json(); }).then(function (j) {
 			if (!(j && (j.status === 'true' || j.status === true))) {
 				msg((j && j.msg) || 'Save failed.', true);
+				setMatrixSaveBusy(false);
 				return;
 			}
 			msg(j.msg || 'Saved.', false);
@@ -415,8 +462,10 @@
 					baseline[k] = { status: st };
 				}
 			});
+			setMatrixSaveBusy(false);
 		}).catch(function () {
 			msg('Network error while saving.', true);
+			setMatrixSaveBusy(false);
 		});
 	}
 	function shiftMonth(delta) {
@@ -439,6 +488,10 @@
 		document.getElementById('ta_add_date').value = now.toISOString().slice(0, 10);
 		document.getElementById('ta_mx_year').value = now.getFullYear();
 		document.getElementById('ta_mx_month').value = String(now.getMonth() + 1);
+		bulkBtn = document.getElementById('ta_add_submit');
+		bulkBtnDefaultText = bulkBtn ? bulkBtn.textContent : 'Save attendance';
+		matrixSaveBtn = document.getElementById('ta_mx_save_btn');
+		matrixSaveBtnDefaultText = matrixSaveBtn ? matrixSaveBtn.textContent : 'Save matrix';
 		document.getElementById('ta_add_select_all').addEventListener('click', function () { setAllStudentsChecked(true); });
 		document.getElementById('ta_add_clear_all').addEventListener('click', function () { setAllStudentsChecked(false); });
 		document.getElementById('ta_add_submit').addEventListener('click', submitBulkAttendance);

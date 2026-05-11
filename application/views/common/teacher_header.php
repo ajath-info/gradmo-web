@@ -251,7 +251,7 @@ if ( ! empty($lastrecord['access'])) {
     <header class="edu_left_header">
         <div class="edu_admin_header_left" >
             <div class="edu_admin_logo">
-                <a href="<?php echo base_url('teacher/dashboard')?>"><img src="<?php if(!empty($logo['teach_image'])){ echo base_url('uploads/admin/'.$logo['teach_image']); }else{
+                <a href="<?php echo base_url('teacher/dashboard')?>"><img src="<?php if(!empty($logo['teach_image'])){ echo profile_image_url($logo['teach_image'], 1, 'admin'); }else{
                     echo html_escape($this->common->siteLogo);
                 } ?>" class="logoRelativeCls main_logo" alt="Logo"></a>
                 <a href="#"><img src="<?=base_url()?>assets/images/mini_logo.png" class="mini_logo" alt="Minilogo"></a>
@@ -718,7 +718,7 @@ if ( ! empty($lastrecord['access'])) {
                 <a class="edu_admin_bar edu_admin_with_img" href="javascript:void(0);"> 
 					<?php 
 					if(isset($this->session->userdata['profile_img']) && !empty($this->session->userdata['profile_img'])){
-						echo '<img src="'.base_url('uploads/teachers/').$this->session->userdata['profile_img'].'" data-fallback-type="teacher" data-has-fallback="1" />';
+						echo '<img src="'.profile_image_url($this->session->userdata['profile_img'], 3, 'teacher').'" data-fallback-type="teacher" data-has-fallback="1" />';
 					}else{
 						echo '<span class="icofont-user-alt-4"></span>';
 					} 

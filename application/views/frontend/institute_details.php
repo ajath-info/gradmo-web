@@ -2,7 +2,7 @@
 <div class="inst-detail-page">
 	<div class="inst-detail-mobile-bar">
 		<a class="inst-back" href="<?php echo site_url('institute/listing'); ?>" aria-label="Back"><i class="fas fa-arrow-left"></i></a>
-		<span class="inst-detail-mobile-title">Institute details</span>
+		<span class="inst-detail-mobile-title" id="inst_d_mobile_title">Profile details</span>
 	</div>
 	<div class="inst-detail-container" id="inst_detail_root">
 		<div id="inst_d_msg" class="inst-muted text-center py-3"></div>
@@ -20,14 +20,14 @@
 			</div>
 			<div class="inst-detail-panel" id="inst_panel_batches">
 				<div class="inst-panel-head">
-					<h3>Batches</h3>
+					<h3 id="inst_d_batches_title">Batches</h3>
 					<a href="javascript:void(0)" class="inst-see-all" id="inst_batches_toggle" style="display:none;">See all</a>
 				</div>
 				<div id="inst_d_batches" class="inst-card-grid"></div>
 			</div>
 			<div class="inst-detail-panel" id="inst_panel_reviews">
 				<div class="inst-panel-head">
-					<h3>Ratings &amp; reviews</h3>
+					<h3 id="inst_d_reviews_title">Ratings &amp; reviews</h3>
 					<a href="javascript:void(0)" class="inst-see-all" id="inst_reviews_toggle" style="display:none;">See all</a>
 				</div>
 				<div id="inst_d_reviews" class="inst-card-grid"></div>
@@ -126,18 +126,20 @@
 	}
 	document.addEventListener('DOMContentLoaded', function () {
 		if (iid < 1) {
-			document.getElementById('inst_d_msg').textContent = 'Missing institute. Open this page from the institute listing.';
+			document.getElementById('inst_d_msg').textContent = 'Missing profile. Open this page from the directory.';
 			return;
 		}
 		document.getElementById('inst_d_msg').textContent = 'Loading…';
 		postJson({ institute_id: iid, reviews_limit: 40 }).then(function (j) {
 			if (!ok(j.status) || !j.institute) {
-				document.getElementById('inst_d_msg').textContent = j.msg || 'Could not load institute.';
+				document.getElementById('inst_d_msg').textContent = j.msg || 'Could not load profile.';
 				return;
 			}
 			document.getElementById('inst_d_msg').textContent = '';
 			document.getElementById('inst_d_body').classList.remove('inst-detail-hidden');
 			var ins = j.institute;
+			var profileType = (ins.profileType || ins.userType || '').toString().toLowerCase() === 'teacher' ? 'teacher' : 'institute';
+			var profileLabel = ins.profileTypeLabel || (profileType === 'teacher' ? 'Teacher' : 'Institute');
 			var imgUrl = (ins.imageUrl || '').trim();
 			var hero = document.getElementById('inst_d_hero');
 			var heroWrap = document.getElementById('inst_d_hero_wrap');
@@ -166,12 +168,18 @@
 			var r = j.rating || {};
 			var avg = r.averageRating != null ? Number(r.averageRating) : 0;
 			var tr = r.totalReviews != null ? r.totalReviews : 0;
-			document.getElementById('inst_d_rating_block').innerHTML =
-				starsHtml(Math.round(avg)) +
-				'<span class="inst-detail-rating-num">' + esc(avg.toFixed(1)) + ' (' + esc(tr) + ')</span>';
-			document.getElementById('inst_d_name').textContent = ins.name || 'Institute';
+			var ratingBlock = document.getElementById('inst_d_rating_block');
+			if (profileType === 'institute') {
+				ratingBlock.innerHTML = starsHtml(Math.round(avg)) +
+					'<span class="inst-detail-rating-num">' + esc(avg.toFixed(1)) + ' (' + esc(tr) + ')</span>';
+			} else {
+				ratingBlock.innerHTML = '<span class="inst-detail-rating-num">' + esc(profileLabel) + '</span>';
+			}
+			document.getElementById('inst_d_mobile_title').textContent = profileLabel + ' details';
+			document.getElementById('inst_d_name').textContent = ins.name || profileLabel;
 			var loc = [ins.address, ins.city, ins.state, ins.pincode, ins.country].filter(Boolean).join(', ');
 			var contacts = [];
+			contacts.push('<li><span class="inst-ci"><i class="fas fa-user-tag"></i></span><span>' + esc(profileLabel) + '</span></li>');
 			if (ins.mobile) {
 				contacts.push('<li><span class="inst-ci"><i class="fas fa-phone-alt"></i></span><span>' + esc(ins.mobile) + '</span></li>');
 			}
@@ -183,7 +191,15 @@
 			}
 			document.getElementById('inst_d_contact').innerHTML = contacts.length ? contacts.join('') : '<li class="inst-muted">No contact on file.</li>';
 			var ar = document.getElementById('inst_d_add_review');
-			if (ar) { ar.href = addReviewBase + '?institute_id=' + encodeURIComponent(iid); }
+			if (ar) {
+				if (profileType === 'institute') {
+					ar.href = addReviewBase + '?institute_id=' + encodeURIComponent(iid);
+					ar.style.display = '';
+				} else {
+					ar.style.display = 'none';
+				}
+			}
+			document.getElementById('inst_d_batches_title').textContent = profileType === 'teacher' ? 'Assigned batches' : 'Batches';
 			var bb = j.batches || [];
 			var bh = document.getElementById('inst_d_batches');
 			if (!bb.length) {
@@ -196,7 +212,10 @@
 			}
 			var rev = j.reviews || [];
 			var rh = document.getElementById('inst_d_reviews');
-			if (!rev.length) {
+			var reviewPanel = document.getElementById('inst_panel_reviews');
+			if (profileType !== 'institute') {
+				reviewPanel.style.display = 'none';
+			} else if (!rev.length) {
 				rh.innerHTML = '<p class="inst-muted mb-0 px-2">No reviews yet.</p>';
 			} else {
 				rh.innerHTML = rev.map(function (x, idx) {

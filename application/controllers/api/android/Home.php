@@ -116,7 +116,7 @@ class Home extends CI_Controller {
                             'userEmail' => $studentDetails[0]['email'],
                             'fullName' => $studentDetails[0]['name'],
                             'enrollmentId' => $studentDetails[0]['enrollment_id'],
-                            'image' => base_url('uploads/students/').$studentDetails[0]['image'],
+                            'image' => profile_image_url($studentDetails[0]['image'], 2, 'student'),
                             'mobile' => $studentDetails[0]['contact_no'],
                             'versionCode' => $studentDetails[0]['app_version'],
                             'batchId' => $studentDetails[0]['batch_id'],
@@ -221,7 +221,7 @@ class Home extends CI_Controller {
 	                'userEmail'     => $student['email'],
 	                'fullName'      => $student['name'],
 	                'enrollmentId'  => $student['enrollment_id'],
-	                'image'         => base_url('uploads/students/') . $student['image'],
+	                'image'         => profile_image_url($student['image'], 2, 'student'),
 	                'mobile'        => $student['contact_no'],
 	                'versionCode'   => $version,
 	                'batchId'       => $student['batch_id'],
@@ -340,7 +340,7 @@ class Home extends CI_Controller {
 							
 							$studentData =$this->db_model->select_data('id as studentId,email as userEmail,name as fullName,enrollment_id as enrollmentId,contact_no as mobile,app_version as versionCode, batch_id as batchId,admin_id as adminId,admission_date as admissionDate, image, token','students use index (id)',array('id'=>$ins),1);
 							$studentData[0]['batchName']='';
-							$studentData[0]['image']= base_url('uploads/students/').$studentData[0]['image'];
+							$studentData[0]['image']= profile_image_url($studentData[0]['image'], 2, 'student');
 							$studentData[0]['password'] = $password;
 							$studentData[0]['paymentType'] = $this->general_settings('payment_type');
 							$studentData[0]['languageName'] = $this->general_settings('language_name');
@@ -551,7 +551,7 @@ class Home extends CI_Controller {
 		        'fullName'      => $name,
 		        'enrollmentId'  => $enrolid,
 		        'mobile'        => $mobile,
-		        'image'         => base_url('uploads/students/student_img.png'),
+		        'image'         => profile_image_url('student_img.png', 2, 'student'),
 		        'batchId'       => $batch_id,
 		        'batchName'     => !empty($batch) ? $batch[0]['batch_name'] : '',
 		        'adminId'       => $admin_id,
@@ -1153,7 +1153,7 @@ public function otherBatchData($data){
                     $arr = array(
                         'status'=>'true',
                         'name'=>$data['name'],
-                        'image'=>base_url('uploads/students/').$pimage,
+                        'image'=>profile_image_url($pimage, 2, 'student'),
                         'msg'=>$this->lang->line('ltr_profile_updated_msg')
                     );
                 }else{
@@ -1942,6 +1942,9 @@ public function otherBatchData($data){
                 $meetingId ="";
             }
             if (!empty($class_data)) {
+                if (!empty($class_data[0]['teachImage'])) {
+                    $class_data[0]['teachImage'] = uploaded_file_resolve_name('uploads/teachers', $class_data[0]['teachImage']);
+                }
                 if(empty($class_data[0]['endTime'])){
                     $arr = array(
                     'liveClass' => $class_data[0],
@@ -1978,6 +1981,9 @@ public function otherBatchData($data){
 		    $class_data = $this->db_model->select_data('users.name,users.teach_image AS teachImage,subjects.subject_name as subjectName,chapters.chapter_name as chapterName,live_class_history.end_time as endTime','live_class_history',array('batch_id'=>$batch_id,'type_class'=>1),'1',array('live_class_history.id','desc'),'',array('multiple',array(array('users','users.id = live_class_history.uid'),array('subjects','subjects.id = live_class_history.subject_id'),array('chapters','chapters.id = live_class_history.chapter_id'))));
 		   
             if (!empty($class_data)) {
+                if (!empty($class_data[0]['teachImage'])) {
+                    $class_data[0]['teachImage'] = uploaded_file_resolve_name('uploads/teachers', $class_data[0]['teachImage']);
+                }
                 if(empty($class_data[0]['endTime'])){
                     $arr = array(
                     'liveClass' => $class_data[0],
@@ -2317,7 +2323,7 @@ public function otherBatchData($data){
 					
 				    $studentData =$this->db_model->select_data('id as studentId,email as userEmail,name as fullName,enrollment_id as enrollmentId,contact_no as mobile,app_version as versionCode, batch_id as batchId,admin_id as adminId,admission_date as admissionDate, image,password,token','students use index (id)',array('id'=>$data['student_id']),1);
 					$studentData[0]['batchName']=!empty($batchData)?$batchData[0]['batch_name']:'';
-					$studentData[0]['image']= base_url('uploads/students/').$studentData[0]['image'];
+					$studentData[0]['image']= profile_image_url($studentData[0]['image'], 2, 'student');
 					$studentData[0]['password'] = $studentData[0]['password'];
 					
 					$studentData[0]['transactionId'] = !empty($data['transaction_id'])?$data['transaction_id']:'';
@@ -2534,7 +2540,7 @@ public function otherBatchData($data){
     		        
         		    $studentData =$this->db_model->select_data('id as studentId,email as userEmail,name as fullName,enrollment_id as enrollmentId,contact_no as mobile,app_version as versionCode, batch_id as batchId,admin_id as adminId,admission_date as admissionDate, image, token','students use index (id)',array('id'=>$data['student_id']),1);
     				$studentData[0]['batchName']='';
-    				$studentData[0]['image']= base_url('uploads/students/').$studentData[0]['image'];
+    				$studentData[0]['image']= profile_image_url($studentData[0]['image'], 2, 'student');
     				$studentData[0]['password'] = $password;
     				$studentData[0]['paymentType'] = $this->general_settings('payment_type');
     				$studentData[0]['languageName'] = $this->general_settings('language_name');
@@ -2569,7 +2575,7 @@ public function otherBatchData($data){
     		        
         		    $studentData =$this->db_model->select_data('id as studentId,email as userEmail,name as fullName,enrollment_id as enrollmentId,contact_no as mobile,app_version as versionCode, batch_id as batchId,admin_id,admission_date as admissionDate, image, token','students use index (id)',array('id'=>$data['student_id']),1);
     				$studentData[0]['batchName']='';
-    				$studentData[0]['image']= base_url('uploads/students/').$studentData[0]['image'];
+    				$studentData[0]['image']= profile_image_url($studentData[0]['image'], 2, 'student');
     				$studentData[0]['password'] = $password;
     				$studentData[0]['paymentType'] = $this->general_settings('payment_type');
     				$studentData[0]['languageName'] = $this->general_settings('language_name');

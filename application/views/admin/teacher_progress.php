@@ -41,7 +41,7 @@
 				
 				echo '
 					<div class="col-xl-3 col-lg-3 col-md-4 col-sm-12 col-xs-12">
-						<img src="'.base_url('uploads/teachers/'.$teacher_data[0]['teach_image']).'" alt="Teacher Image">
+						<img src="'.profile_image_url($teacher_data[0]['teach_image'], 3, 'teacher').'" alt="Teacher Image">
 					</div>
 					<div class="col-xl-9 col-lg-9 col-md-8 col-sm-12 col-xs-12">
 					<div class="edu_extra_class">
