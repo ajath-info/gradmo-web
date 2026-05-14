@@ -1,3 +1,10 @@
+<style>
+.inst-upload-progress{margin:10px 8px 14px;padding:10px 12px;border:1px solid #dbeafe;border-radius:12px;background:#f8fbff}
+.inst-upload-progress.is-hidden{display:none}
+.inst-upload-progress-bar{width:100%;height:10px;border-radius:999px;background:#e5edf8;overflow:hidden}
+.inst-upload-progress-fill{display:block;height:100%;width:0;background:linear-gradient(90deg,#2563eb,#38bdf8);transition:width .2s ease}
+.inst-upload-progress-text{margin-top:8px;font-size:.84rem;font-weight:600;color:#334155}
+</style>
 <div class="inst-detail-page">
 	<div class="inst-detail-container">
 		<div class="inst-detail-panel">
@@ -13,6 +20,10 @@
 				<div class="inst-list-filter-actions"><button type="button" class="btn btn-primary" id="tb_add">Upload book</button></div>
 			</div>
 			<div id="tb_msg" class="inst-muted small px-2 mb-2"></div>
+			<div id="tb_progress" class="inst-upload-progress is-hidden" aria-live="polite">
+				<div class="inst-upload-progress-bar"><span id="tb_progress_fill" class="inst-upload-progress-fill"></span></div>
+				<div id="tb_progress_text" class="inst-upload-progress-text">Preparing upload...</div>
+			</div>
 			<div id="tb_list" class="inst-card-grid"></div>
 		</div>
 	</div>
@@ -28,15 +39,54 @@
 	var addBtn = null;
 	var addBtnDefaultText = '';
 	var addInFlight = false;
+	var progressWrap = null;
+	var progressFill = null;
+	var progressText = null;
 	function msg(t, e){var x=document.getElementById('tb_msg');x.className=e?'small text-danger px-2 mb-2':'small text-success px-2 mb-2';x.textContent=t||'';}
 	function esc(v){var d=document.createElement('div');d.textContent=v==null?'':String(v);return d.innerHTML;}
 	function setLoader(show){var nodes=document.querySelectorAll('.edu_preloader');Array.prototype.forEach.call(nodes,function(el){el.style.backgroundColor='rgba(255,255,255,0.80)';el.style.display=show?'block':'none';});}
+	function setProgress(percent,text){
+		if(!progressWrap||!progressFill||!progressText){return;}
+		progressWrap.classList.remove('is-hidden');
+		if(percent!=null && !isNaN(percent)){progressFill.style.width=Math.max(0,Math.min(100,percent))+'%';}
+		progressText.textContent=text||'Uploading...';
+	}
+	function resetProgress(){
+		if(!progressWrap||!progressFill||!progressText){return;}
+		progressWrap.classList.add('is-hidden');
+		progressFill.style.width='0%';
+		progressText.textContent='Preparing upload...';
+	}
 	function setAddBusy(busy){
 		if(!addBtn){return;}
 		addInFlight = !!busy;
 		addBtn.disabled = !!busy;
 		addBtn.textContent = busy ? 'Uploading...' : addBtnDefaultText;
 		setLoader(!!busy);
+		if(busy){setProgress(0,'Preparing upload...');}else{resetProgress();}
+	}
+	function uploadFormData(url, fd){
+		return new Promise(function(resolve,reject){
+			var xhr=new XMLHttpRequest();
+			xhr.open('POST',url,true);
+			xhr.setRequestHeader('Authorization','Bearer '+token);
+			xhr.upload.addEventListener('progress',function(ev){
+				if(ev.lengthComputable){
+					var percent=Math.round((ev.loaded/ev.total)*100);
+					setProgress(percent,percent>=100?'Upload complete, processing on server...':('Uploading... '+percent+'%'));
+				}else{
+					setProgress(null,'Uploading...');
+				}
+			});
+			xhr.upload.addEventListener('load',function(){setProgress(100,'Upload complete, processing on server...');});
+			xhr.onload=function(){
+				var body=xhr.responseText||'{}';
+				try{resolve(JSON.parse(body));}catch(err){reject(err);}
+			};
+			xhr.onerror=function(){reject(new Error('Network error'));};
+			xhr.onabort=function(){reject(new Error('Upload aborted'));};
+			xhr.send(fd);
+		});
 	}
 	function loadSubjects(){fetch(subjectsUrl,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({access_token:token,batch_id:batchId})}).then(function(r){return r.json();}).then(function(j){var sel=document.getElementById('tb_subject');var rows=(j.data&&j.data.subjects)?j.data.subjects:[];var html='<option value=\"\">Select subject</option>';for(var i=0;i<rows.length;i++){html+='<option value=\"'+esc(rows[i].subjectId)+'\">'+esc(rows[i].subjectName)+'</option>';}sel.innerHTML=html;});}
 	function load(){
@@ -58,8 +108,7 @@
 		var fd=new FormData();fd.append('access_token',token);fd.append('batch_id',batchId);fd.append('title',document.getElementById('tb_title').value.trim());var s=document.getElementById('tb_subject');fd.append('subject',s && s.value ? s.options[s.selectedIndex].text : '');fd.append('topic',document.getElementById('tb_topic').value.trim());
 		var f=document.getElementById('tb_file').files[0];if(f){fd.append('pdf_file',f);}
 		setAddBusy(true);
-		fetch(addUrl,{method:'POST',headers:{'Authorization':'Bearer '+token},body:fd})
-		.then(function(r){return r.json();})
+		uploadFormData(addUrl,fd)
 		.then(function(j){
 			var ok = !!(j && (j.status==='true'||j.status===true));
 			msg((j&&j.msg)||'Uploaded',!ok);
@@ -79,6 +128,9 @@
 	document.addEventListener('DOMContentLoaded',function(){
 		addBtn=document.getElementById('tb_add');
 		addBtnDefaultText=addBtn ? addBtn.textContent : 'Upload book';
+		progressWrap=document.getElementById('tb_progress');
+		progressFill=document.getElementById('tb_progress_fill');
+		progressText=document.getElementById('tb_progress_text');
 		if(addBtn){addBtn.addEventListener('click',add);}
 		loadSubjects();
 		load();

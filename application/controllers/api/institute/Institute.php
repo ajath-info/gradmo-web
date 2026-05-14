@@ -72,7 +72,7 @@ class Institute extends MY_Controller
 	/**
 	 * Enrolled student or teacher assigned in batch_subjects for this batch_id.
 	 */
-	private function assert_batch_access_student_or_teacher(array $payload, $batch_id)
+	private function assert_batch_access_student_or_teacher(array $payload, $batch_id, $request_data = null)
 	{
 		$batch_id = (int) $batch_id;
 		if ($batch_id < 1) {
@@ -82,7 +82,7 @@ class Institute extends MY_Controller
 		$ut = strtolower(trim((string) $payload['ut']));
 		$uid = (int) $payload['uid'];
 		if ($ut === 'student') {
-			if ($uid < 1 || $this->authorize_student_request($uid) === false) {
+			if ($uid < 1 || $this->authorize_student_request($uid, $request_data) === false) {
 				return false;
 			}
 			$enrollment = $this->db_model->select_data('id', 'student_batchs', array('student_id' => $uid, 'batch_id' => $batch_id), 1);
@@ -267,7 +267,7 @@ class Institute extends MY_Controller
 	 *
 	 * @return int[]
 	 */
-	private function institute_listing_my_institute_user_ids(array $payload)
+	private function institute_listing_my_institute_user_ids(array $payload, $request_data = null)
 	{
 		$ut = strtolower(trim((string) (isset($payload['ut']) ? $payload['ut'] : '')));
 		$uid = (int) (isset($payload['uid']) ? $payload['uid'] : 0);
@@ -278,7 +278,7 @@ class Institute extends MY_Controller
 			return array($uid);
 		}
 		if ($ut === 'student') {
-			if ($this->authorize_student_request($uid) === false) {
+			if ($this->authorize_student_request($uid, $request_data) === false) {
 				return array();
 			}
 			$this->db->distinct();
@@ -344,7 +344,7 @@ class Institute extends MY_Controller
 		if ($batch_id >= 1) {
 			$ut = strtolower(trim((string) (isset($payload['ut']) ? $payload['ut'] : '')));
 			if ($ut === 'student' || $ut === 'teacher') {
-				if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id)) {
+				if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id, $data)) {
 					return;
 				}
 			}
@@ -354,7 +354,7 @@ class Institute extends MY_Controller
 		$want_my_institutes = (strcasecmp($list_flag, 'my') === 0);
 		$my_institute_ids = array();
 		if ($want_my_institutes) {
-			$my_institute_ids = $this->institute_listing_my_institute_user_ids($payload);
+			$my_institute_ids = $this->institute_listing_my_institute_user_ids($payload, $data);
 		}
 
 		$order_field = isset($data['order_field']) ? strtolower(trim(trim((string) $data['order_field']), "\"' \t\n\r\0\x0B")) : 'distance';

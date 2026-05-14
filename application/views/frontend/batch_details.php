@@ -108,7 +108,6 @@
 	var teacherAttendanceUrl = <?php echo json_encode(site_url('teacher/attendance')); ?>;
 	var teacherVideosUrl = <?php echo json_encode(site_url('teacher/videos')); ?>;
 	var teacherBooksUrl = <?php echo json_encode(site_url('teacher/books')); ?>;
-	var teacherNotesUrl = <?php echo json_encode(site_url('teacher/notes')); ?>;
 	var teacherHomeworkUrl = <?php echo json_encode(site_url('teacher/homework')); ?>;
 	var teacherExamsUrl = <?php echo json_encode(site_url('teacher/exams')); ?>;
 	var canEnrollForBatch = true;
@@ -166,15 +165,13 @@
 			var attendanceHref = isTeacher ? (teacherAttendanceUrl + '?batch_id=' + encodeURIComponent(batchId)) : (attendancePageUrl + '?batch_id=' + encodeURIComponent(batchId));
 			var examHref = isTeacher ? (teacherExamsUrl + '?batch_id=' + encodeURIComponent(batchId)) : (examsPageUrl + '?batch_id=' + encodeURIComponent(batchId));
 			var homeworkHref = isTeacher ? (teacherHomeworkUrl + '?batch_id=' + encodeURIComponent(batchId)) : (homeworkPageUrl + '?batch_id=' + encodeURIComponent(batchId));
-			var notesTile = isTeacher ? modTile('Notes', 'Tap to manage', 'fas fa-sticky-note', teacherNotesUrl + '?batch_id=' + encodeURIComponent(batchId)) : '';
 			document.getElementById('bd_modules').innerHTML = '<div class="bd-mod-grid">' +
 				modTile('Live classes', (m.live_classes && m.live_classes.is_live) ? 'Live now' : 'Tap to open', 'fas fa-broadcast-tower', liveClassesUrl + '?batch_id=' + encodeURIComponent(batchId)) +
 				modTile('Video Lectures', (m.video_lectures && m.video_lectures.count != null) ? ('Videos: ' + m.video_lectures.count) : 'No data', 'fas fa-play-circle', videoHref) +
 				modTile('Library', (m.library && m.library.book_count != null) ? ('Books: ' + m.library.book_count) : 'Tap to open', 'fas fa-book', libraryHref) +
-				modTile('Attendance', (m.attendance && m.attendance.marked != null) ? ('Marked: ' + m.attendance.marked) : 'Tap to open', 'fas fa-clipboard-check', attendanceHref) +
 				modTile('Exams', (m.upcoming_exams && m.upcoming_exams.count != null) ? ('Upcoming: ' + m.upcoming_exams.count) : 'No data', 'fas fa-file-alt', examHref) +
 				modTile('Homework', (m.homework && m.homework.today_count != null) ? ('Today: ' + m.homework.today_count) : 'Tap to open', 'fas fa-pencil-alt', homeworkHref) +
-				notesTile +
+				modTile('Attendance', (m.attendance && m.attendance.marked != null) ? ('Marked: ' + m.attendance.marked) : 'Tap to open', 'fas fa-clipboard-check', attendanceHref) +
 			'</div>';
 			var canEnroll = truthy(b.canEnroll);
 			canEnrollForBatch = canEnroll;

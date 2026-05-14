@@ -369,7 +369,7 @@ class Home extends MY_Controller {
 	            return;
 	        }
 
-	        // Issue token first, then store last_login_app from token iat so only this session validates.
+	        // Issue token; last_login_app is still updated for analytics / "since last login" features, not for single-device token binding.
 	        $tok = $this->mint_access_credentials($student['id'], 'student');
 	        $access_token = $tok['access_token'];
 	        $now = date('Y-m-d H:i:s', $tok['iat']);
@@ -1224,7 +1224,7 @@ public function otherBatchData($data){
     }
 
     if ($ut === 'student') {
-        if ($this->authorize_student_request($uid) === false) {
+        if ($this->authorize_student_request($uid, is_array($data) ? $data : null) === false) {
             return;
         }
         $data_arr = array();
@@ -2664,15 +2664,15 @@ public function otherBatchData($data){
             return;
         }
 
-        // TEACHER VIEW: students enrolled in teacher's batch(es) with date-wise attendance (batch_id optional).
+        // TEACHER VIEW: all students from teacher's accessible batch(es) for a selected date.
         if ($ut === 'teacher') {
+            $this->ensure_attendance_day_status_column();
             $teacher_id = (int) $payload['uid'];
             if ($teacher_id < 1) {
                 echo json_encode(array('status' => 'false', 'msg' => 'Teacher not found'));
                 return;
             }
 
-            // Date filter uses attendance.date (YYYY-MM-DD). Use date or attendance_date; omit => today.
             $raw_date = isset($data['date']) ? trim((string) $data['date']) : '';
             $raw_date = trim($raw_date, "\"' \t\n\r\0\x0B");
             if ($raw_date === '' && isset($data['attendance_date'])) {
@@ -2715,54 +2715,226 @@ public function otherBatchData($data){
                     'students' => array(),
                     'presentCount' => 0,
                     'totalStudents' => 0,
+                    'summary' => array(
+                        'date' => $date,
+                        'countPresent' => 0,
+                        'countLate' => 0,
+                        'countHalf' => 0,
+                        'countAbsent' => 0,
+                        'daysPresent' => 0,
+                        'daysInMonth' => 0,
+                        'attendancePercent' => 0
+                    ),
                     'msg' => $this->lang->line('ltr_fetch_successfully')
                 ));
                 return;
             }
 
+            $batch_ids = array_values(array_unique(array_map('intval', $batch_ids)));
+            $single_batch_id = count($batch_ids) === 1 ? (int) $batch_ids[0] : 0;
             $ph = implode(',', array_fill(0, count($batch_ids), '?'));
-            // Rows in attendance for this date and batch (teacher scoped via batch_subjects above).
-            // Do not require student_batchs: some students have attendance + batch_id but no enrollment row there.
-            // Do not filter by attendance.added_id (marker may differ from current teacher id).
-            $sql = "SELECT s.id AS studentId, s.name, s.image, a.batch_id AS batchId,
-                        a.id AS attendanceId, a.date, a.time,
-                        b.start_time AS batchStartTime
-                 FROM attendance a
-                 INNER JOIN students s ON s.id = a.student_id AND s.status = 1
-                 LEFT JOIN batches b ON b.id = a.batch_id AND IFNULL(a.batch_id, 0) > 0
-                 WHERE a.date = ?
-                   AND (a.batch_id IN (" . $ph . ") OR IFNULL(a.batch_id, 0) = 0)
-                 ORDER BY s.name ASC";
-            $bind = array_merge(array($date), $batch_ids);
-            $query = $this->db->query($sql, $bind);
-            $rows = $query->result_array();
 
-            $students = array();
-            foreach ($rows as $row) {
-                $row_d = !empty($row['date']) ? $row['date'] : $date;
-                $students[] = array(
-                    'studentId' => (int) $row['studentId'],
-                    'name' => $row['name'],
-                    'image' => $row['image'],
-                    'batchId' => (int) $row['batchId'],
-                    'isPresent' => !empty($row['attendanceId']) ? 1 : 0,
-                    'is_late' => !empty($row['attendanceId'])
-                        ? $this->attendance_is_late(
-                            isset($row['time']) ? $row['time'] : '',
-                            isset($row['batchStartTime']) ? $row['batchStartTime'] : ''
-                        )
-                        : 0,
-                    'attendanceId' => !empty($row['attendanceId']) ? (int) $row['attendanceId'] : 0,
-                    'date' => $row_d,
-                    'attendance_date' => $row_d,
-                    'time' => !empty($row['time']) ? $row['time'] : ''
+            $batch_meta_rows = $this->db->query(
+                "SELECT id, batch_name, start_time FROM batches WHERE id IN (" . $ph . ")",
+                $batch_ids
+            )->result_array();
+            $batch_meta = array();
+            foreach ($batch_meta_rows as $row) {
+                $bid = isset($row['id']) ? (int) $row['id'] : 0;
+                if ($bid < 1) {
+                    continue;
+                }
+                $batch_meta[$bid] = array(
+                    'batchName' => isset($row['batch_name']) ? (string) $row['batch_name'] : ('Batch #' . $bid),
+                    'batchStartTime' => isset($row['start_time']) ? (string) $row['start_time'] : ''
                 );
             }
 
-            $single_batch_id = count($batch_ids) === 1 ? (int) $batch_ids[0] : 0;
+            $student_index = array();
+            $student_map = array();
 
-            $present_count = count(array_filter($students, function ($v) { return $v['isPresent'] == 1; }));
+            $register_student = function ($student_id, $batch_id, $name, $image) use (&$student_map, &$student_index, $batch_meta, $date) {
+                $student_id = (int) $student_id;
+                $batch_id = (int) $batch_id;
+                if ($student_id < 1 || $batch_id < 1) {
+                    return;
+                }
+                $image_url = (is_string($image) && preg_match('#^https?://#i', $image))
+                    ? $image
+                    : (function_exists('profile_image_url')
+                        ? profile_image_url($image, 'student', 'student')
+                        : (string) $image);
+                if (!isset($student_index[$student_id])) {
+                    $student_index[$student_id] = array(
+                        'name' => (string) $name,
+                        'image' => $image_url
+                    );
+                } elseif ($student_index[$student_id]['name'] === '' && $name !== '') {
+                    $student_index[$student_id]['name'] = (string) $name;
+                    $student_index[$student_id]['image'] = $image_url;
+                }
+                $key = $student_id . ':' . $batch_id;
+                if (isset($student_map[$key])) {
+                    return;
+                }
+                $batch_name = isset($batch_meta[$batch_id]['batchName']) ? $batch_meta[$batch_id]['batchName'] : ('Batch #' . $batch_id);
+                $student_map[$key] = array(
+                    'studentId' => $student_id,
+                    'name' => (string) $name,
+                    'image' => $image_url,
+                    'batchId' => $batch_id,
+                    'batchName' => $batch_name,
+                    'isPresent' => 0,
+                    'is_late' => 0,
+                    'attendanceId' => 0,
+                    'date' => $date,
+                    'attendance_date' => $date,
+                    'time' => '',
+                    'dayStatus' => '',
+                    'status' => 'absent'
+                );
+            };
+
+            $student_batch_rows = $this->db->query(
+                "SELECT DISTINCT s.id AS studentId, s.name, s.image, sb.batch_id AS batchId
+                 FROM student_batchs sb
+                 INNER JOIN students s ON s.id = sb.student_id AND s.status = 1
+                 WHERE sb.batch_id IN (" . $ph . ")
+                 ORDER BY s.name ASC",
+                $batch_ids
+            )->result_array();
+            foreach ($student_batch_rows as $row) {
+                $register_student(
+                    isset($row['studentId']) ? $row['studentId'] : 0,
+                    isset($row['batchId']) ? $row['batchId'] : 0,
+                    isset($row['name']) ? $row['name'] : '',
+                    isset($row['image']) ? $row['image'] : ''
+                );
+            }
+
+            $legacy_students = $this->db_model->select_data('id,name,image,batch_id,multi_batch', 'students', array('status' => 1), '');
+            if (!empty($legacy_students)) {
+                foreach ($legacy_students as $student_row) {
+                    $sid = isset($student_row['id']) ? (int) $student_row['id'] : 0;
+                    if ($sid < 1) {
+                        continue;
+                    }
+                    $candidate_batch_ids = array();
+
+                    $sb = isset($student_row['batch_id']) ? trim((string) $student_row['batch_id']) : '';
+                    if ($sb !== '') {
+                        preg_match_all('/\d+/', $sb, $sb_matches);
+                        if (!empty($sb_matches[0])) {
+                            foreach ($sb_matches[0] as $value) {
+                                $candidate_batch_ids[] = (int) $value;
+                            }
+                        }
+                    }
+
+                    $mb = isset($student_row['multi_batch']) ? trim((string) $student_row['multi_batch']) : '';
+                    if ($mb !== '') {
+                        $decoded = json_decode($mb, true);
+                        if (is_array($decoded)) {
+                            foreach ($decoded as $value) {
+                                $candidate_batch_ids[] = (int) $value;
+                            }
+                        } else {
+                            preg_match_all('/\d+/', $mb, $mb_matches);
+                            if (!empty($mb_matches[0])) {
+                                foreach ($mb_matches[0] as $value) {
+                                    $candidate_batch_ids[] = (int) $value;
+                                }
+                            }
+                        }
+                    }
+
+                    $candidate_batch_ids = array_values(array_unique(array_filter(array_map('intval', $candidate_batch_ids))));
+                    foreach ($candidate_batch_ids as $bid) {
+                        if (in_array($bid, $batch_ids, true)) {
+                            $register_student(
+                                $sid,
+                                $bid,
+                                isset($student_row['name']) ? $student_row['name'] : '',
+                                isset($student_row['image']) ? $student_row['image'] : ''
+                            );
+                        }
+                    }
+                }
+            }
+
+            $attendance_rows = $this->db->query(
+                "SELECT a.id AS attendanceId, a.student_id AS studentId, a.batch_id AS batchId, a.date, a.time,
+                        TRIM(IFNULL(a.day_status, '')) AS dayStatus
+                 FROM attendance a
+                 WHERE a.date = ?
+                   AND a.batch_id IN (" . $ph . ")",
+                array_merge(array($date), $batch_ids)
+            )->result_array();
+
+            foreach ($attendance_rows as $row) {
+                $sid = isset($row['studentId']) ? (int) $row['studentId'] : 0;
+                $bid = isset($row['batchId']) ? (int) $row['batchId'] : 0;
+                if ($sid < 1 || $bid < 1) {
+                    continue;
+                }
+
+                $key = $sid . ':' . $bid;
+                if (!isset($student_map[$key])) {
+                    $student_details = isset($student_index[$sid]) ? $student_index[$sid] : array('name' => '', 'image' => '');
+                    if ($student_details['name'] === '') {
+                        $student_row = $this->db_model->select_data('name,image', 'students', array('id' => $sid, 'status' => 1), 1);
+                        if (!empty($student_row[0])) {
+                            $student_details['name'] = isset($student_row[0]['name']) ? (string) $student_row[0]['name'] : '';
+                            $student_details['image'] = isset($student_row[0]['image']) ? (string) $student_row[0]['image'] : '';
+                        }
+                    }
+                    $register_student($sid, $bid, $student_details['name'], $student_details['image']);
+                }
+
+                $is_late = $this->attendance_is_late(
+                    isset($row['time']) ? $row['time'] : '',
+                    isset($batch_meta[$bid]['batchStartTime']) ? $batch_meta[$bid]['batchStartTime'] : ''
+                );
+                $status = $this->derive_student_attendance_status_row($row, $is_late);
+                $student_map[$key]['attendanceId'] = isset($row['attendanceId']) ? (int) $row['attendanceId'] : 0;
+                $student_map[$key]['date'] = !empty($row['date']) ? $row['date'] : $date;
+                $student_map[$key]['attendance_date'] = !empty($row['date']) ? $row['date'] : $date;
+                $student_map[$key]['time'] = !empty($row['time']) ? $row['time'] : '';
+                $student_map[$key]['dayStatus'] = isset($row['dayStatus']) ? (string) $row['dayStatus'] : '';
+                $student_map[$key]['status'] = $status;
+                $student_map[$key]['is_late'] = (int) $is_late;
+                $student_map[$key]['isPresent'] = ($status === 'absent') ? 0 : 1;
+            }
+
+            $students = array_values($student_map);
+            usort($students, function ($a, $b) {
+                $name_cmp = strcasecmp(isset($a['name']) ? (string) $a['name'] : '', isset($b['name']) ? (string) $b['name'] : '');
+                if ($name_cmp !== 0) {
+                    return $name_cmp;
+                }
+                return ((int) $a['batchId']) <=> ((int) $b['batchId']);
+            });
+
+            $count_present = 0;
+            $count_late = 0;
+            $count_half = 0;
+            $count_absent = 0;
+            foreach ($students as $student_row) {
+                $status = isset($student_row['status']) ? (string) $student_row['status'] : 'absent';
+                if ($status === 'late') {
+                    $count_late++;
+                } elseif ($status === 'half') {
+                    $count_half++;
+                } elseif ($status === 'present') {
+                    $count_present++;
+                } else {
+                    $count_absent++;
+                }
+            }
+
+            $presentish = $count_present + $count_late + $count_half;
             $total_students = count($students);
+            $attendance_percent = $total_students > 0 ? round(($presentish / $total_students) * 100, 2) : 0;
             $pg = $this->parse_api_list_pagination($data);
             $students_page = array_slice($students, $pg['offset'], $pg['limit']);
 
@@ -2774,8 +2946,18 @@ public function otherBatchData($data){
                 'date' => $date,
                 'attendance_date' => $date,
                 'students' => $students_page,
-                'presentCount' => $present_count,
+                'presentCount' => $presentish,
                 'totalStudents' => $total_students,
+                'summary' => array(
+                    'date' => $date,
+                    'countPresent' => $count_present,
+                    'countLate' => $count_late,
+                    'countHalf' => $count_half,
+                    'countAbsent' => $count_absent,
+                    'daysPresent' => $presentish,
+                    'daysInMonth' => $total_students,
+                    'attendancePercent' => $attendance_percent
+                ),
                	'pagination' => $this->build_api_list_pagination_meta($pg['page'], $pg['limit'], $total_students),
                 'msg' => $this->lang->line('ltr_fetch_successfully')
             ));
@@ -4742,14 +4924,14 @@ public function otherBatchData($data){
     
     function deleteAccount(){
         $data = $_REQUEST;
-        $payload = $this->require_auth_payload(array('student'));
+        $payload = $this->require_auth_payload(array('student'), is_array($data) ? $data : null);
         if ($payload === false) {
             return;
         }
 
         $student_id = (int) $payload['uid'];
         if ($student_id > 0) {
-            if ($this->authorize_student_request($student_id) === false) {
+            if ($this->authorize_student_request($student_id, is_array($data) ? $data : null) === false) {
                 return;
             }
             $check = $this->db_model->update_data_limit('students use index (id)',array('status'=>0,),array('id'=>$student_id),1);

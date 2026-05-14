@@ -411,82 +411,86 @@ $home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
 	min-height: 36px;
 }
 .edu-home-live-stack {
-	display: grid;
-	grid-template-columns: repeat(4, minmax(0, 1fr));
-	gap: 14px;
+	display: flex;
+	gap: 22px;
+	overflow-x: auto;
+	padding: 4px 2px 14px;
+	-webkit-overflow-scrolling: touch;
+	scroll-snap-type: x proximity;
 }
+.edu-home-live-stack > * { scroll-snap-align: start; flex-shrink: 0; }
 .edu-home-live-card {
-	width: 100%;
-	max-width: none;
+	width: 300px;
+	max-width: 84vw;
 	background: #fff;
-	border-radius: 16px;
-	padding: 14px;
-	box-shadow: 0 4px 18px rgba(15, 23, 42, 0.07);
-	border: 1px solid #eef0f5;
+	border-radius: 18px;
+	overflow: hidden;
+	box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+	border: 1px solid #e8edf7;
+	display: block;
+	text-decoration: none;
+	color: inherit;
+	transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
-@media (max-width: 1199px) {
-	.edu-home-live-stack { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.edu-home-live-card:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+	color: inherit;
+	text-decoration: none;
 }
-@media (max-width: 991px) {
-	.edu-home-live-stack { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (max-width: 575px) {
-	.edu-home-live-stack { grid-template-columns: 1fr; }
+.edu-home-live-media {
+	position: relative;
+	aspect-ratio: 16 / 9;
+	background: #eef2ff;
+	overflow: hidden;
 }
 .edu-home-live-thumb {
-	width: 44px;
-	height: 44px;
-	border-radius: 12px;
+	width: 100%;
+	height: 100%;
 	object-fit: cover;
 	background: #eef2ff;
-	border: 1px solid #e5e9f6;
-	flex: 0 0 44px;
 	display: block;
 }
-.edu-home-live-body { padding: 0; }
+.edu-home-live-body { padding: 16px 18px 18px; }
 .edu-home-live-body h3 {
-	margin: 0 0 4px;
-	font-size: 1rem;
+	margin: 0 0 10px;
+	font-size: 1.02rem;
 	font-weight: 700;
 	color: #111827;
-	white-space: nowrap;
+	line-height: 1.35;
+	min-height: 2.7em;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+	-webkit-box-orient: vertical;
 	overflow: hidden;
-	text-overflow: ellipsis;
 }
-.edu-home-live-date { font-size: 0.85rem; color: #6b7280; margin-bottom: 10px; min-height: 18px; }
-.edu-home-live-head {
-	display: flex;
-	gap: 12px;
-	align-items: center;
-	margin-bottom: 8px;
+.edu-home-live-meta {
+	margin: 0 0 4px;
+	font-size: 0.92rem;
+	color: #4b5563;
+	line-height: 1.45;
 }
-.edu-home-live-main { min-width: 0; }
-.edu-home-tag-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
-.edu-home-tag {
-	font-size: 0.72rem;
-	font-weight: 600;
-	padding: 5px 10px;
-	border-radius: 8px;
+.edu-home-live-meta strong {
+	color: #1f2937;
+	font-weight: 700;
 }
-.edu-home-tag--blue { background: #e8f0fe; color: #3a5fc9; }
-.edu-home-tag--orange { background: #fff3e6; color: #c65f0a; }
-.edu-home-btn-join {
-	display: block;
-	width: 100%;
-	text-align: center;
-	background: #4b6cf2;
-	color: #fff !important;
-	font-weight: 600;
-	padding: 12px 16px;
-	border-radius: 12px;
-	text-decoration: none;
-	border: 0;
-	cursor: pointer;
-	font-size: 0.95rem;
-	transition: background 0.2s ease;
+.edu-home-live-dates {
+	margin: 10px 0 0;
+	font-size: 0.9rem;
+	color: #6b7280;
+	line-height: 1.4;
 }
-.edu-home-btn-join:hover { background: #3b5bdb; color: #fff !important; text-decoration: none; }
+.edu-home-live-empty {
+	margin: 0;
+	font-size: 0.92rem;
+	color: #6b7280;
+}
 .edu-home-muted { color: #6b7280; font-size: 0.9rem; text-align: center; padding: 12px; }
+@media (max-width: 575px) {
+	.edu-home-live-stack { gap: 16px; }
+	.edu-home-live-card { width: 270px; max-width: 86vw; }
+}
 </style>
 
 <div class="edu-home-page">
@@ -844,60 +848,51 @@ $home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
 					$bid = isset($hb['id']) ? (int) $hb['id'] : 0;
 					$bname = isset($hb['batch_name']) ? $hb['batch_name'] : 'Live Class';
 					$bimg = $home_resolve_batch_image(isset($hb['batch_image']) ? $hb['batch_image'] : '');
-					$dt = '';
-					if (!empty($hb['start_date']) && $hb['start_date'] !== '0000-00-00') {
-						$ts = strtotime($hb['start_date']);
-						if ($ts) {
-							$dt = date('F jS, Y', $ts);
-						}
+					$home_instructor = isset($hb['instructor']) ? trim((string) $hb['instructor']) : '';
+					$home_schedule = isset($hb['schedule']) ? trim((string) $hb['schedule']) : '';
+					$home_start = isset($hb['start_date']) ? trim((string) $hb['start_date']) : '';
+					$home_end = isset($hb['end_date']) ? trim((string) $hb['end_date']) : '';
+					$home_dates = '';
+					if ($home_start !== '' && $home_start !== '0000-00-00') {
+						$home_dates = $home_start;
 					}
-					if ($dt === '') {
-						$dt = date('F jS, Y');
+					if ($home_end !== '' && $home_end !== '0000-00-00') {
+						$home_dates = ($home_dates !== '') ? ($home_dates . ' — ' . $home_end) : $home_end;
 					}
 					$detail_url = $bid > 0 ? base_url('batch/details?batch_id=' . $bid) : base_url('batch/list');
 					?>
-			<article class="edu-home-live-card">
-				<div class="edu-home-live-body">
-					<div class="edu-home-live-head">
-						<?php if ($bimg !== '') { ?>
-						<img class="edu-home-live-thumb" src="<?php echo html_escape($bimg); ?>" alt="" onerror="this.onerror=null;this.src='<?php echo html_escape($home_default_card_image); ?>';">
-						<?php } else { ?>
-						<img class="edu-home-live-thumb" src="<?php echo html_escape($home_default_card_image); ?>" alt="">
-						<?php } ?>
-						<div class="edu-home-live-main">
-							<span class="edu-home-badge">Batch</span>
-							<h3><?php echo html_escape($bname); ?></h3>
-						</div>
-					</div>
-					<div class="edu-home-live-date"><?php echo html_escape($dt); ?></div>
-					<div class="edu-home-tag-row">
-						<span class="edu-home-tag edu-home-tag--blue">Live Class</span>
-						<span class="edu-home-tag edu-home-tag--orange">Start Learning</span>
-					</div>
-					<a class="edu-home-btn-join" href="<?php echo html_escape($detail_url); ?>">View Details</a>
+			<a class="edu-home-live-card" href="<?php echo html_escape($detail_url); ?>">
+				<div class="edu-home-live-media">
+					<img class="edu-home-live-thumb" src="<?php echo html_escape($bimg !== '' ? $bimg : $home_default_card_image); ?>" alt="<?php echo html_escape($bname); ?>" onerror="this.onerror=null;this.src='<?php echo html_escape($home_default_card_image); ?>';">
 				</div>
-			</article>
+				<div class="edu-home-live-body">
+					<h3><?php echo html_escape($bname); ?></h3>
+					<?php if ($home_instructor !== '') { ?>
+					<p class="edu-home-live-meta"><strong>Instructor:</strong> <?php echo html_escape($home_instructor); ?></p>
+					<?php } ?>
+					<?php if ($home_schedule !== '') { ?>
+					<p class="edu-home-live-meta"><strong>Schedule:</strong> <?php echo html_escape($home_schedule); ?></p>
+					<?php } ?>
+					<?php if ($home_dates !== '') { ?>
+					<p class="edu-home-live-dates"><?php echo html_escape($home_dates); ?></p>
+					<?php } ?>
+				</div>
+			</a>
 					<?php
 				}
 			} else {
 				?>
-			<article class="edu-home-live-card">
-				<div class="edu-home-live-body">
-					<div class="edu-home-live-head">
-						<img class="edu-home-live-thumb" src="<?php echo html_escape($home_default_card_image); ?>" alt="">
-						<div class="edu-home-live-main">
-							<span class="edu-home-badge">Batch</span>
-							<h3>First Law of Motion</h3>
-						</div>
-					</div>
-					<div class="edu-home-live-date"><?php echo html_escape(date('F jS, Y')); ?></div>
-					<div class="edu-home-tag-row">
-						<span class="edu-home-tag edu-home-tag--blue">Live Class</span>
-						<span class="edu-home-tag edu-home-tag--orange">Start Learning</span>
-					</div>
-					<a class="edu-home-btn-join" href="<?php echo html_escape(base_url('batch/list')); ?>">View Details</a>
+			<a class="edu-home-live-card" href="<?php echo html_escape(base_url('batch/list')); ?>">
+				<div class="edu-home-live-media">
+					<img class="edu-home-live-thumb" src="<?php echo html_escape($home_default_card_image); ?>" alt="Sample batch">
 				</div>
-			</article>
+				<div class="edu-home-live-body">
+					<h3>First Law of Motion</h3>
+					<p class="edu-home-live-meta"><strong>Instructor:</strong> Demo Teacher</p>
+					<p class="edu-home-live-meta"><strong>Schedule:</strong> 4:00 PM - 6:00 PM</p>
+					<p class="edu-home-live-dates"><?php echo html_escape(date('Y-m-d')); ?></p>
+				</div>
+			</a>
 				<?php
 			}
 			?>

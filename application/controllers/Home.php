@@ -71,7 +71,7 @@ class Home extends CI_Controller {
         if($role==1){
           redirect(base_url().'admin/dashboard');
         }elseif($role==3){
-          redirect(base_url().'teacher/dashboard');
+          redirect(rtrim(base_url(), '/').'/');
         }else if($role=='student'){
           redirect(base_url().'student/my_course');
         }

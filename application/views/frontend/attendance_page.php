@@ -12,6 +12,13 @@
 				<section class="att-dash-col att-dash-cal" aria-labelledby="attDashCalTitle">
 					<h2 class="att-dash-section-title" id="attDashCalTitle">Attendance</h2>
 					<div class="att-dash-card att-dash-cal-inner">
+						<div id="attTeacherFilters" class="att-teacher-filters att-hidden">
+							<select id="attTeacherBatch" class="edu_form_field att-teacher-batch">
+								<option value="">All My Batches</option>
+							</select>
+							<input type="date" id="attTeacherDate" class="edu_form_field att-teacher-date">
+							<button type="button" id="attTeacherApply" class="btn btn-primary btn-sm">Apply</button>
+						</div>
 						<div class="att-dash-month-row">
 							<div class="att-dash-month-label" id="attMonthLabel">--</div>
 							<div class="att-dash-month-nav">
@@ -27,6 +34,7 @@
 							<span class="att-leg att-leg-weekend">Weekend</span>
 						</p>
 						<div id="attCalendarGrid"></div>
+						<div id="attTeacherRoster" class="att-teacher-roster att-hidden"></div>
 					</div>
 				</section>
 
@@ -262,21 +270,143 @@
 .att-stat-fill-absent { background: linear-gradient(90deg, #ef4444, #f87171); }
 
 .att-dash-msg { font-size: 0.875rem; }
+.att-hidden { display: none !important; }
+.att-teacher-filters {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	align-items: center;
+	margin-bottom: 14px;
+}
+.att-teacher-batch {
+	min-width: 220px;
+	flex: 1 1 240px;
+}
+.att-teacher-date {
+	min-width: 180px;
+	flex: 0 1 190px;
+}
+.att-teacher-roster {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	margin-top: 12px;
+}
+.att-teacher-empty {
+	padding: 14px 12px;
+	border-radius: 12px;
+	background: #fff;
+	border: 1px dashed #cbd5e1;
+	color: #64748b;
+	font-size: 0.92rem;
+	text-align: center;
+}
+.att-teacher-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 12px;
+	border-radius: 14px;
+	background: #fff;
+	border: 1px solid #e2e8f0;
+	box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
+}
+.att-teacher-main {
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+.att-teacher-avatar {
+	width: 42px;
+	height: 42px;
+	border-radius: 50%;
+	object-fit: cover;
+	background: #e2e8f0;
+	flex: 0 0 42px;
+}
+.att-teacher-avatar-ph {
+	width: 42px;
+	height: 42px;
+	border-radius: 50%;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	background: #dbeafe;
+	color: #1d4ed8;
+	font-weight: 700;
+	flex: 0 0 42px;
+}
+.att-teacher-text {
+	min-width: 0;
+}
+.att-teacher-name {
+	margin: 0;
+	font-size: 0.96rem;
+	font-weight: 700;
+	color: #0f172a;
+	line-height: 1.3;
+}
+.att-teacher-meta {
+	margin: 3px 0 0;
+	font-size: 0.8rem;
+	color: #64748b;
+	line-height: 1.35;
+}
+.att-teacher-side {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 6px;
+	flex-shrink: 0;
+}
+.att-status-chip {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 4px 10px;
+	border-radius: 999px;
+	font-size: 0.76rem;
+	font-weight: 700;
+	letter-spacing: 0.02em;
+}
+.att-status-chip.att-status-present { background: #dcfce7; color: #166534; }
+.att-status-chip.att-status-late { background: #fef3c7; color: #92400e; }
+.att-status-chip.att-status-half { background: #ccfbf1; color: #0f766e; }
+.att-status-chip.att-status-absent { background: #fee2e2; color: #b91c1c; }
+.att-status-time {
+	font-size: 0.78rem;
+	font-weight: 600;
+	color: #475569;
+}
+@media (max-width: 640px) {
+	.att-teacher-row {
+		flex-direction: column;
+		align-items: stretch;
+	}
+	.att-teacher-side {
+		align-items: flex-start;
+	}
+}
 </style>
 
 <script>
 (function () {
 	'use strict';
 
-	var endpoint = '<?php echo site_url('api/user/attendance-list'); ?>';
+	var endpoint = <?php echo json_encode(isset($attendance_api_url) ? $attendance_api_url : site_url('api/user/attendance-list')); ?>;
+	var batchOptionsEndpoint = <?php echo json_encode(isset($attendance_batch_options_url) ? $attendance_batch_options_url : site_url('batch/mylist-data')); ?>;
 	var token = <?php echo json_encode((string) (isset($api_access_token) ? $api_access_token : '')); ?>;
 	var batchId = <?php echo (int) (isset($batch_id) ? $batch_id : 0); ?>;
+	var teacherInitial = <?php echo !empty($attendance_is_teacher) ? 'true' : 'false'; ?>;
 	var state = {
 		year: new Date().getFullYear(),
 		month: new Date().getMonth() + 1,
 		dayStatus: {},
 		dayTime: {},
-		calendarApi: {}
+		calendarApi: {},
+		teacherMode: false
 	};
 
 	var monthLabelEl = document.getElementById('attMonthLabel');
@@ -286,6 +416,17 @@
 	var donutRingEl = document.getElementById('attDonutRing');
 	var donutCenterMainEl = document.getElementById('attDonutCenterMain');
 	var statListEl = document.getElementById('attStatList');
+	var donutCaptionEl = document.getElementById('attDonutCaption');
+	var donutCenterSubEl = document.querySelector('.att-donut-center-sub');
+	var teacherFiltersEl = document.getElementById('attTeacherFilters');
+	var teacherBatchEl = document.getElementById('attTeacherBatch');
+	var teacherDateEl = document.getElementById('attTeacherDate');
+	var teacherApplyEl = document.getElementById('attTeacherApply');
+	var teacherRosterEl = document.getElementById('attTeacherRoster');
+	var monthRowEl = document.querySelector('.att-dash-month-row');
+	var legendEl = document.querySelector('.att-dash-legend');
+	var calTitleEl = document.getElementById('attDashCalTitle');
+	var batchNameMap = {};
 
 	function esc(v) {
 		return String(v == null ? '' : v).replace(/[&<>"']/g, function (m) {
@@ -297,6 +438,102 @@
 		var cls = type === 'error' ? 'text-danger' : 'text-muted';
 		msgEl.className = 'att-dash-msg ' + cls;
 		msgEl.textContent = text || '';
+	}
+
+	function postJson(url, payload, headers) {
+		return fetch(url, {
+			method: 'POST',
+			headers: headers || {},
+			body: JSON.stringify(payload || {})
+		}).then(function (r) { return r.json(); });
+	}
+
+	function teacherStatusLabel(status) {
+		if (status === 'present') return 'Present';
+		if (status === 'late') return 'Late';
+		if (status === 'half') return 'Half day';
+		return 'Absent';
+	}
+
+	function setTeacherMode(enabled) {
+		state.teacherMode = !!enabled;
+		if (teacherFiltersEl) teacherFiltersEl.classList.toggle('att-hidden', !enabled);
+		if (teacherRosterEl) teacherRosterEl.classList.toggle('att-hidden', !enabled);
+		if (monthRowEl) monthRowEl.classList.toggle('att-hidden', enabled);
+		if (legendEl) legendEl.classList.toggle('att-hidden', enabled);
+		if (calendarEl) calendarEl.classList.toggle('att-hidden', enabled);
+		if (calTitleEl) calTitleEl.textContent = enabled ? 'Teacher Attendance' : 'Attendance';
+		if (donutCenterSubEl) donutCenterSubEl.textContent = enabled ? 'Students' : 'Classes';
+		if (donutCaptionEl) {
+			donutCaptionEl.innerHTML = enabled
+				? 'Attendance for the selected date : <strong id="attSummaryText">' + esc(summaryEl.textContent || '0/0 (0%)') + '</strong>'
+				: 'Attendance for the month : <strong id="attSummaryText">' + esc(summaryEl.textContent || '0/0 (0%)') + '</strong>';
+			summaryEl = document.getElementById('attSummaryText');
+		}
+	}
+
+	function loadTeacherBatchOptions() {
+		if (!teacherBatchEl) {
+			return Promise.resolve();
+		}
+		teacherBatchEl.innerHTML = '<option value="">All My Batches</option>';
+		batchNameMap = {};
+		return postJson(batchOptionsEndpoint, { page: 1, limit: 100 }, {
+			'Content-Type': 'application/json',
+			'Accept': 'application/json',
+			'X-Requested-With': 'XMLHttpRequest'
+		}).then(function (res) {
+			var ok = res && (res.status === true || res.status === 'true');
+			var rows = ok && res.data && Array.isArray(res.data.enrolled_batches) ? res.data.enrolled_batches : [];
+			for (var i = 0; i < rows.length; i++) {
+				var row = rows[i] || {};
+				var bid = parseInt(row.batchId || row.batch_id || 0, 10);
+				if (bid < 1 || batchNameMap[bid]) continue;
+				var name = row.batchName || row.batch_name || ('Batch #' + bid);
+				batchNameMap[bid] = name;
+				var option = document.createElement('option');
+				option.value = String(bid);
+				option.textContent = name;
+				if (batchId > 0 && bid === batchId) {
+					option.selected = true;
+				}
+				teacherBatchEl.appendChild(option);
+			}
+		}).catch(function () {
+			// Page should still work without dropdown options.
+		});
+	}
+
+	function renderTeacherRoster(students) {
+		teacherRosterEl.innerHTML = '';
+		if (!students || !students.length) {
+			teacherRosterEl.innerHTML = '<div class="att-teacher-empty">No students found for the selected date and batch.</div>';
+			return;
+		}
+		for (var i = 0; i < students.length; i++) {
+			var row = students[i] || {};
+			var status = String(row.status || 'absent').toLowerCase();
+			var avatar = row.image
+				? '<img class="att-teacher-avatar" src="' + esc(row.image) + '" alt="' + esc(row.name || 'Student') + '" onerror="this.onerror=null;this.style.display=\'none\';this.nextElementSibling.style.display=\'inline-flex\';">' +
+				  '<span class="att-teacher-avatar-ph" style="display:none;">' + esc(((row.name || 'S').charAt(0) || 'S').toUpperCase()) + '</span>'
+				: '<span class="att-teacher-avatar-ph">' + esc(((row.name || 'S').charAt(0) || 'S').toUpperCase()) + '</span>';
+			var batchText = row.batchName || (row.batchId ? ('Batch #' + row.batchId) : '');
+			var timeText = row.time ? ('Time: ' + row.time) : (status === 'absent' ? 'No attendance marked' : '');
+			var item = document.createElement('div');
+			item.className = 'att-teacher-row';
+			item.innerHTML =
+				'<div class="att-teacher-main">' + avatar +
+					'<div class="att-teacher-text">' +
+						'<p class="att-teacher-name">' + esc(row.name || 'Student') + '</p>' +
+						'<p class="att-teacher-meta">' + esc(batchText || 'Batch not assigned') + '</p>' +
+					'</div>' +
+				'</div>' +
+				'<div class="att-teacher-side">' +
+					'<span class="att-status-chip att-status-' + esc(status) + '">' + esc(teacherStatusLabel(status)) + '</span>' +
+					(timeText ? '<span class="att-status-time">' + esc(timeText) + '</span>' : '') +
+				'</div>';
+			teacherRosterEl.appendChild(item);
+		}
 	}
 
 	function daysInMonth(year, month) {
@@ -462,7 +699,8 @@
 		var h = parseInt(summary.countHalf, 10) || 0;
 		var a = parseInt(summary.countAbsent, 10) || 0;
 		var daysPresent = parseInt(summary.daysPresent, 10);
-		var dim = parseInt(summary.daysInMonth, 10) || daysInMonth(state.year, state.month);
+		var dimRaw = parseInt(summary.daysInMonth, 10);
+		var dim = isNaN(dimRaw) ? daysInMonth(state.year, state.month) : dimRaw;
 		var pct = summary.attendancePercent != null ? Number(summary.attendancePercent) : (dim > 0 ? ((daysPresent / dim) * 100) : 0);
 		if (isNaN(daysPresent)) daysPresent = p + l + h;
 
@@ -516,14 +754,27 @@
 
 	function loadAttendance() {
 		showMessage('Loading attendance...', 'info');
-		var payload = {
-			month: state.month,
-			year: state.year,
-			page: 1,
-			limit: 500
-		};
-		if (batchId > 0) {
-			payload.batch_id = batchId;
+		var payload;
+		if (state.teacherMode) {
+			payload = {
+				date: teacherDateEl && teacherDateEl.value ? teacherDateEl.value : todayYmd(),
+				page: 1,
+				limit: 1000
+			};
+			var teacherBatchId = teacherBatchEl && teacherBatchEl.value ? parseInt(teacherBatchEl.value, 10) : 0;
+			if (teacherBatchId > 0) {
+				payload.batch_id = teacherBatchId;
+			}
+		} else {
+			payload = {
+				month: state.month,
+				year: state.year,
+				page: 1,
+				limit: 500
+			};
+			if (batchId > 0) {
+				payload.batch_id = batchId;
+			}
 		}
 
 		fetch(endpoint, {
@@ -540,22 +791,24 @@
 				throw new Error((res && (res.msg || res.message)) || 'Unable to load attendance');
 			}
 			if (String(res.userType || '').toLowerCase() === 'teacher') {
+				setTeacherMode(true);
 				state.dayStatus = {};
 				state.dayTime = {};
 				state.calendarApi = {};
-				buildCalendar();
-				updateDashboard({
-					daysPresent: 0,
-					daysInMonth: daysInMonth(state.year, state.month),
+				renderTeacherRoster(Array.isArray(res.students) ? res.students : []);
+				updateDashboard(res.summary || {
+					daysPresent: parseInt(res.presentCount, 10) || 0,
+					daysInMonth: parseInt(res.totalStudents, 10) || 0,
 					attendancePercent: 0,
 					countPresent: 0,
 					countLate: 0,
 					countHalf: 0,
 					countAbsent: 0
 				});
-				showMessage('Student calendar view: log in as a student, or open Teacher Attendance from a batch.', 'error');
+				showMessage('', 'info');
 				return;
 			}
+			setTeacherMode(false);
 			var rows = Array.isArray(res.attendance) ? res.attendance : [];
 			var byDom = {};
 			for (var i = 0; i < rows.length; i++) {
@@ -606,10 +859,14 @@
 			state.dayStatus = {};
 			state.dayTime = {};
 			state.calendarApi = {};
-			buildCalendar();
+			if (!state.teacherMode) {
+				buildCalendar();
+			} else {
+				renderTeacherRoster([]);
+			}
 			updateDashboard({
 				daysPresent: 0,
-				daysInMonth: daysInMonth(state.year, state.month),
+				daysInMonth: state.teacherMode ? 0 : daysInMonth(state.year, state.month),
 				attendancePercent: 0,
 				countPresent: 0,
 				countLate: 0,
@@ -622,6 +879,9 @@
 	}
 
 	document.getElementById('attPrevMonth').addEventListener('click', function () {
+		if (state.teacherMode) {
+			return;
+		}
 		state.month -= 1;
 		if (state.month < 1) {
 			state.month = 12;
@@ -631,6 +891,9 @@
 	});
 
 	document.getElementById('attNextMonth').addEventListener('click', function () {
+		if (state.teacherMode) {
+			return;
+		}
 		state.month += 1;
 		if (state.month > 12) {
 			state.month = 1;
@@ -639,16 +902,32 @@
 		loadAttendance();
 	});
 
+	if (teacherDateEl) {
+		teacherDateEl.value = todayYmd();
+	}
+	if (teacherApplyEl) {
+		teacherApplyEl.addEventListener('click', loadAttendance);
+	}
+	if (teacherBatchEl) {
+		teacherBatchEl.addEventListener('change', loadAttendance);
+	}
+	if (teacherDateEl) {
+		teacherDateEl.addEventListener('change', loadAttendance);
+	}
+
+	setTeacherMode(teacherInitial);
 	buildCalendar();
 	updateDashboard({
 		daysPresent: 0,
-		daysInMonth: daysInMonth(state.year, state.month),
+		daysInMonth: teacherInitial ? 0 : daysInMonth(state.year, state.month),
 		attendancePercent: 0,
 		countPresent: 0,
 		countLate: 0,
 		countHalf: 0,
 		countAbsent: 0
 	});
-	loadAttendance();
+	(teacherInitial ? loadTeacherBatchOptions() : Promise.resolve()).then(function () {
+		loadAttendance();
+	});
 })();
 </script>

@@ -514,3 +514,14 @@ $config['rewrite_short_tags'] = FALSE;
 | Array:		array('10.0.1.200', '192.168.5.0/24')
 */
 $config['proxy_ips'] = '';
+
+/*
+|--------------------------------------------------------------------------
+| Public frontend static asset version (CSS/JS query string)
+|--------------------------------------------------------------------------
+|
+| Bump this when you deploy CSS/JS changes so browsers fetch new files.
+| Avoids using time() on every request (which disables caching and slows loads).
+|
+*/
+$config['frontend_asset_version'] = '1';

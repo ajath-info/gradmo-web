@@ -168,6 +168,41 @@ class Main extends MY_Controller
 	 * Auth: any valid app token (student|teacher|institute).
 	 * Required: institute_id, rating (1-5), msg
 	 */
+	protected function review_table_has_auto_increment_id()
+	{
+		$query = $this->db->query("SHOW COLUMNS FROM `review` LIKE 'id'");
+		$row = $query ? $query->row_array() : array();
+		$extra = isset($row['Extra']) ? strtolower((string) $row['Extra']) : '';
+		return strpos($extra, 'auto_increment') !== false;
+	}
+
+	protected function next_review_id()
+	{
+		$row = $this->db->query("SELECT MAX(`id`) AS max_id FROM `review` WHERE `id` > 0")->row_array();
+		$max_id = isset($row['max_id']) ? (int) $row['max_id'] : 0;
+		return $max_id > 0 ? ($max_id + 1) : 1;
+	}
+
+	protected function normalize_review_primary_keys()
+	{
+		$rows = $this->db->query("SELECT `id` FROM `review` WHERE `id` <= 0 ORDER BY `created_at` ASC, `user_id` ASC")->result_array();
+		if (empty($rows)) {
+			return;
+		}
+
+		$next_id = $this->next_review_id();
+		foreach ($rows as $row) {
+			$current_id = isset($row['id']) ? (int) $row['id'] : 0;
+			if ($current_id > 0) {
+				continue;
+			}
+			$this->db->where('id', $current_id);
+			if ($this->db->update('review', array('id' => $next_id))) {
+				$next_id++;
+			}
+		}
+	}
+
 	public function add_review()
 	{
 		$data = json_decode(file_get_contents('php://input'), true);
@@ -210,7 +245,16 @@ class Main extends MY_Controller
 			'created_at' => date('Y-m-d H:i:s'),
 		);
 
-		$review_id = $this->db_model->insert_data('review', $insert);
+		$this->normalize_review_primary_keys();
+		if (!$this->review_table_has_auto_increment_id()) {
+			$insert['id'] = $this->next_review_id();
+		}
+
+		$insert_ok = $this->db->insert('review', $this->security->xss_clean($insert));
+		$review_id = !empty($insert['id']) ? (int) $insert['id'] : (int) $this->db->insert_id();
+		if (!$insert_ok) {
+			$review_id = 0;
+		}
 		if (empty($review_id)) {
 			echo json_encode(array('status' => 'false', 'msg' => 'Failed to add review'));
 			return;

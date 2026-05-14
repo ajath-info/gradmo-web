@@ -1,0 +1,262 @@
+{
+  "info": {
+    "_postman_id": "1b7b4d89-3b26-4d62-a6ad-9252d63ec8b7",
+    "name": "Gradmo Exam APIs",
+    "description": "Exam management and student assessment APIs for teacher, institute, and student flows.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Teacher / Institute",
+      "item": [
+        {
+          "name": "Batch Subjects",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"batch_id\": {{batch_id}}\n}"
+            },
+            "url": "{{base_url}}/api/batch/batch-subjects"
+          }
+        },
+        {
+          "name": "Batch Chapters",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"batch_id\": {{batch_id}},\n  \"subject_id\": {{subject_id}}\n}"
+            },
+            "url": "{{base_url}}/api/batch/batch-chapters"
+          }
+        },
+        {
+          "name": "Exam Manage List",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"batch_id\": {{batch_id}},\n  \"search\": \"\",\n  \"page\": 1,\n  \"limit\": 20\n}"
+            },
+            "url": "{{base_url}}/api/batch/exam-manage-list"
+          }
+        },
+        {
+          "name": "Exam Add (JSON)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"batch_id\": {{batch_id}},\n  \"name\": \"Physics Mock Test 1\",\n  \"type\": 1,\n  \"format\": 1,\n  \"time_duration\": 30,\n  \"mock_sheduled_date\": \"2026-05-30\",\n  \"mock_sheduled_time\": \"19:00:00\",\n  \"marking_parcent\": 0,\n  \"questions\": [\n    {\n      \"subject_id\": {{subject_id}},\n      \"chapter_id\": {{chapter_id}},\n      \"question\": \"What is Newton's first law?\",\n      \"options\": [\"Law of inertia\", \"Law of acceleration\", \"Law of gravity\", \"Law of motion\"],\n      \"answer\": \"A\",\n      \"question_mask\": 1\n    },\n    {\n      \"subject_id\": {{subject_id}},\n      \"chapter_id\": {{chapter_id}},\n      \"question\": \"SI unit of force is?\",\n      \"options\": [\"Joule\", \"Newton\", \"Pascal\", \"Watt\"],\n      \"answer\": \"B\",\n      \"question_mask\": 1\n    }\n  ]\n}"
+            },
+            "url": "{{base_url}}/api/batch/exam-add"
+          }
+        },
+        {
+          "name": "Exam Add (Multipart with image)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "batch_id", "value": "{{batch_id}}", "type": "text" },
+                { "key": "name", "value": "Physics Mock Test 2", "type": "text" },
+                { "key": "type", "value": "1", "type": "text" },
+                { "key": "format", "value": "1", "type": "text" },
+                { "key": "time_duration", "value": "30", "type": "text" },
+                { "key": "mock_sheduled_date", "value": "2026-05-30", "type": "text" },
+                { "key": "mock_sheduled_time", "value": "20:00:00", "type": "text" },
+                { "key": "marking_parcent", "value": "0", "type": "text" },
+                {
+                  "key": "questions_json",
+                  "value": "[{\"subject_id\":{{subject_id}},\"chapter_id\":{{chapter_id}},\"question\":\"Identify the traffic sign.\",\"options\":[\"Warning\",\"Mandatory\",\"Stop\",\"Direction\"],\"answer\":\"A\",\"question_mask\":1,\"image_field\":\"question_image_0\"}]",
+                  "type": "text"
+                },
+                { "key": "question_image_0", "type": "file", "src": "" }
+              ]
+            },
+            "url": "{{base_url}}/api/batch/exam-add"
+          }
+        },
+        {
+          "name": "Exam Edit (JSON)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"exam_id\": {{exam_id}},\n  \"batch_id\": {{batch_id}},\n  \"name\": \"Physics Mock Test 1 - Updated\",\n  \"time_duration\": 35,\n  \"mock_sheduled_date\": \"2026-05-31\",\n  \"mock_sheduled_time\": \"19:30:00\",\n  \"questions\": [\n    {\n      \"question_id\": {{question_id}},\n      \"subject_id\": {{subject_id}},\n      \"chapter_id\": {{chapter_id}},\n      \"question\": \"What is Newton's first law called?\",\n      \"options\": [\"Law of inertia\", \"Law of acceleration\", \"Law of energy\", \"Law of friction\"],\n      \"answer\": \"A\",\n      \"question_mask\": 1\n    }\n  ]\n}"
+            },
+            "url": "{{base_url}}/api/batch/exam-edit"
+          }
+        },
+        {
+          "name": "Exam Edit (Multipart with image)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "exam_id", "value": "{{exam_id}}", "type": "text" },
+                { "key": "batch_id", "value": "{{batch_id}}", "type": "text" },
+                { "key": "name", "value": "Physics Mock Test 2 - Updated", "type": "text" },
+                {
+                  "key": "questions_json",
+                  "value": "[{\"question_id\":{{question_id}},\"subject_id\":{{subject_id}},\"chapter_id\":{{chapter_id}},\"question\":\"Updated question with new image\",\"options\":[\"A1\",\"B1\",\"C1\",\"D1\"],\"answer\":\"B\",\"question_mask\":2,\"image_field\":\"question_image_0\"}]",
+                  "type": "text"
+                },
+                { "key": "question_image_0", "type": "file", "src": "" }
+              ]
+            },
+            "url": "{{base_url}}/api/batch/exam-edit"
+          }
+        },
+        {
+          "name": "Exam Delete",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"exam_id\": {{exam_id}}\n}"
+            },
+            "url": "{{base_url}}/api/batch/exam-delete"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Student",
+      "item": [
+        {
+          "name": "Upcoming Exam List",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"batch_id\": {{batch_id}},\n  \"search\": \"\",\n  \"page\": 1,\n  \"limit\": 20\n}"
+            },
+            "url": "{{base_url}}/api/batch/upcoming-exam-list"
+          }
+        },
+        {
+          "name": "Upcoming Exam Details",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"exam_id\": {{exam_id}}\n}"
+            },
+            "url": "{{base_url}}/api/batch/upcoming-exam-details"
+          }
+        },
+        {
+          "name": "Student Exam Dashboard",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"batch_id\": {{batch_id}}\n}"
+            },
+            "url": "{{base_url}}/api/batch/student-exam-dashboard"
+          }
+        },
+        {
+          "name": "Student Exam Paper",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"exam_id\": {{exam_id}}\n}"
+            },
+            "url": "{{base_url}}/api/batch/student-exam-paper"
+          }
+        },
+        {
+          "name": "Student Submit Exam",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"exam_id\": {{exam_id}},\n  \"started_at\": \"2026-05-12 15:00:00\",\n  \"answers\": {\n    \"101\": \"A\",\n    \"102\": \"B\"\n  }\n}"
+            },
+            "url": "{{base_url}}/api/batch/student-submit-exam"
+          }
+        },
+        {
+          "name": "Student Exam Result",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"exam_id\": {{exam_id}}\n}"
+            },
+            "url": "{{base_url}}/api/batch/student-exam-result"
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "base_url", "value": "http://localhost/education" },
+    { "key": "access_token", "value": "" },
+    { "key": "batch_id", "value": "2" },
+    { "key": "subject_id", "value": "5" },
+    { "key": "chapter_id", "value": "9" },
+    { "key": "exam_id", "value": "1" },
+    { "key": "question_id", "value": "101" }
+  ]
+}

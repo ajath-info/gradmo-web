@@ -85,6 +85,115 @@ class Batch extends MY_Controller
 		$this->db->group_end();
 	}
 
+	private function apply_text_batch_ids_filter($column, array $batch_ids)
+	{
+		$ids = array_values(array_unique(array_filter(array_map('intval', $batch_ids))));
+		if (empty($ids)) {
+			$this->db->where('1 = 0', null, false);
+			return;
+		}
+		$this->db->group_start();
+		foreach ($ids as $index => $bid) {
+			if ($index > 0) {
+				$this->db->or_group_start();
+			} else {
+				$this->db->group_start();
+			}
+			$this->db->like($column, '"' . $bid . '"');
+			$this->db->or_where($column, (string) $bid);
+			$this->db->or_where($column, $bid);
+			$this->db->or_where('FIND_IN_SET(' . $bid . ', ' . $column . ') > 0', null, false);
+			$this->db->group_end();
+		}
+		$this->db->group_end();
+	}
+
+	private function student_accessible_batch_ids($student_id)
+	{
+		$student_id = (int) $student_id;
+		if ($student_id < 1) {
+			return array();
+		}
+
+		$ids = array();
+		$rows = $this->db_model->select_data('batch_id', 'student_batchs', array('student_id' => $student_id), '');
+		if (!empty($rows)) {
+			foreach ($rows as $row) {
+				$bid = isset($row['batch_id']) ? (int) $row['batch_id'] : 0;
+				if ($bid > 0) {
+					$ids[] = $bid;
+				}
+			}
+		}
+
+		$student_rows = $this->db_model->select_data('batch_id, multi_batch', 'students', array('id' => $student_id, 'status' => 1), 1);
+		if (!empty($student_rows)) {
+			$row = $student_rows[0];
+			$primary = isset($row['batch_id']) ? trim((string) $row['batch_id']) : '';
+			if ($primary !== '') {
+				preg_match_all('/\d+/', $primary, $matches);
+				if (!empty($matches[0])) {
+					foreach ($matches[0] as $value) {
+						$bid = (int) $value;
+						if ($bid > 0) {
+							$ids[] = $bid;
+						}
+					}
+				}
+			}
+
+			$multi_batch = isset($row['multi_batch']) ? trim((string) $row['multi_batch']) : '';
+			if ($multi_batch !== '') {
+				$decoded = json_decode($multi_batch, true);
+				if (is_array($decoded)) {
+					foreach ($decoded as $value) {
+						$bid = (int) $value;
+						if ($bid > 0) {
+							$ids[] = $bid;
+						}
+					}
+				} else {
+					preg_match_all('/\d+/', $multi_batch, $matches);
+					if (!empty($matches[0])) {
+						foreach ($matches[0] as $value) {
+							$bid = (int) $value;
+							if ($bid > 0) {
+								$ids[] = $bid;
+							}
+						}
+					}
+				}
+			}
+		}
+
+		$ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+		return $ids;
+	}
+
+	private function video_lecture_accessible_batch_ids(array $payload, $request_data = null)
+	{
+		$ut = strtolower(trim((string) (isset($payload['ut']) ? $payload['ut'] : '')));
+		$uid = isset($payload['uid']) ? (int) $payload['uid'] : 0;
+
+		if ($ut === 'student') {
+			if ($uid < 1 || $this->authorize_student_request($uid, $request_data) === false) {
+				return false;
+			}
+			return $this->student_accessible_batch_ids($uid);
+		}
+
+		if ($ut === 'teacher') {
+			if ($uid < 1) {
+				echo json_encode(array('status' => 'false', 'msg' => 'Teacher not found'));
+				return false;
+			}
+			return $this->teacher_attendance_accessible_batch_ids($uid);
+		}
+
+		echo json_encode(array('status' => 'false', 'msg' => 'This action is available for student and teacher only'));
+		return false;
+	}
+
 	private function zoom_signature($sdk_key, $sdk_secret, $meeting_number, $role)
 	{
 		$sdk_key = trim((string) $sdk_key);
@@ -119,7 +228,7 @@ class Batch extends MY_Controller
 	/**
 	 * Enrolled student or teacher assigned in batch_subjects for this batch_id.
 	 */
-	private function assert_batch_access_student_or_teacher(array $payload, $batch_id)
+	private function assert_batch_access_student_or_teacher(array $payload, $batch_id, $request_data = null)
 	{
 		$batch_id = (int) $batch_id;
 		if ($batch_id < 1) {
@@ -129,7 +238,7 @@ class Batch extends MY_Controller
 		$ut = strtolower(trim((string) $payload['ut']));
 		$uid = (int) $payload['uid'];
 		if ($ut === 'student') {
-			if ($uid < 1 || $this->authorize_student_request($uid) === false) {
+			if ($uid < 1 || $this->authorize_student_request($uid, $request_data) === false) {
 				return false;
 			}
 			$enrollment = $this->db_model->select_data('id', 'student_batchs', array('student_id' => $uid, 'batch_id' => $batch_id), 1);
@@ -300,7 +409,7 @@ class Batch extends MY_Controller
 		// STUDENT FLOW: existing behavior (enrolled batches)
 		elseif ($payload['ut'] === 'student') {
 			$student_id = (int) $payload['uid'];
-			if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
+			if ($student_id < 1 || $this->authorize_student_request($student_id, $data) === false) {
 				return;
 			}
 
@@ -407,7 +516,7 @@ class Batch extends MY_Controller
 
 		if ($ut === 'student') {
 			$student_id = $uid;
-			if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
+			if ($student_id < 1 || $this->authorize_student_request($student_id, $data) === false) {
 				return;
 			}
 			$enrollment = $this->db_model->select_data(
@@ -513,15 +622,7 @@ class Batch extends MY_Controller
 			);
 		}
 
-		$upcoming_exams = (int) $this->db_model->countAll(
-			'exams use index (id)',
-			array(
-				'batch_id' => $batch_id,
-				'status' => 1,
-				'type' => 1,
-				'mock_sheduled_date >=' => date('Y-m-d')
-			)
-		);
+		$upcoming_exams = $this->count_upcoming_exams_for_batch_details($batch_id, $ut, $student_id);
 
 		$today = date('Y-m-d');
 		$homework_total = (int) $this->db_model->countAll(
@@ -642,7 +743,7 @@ class Batch extends MY_Controller
 		}
 
 		$batch_id = (int) $data['batch_id'];
-		if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id)) {
+		if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id, $data)) {
 			return;
 		}
 
@@ -1338,6 +1439,388 @@ class Batch extends MY_Controller
 		$this->api_json(true, 'Success', array('batch_id' => $batch_id, 'subjects' => $list));
 	}
 
+	private $question_image_column_checked = false;
+
+	private function ensure_question_image_column()
+	{
+		if ($this->question_image_column_checked) {
+			return;
+		}
+		$this->question_image_column_checked = true;
+		if ($this->db->field_exists('question_image', 'questions')) {
+			return;
+		}
+		@$this->db->query("ALTER TABLE `questions` ADD COLUMN `question_image` VARCHAR(255) NOT NULL DEFAULT '' AFTER `question`");
+	}
+
+	private function normalize_exam_question_answer($raw)
+	{
+		$answer = strtoupper(trim((string) $raw));
+		$map = array('1' => 'A', '2' => 'B', '3' => 'C', '4' => 'D');
+		if (isset($map[$answer])) {
+			return $map[$answer];
+		}
+		return in_array($answer, array('A', 'B', 'C', 'D'), true) ? $answer : '';
+	}
+
+	private function upload_exam_question_image($field_name)
+	{
+		$path = './uploads/question_images/';
+		if (!is_dir($path)) {
+			@mkdir($path, 0777, true);
+		}
+		$config = array(
+			'upload_path' => $path,
+			'allowed_types' => 'jpg|jpeg|png|gif|webp',
+			'max_size' => 15360,
+		);
+		if (!isset($this->upload)) {
+			$this->load->library('upload', $config);
+		} else {
+			$this->upload->initialize($config);
+		}
+		if (!$this->upload->do_upload($field_name)) {
+			return array(false, strip_tags($this->upload->display_errors('', '')));
+		}
+		$uploaddata = $this->upload->data();
+		$raw = isset($uploaddata['raw_name']) ? (string) $uploaddata['raw_name'] : '';
+		$ext = isset($uploaddata['file_ext']) ? (string) $uploaddata['file_ext'] : '';
+		$file_name = $raw . date('ymdHis') . '_' . mt_rand(100, 999) . $ext;
+		$old_path = $path . $raw . $ext;
+		$new_path = $path . $file_name;
+		if (is_file($old_path)) {
+			@rename($old_path, $new_path);
+		} else {
+			$file_name = isset($uploaddata['file_name']) ? (string) $uploaddata['file_name'] : '';
+		}
+		return array(true, $file_name);
+	}
+
+	private function parse_exam_questions_payload(array $data)
+	{
+		$questions = array();
+		if (isset($data['questions']) && is_array($data['questions'])) {
+			$questions = $data['questions'];
+		} elseif (isset($data['questions_json']) && trim((string) $data['questions_json']) !== '') {
+			$decoded = json_decode((string) $data['questions_json'], true);
+			if (is_array($decoded)) {
+				$questions = $decoded;
+			}
+		} elseif (isset($data['questions']) && is_string($data['questions']) && trim($data['questions']) !== '') {
+			$decoded = json_decode((string) $data['questions'], true);
+			if (is_array($decoded)) {
+				$questions = $decoded;
+			}
+		}
+		if (!is_array($questions)) {
+			return array();
+		}
+		$normalized = array();
+		foreach ($questions as $idx => $row) {
+			if (!is_array($row)) {
+				continue;
+			}
+			$options = array();
+			if (isset($row['options']) && is_array($row['options'])) {
+				$options = $row['options'];
+			} else {
+				foreach (array('option1', 'option2', 'option3', 'option4') as $option_key) {
+					$options[] = isset($row[$option_key]) ? $row[$option_key] : '';
+				}
+			}
+			$options = array_slice(array_pad($options, 4, ''), 0, 4);
+			$normalized[] = array(
+				'index' => (int) $idx,
+				'question_id' => isset($row['question_id']) ? (int) $row['question_id'] : (isset($row['id']) ? (int) $row['id'] : 0),
+				'subject_id' => isset($row['subject_id']) ? (int) $row['subject_id'] : 0,
+				'chapter_id' => isset($row['chapter_id']) ? (int) $row['chapter_id'] : 0,
+				'question' => isset($row['question']) ? trim((string) $row['question']) : '',
+				'options' => array_map(function ($value) {
+					return trim((string) $value);
+				}, $options),
+				'answer' => $this->normalize_exam_question_answer(
+					isset($row['answer']) ? $row['answer'] : (isset($row['correct_option']) ? $row['correct_option'] : '')
+				),
+				'question_mask' => isset($row['question_mask']) && $row['question_mask'] !== ''
+					? (float) $row['question_mask']
+					: (isset($row['marks']) && $row['marks'] !== '' ? (float) $row['marks'] : 1),
+				'question_image' => isset($row['question_image']) ? trim((string) $row['question_image']) : (isset($row['questionImage']) ? trim((string) $row['questionImage']) : ''),
+				'image_field' => isset($row['image_field']) && trim((string) $row['image_field']) !== ''
+					? trim((string) $row['image_field'])
+					: ('question_image_' . (int) $idx),
+			);
+		}
+		return $normalized;
+	}
+
+	private function create_exam_questions(array $questions, array $payload, $batch_id, $admin_id)
+	{
+		$this->ensure_question_image_column();
+		$question_ids = array();
+		$total_marks = 0.0;
+		foreach ($questions as $idx => $question) {
+			$qtext = isset($question['question']) ? trim((string) $question['question']) : '';
+			$options = isset($question['options']) && is_array($question['options']) ? $question['options'] : array();
+			$answer = isset($question['answer']) ? trim((string) $question['answer']) : '';
+			if ($qtext === '') {
+				return array(false, 'Question ' . ((int) $idx + 1) . ' is required');
+			}
+			if (count($options) !== 4 || in_array('', $options, true)) {
+				return array(false, 'Question ' . ((int) $idx + 1) . ' must have 4 options');
+			}
+			if (!in_array($answer, array('A', 'B', 'C', 'D'), true)) {
+				return array(false, 'Question ' . ((int) $idx + 1) . ' must have a correct answer');
+			}
+
+			$subject_id = isset($question['subject_id']) ? (int) $question['subject_id'] : 0;
+			$chapter_id = isset($question['chapter_id']) ? (int) $question['chapter_id'] : 0;
+			if ($subject_id > 0) {
+				$subject_row = $this->db_model->select_data('id', 'subjects use index (id)', array('id' => $subject_id), 1);
+				if (empty($subject_row)) {
+					return array(false, 'Question ' . ((int) $idx + 1) . ' has an invalid subject');
+				}
+				if (strtolower(trim((string) $payload['ut'])) === 'teacher') {
+					$assigned = $this->db_model->select_data('id', 'batch_subjects', array(
+						'teacher_id' => (int) $payload['uid'],
+						'batch_id' => (int) $batch_id,
+						'subject_id' => $subject_id
+					), 1);
+					if (empty($assigned)) {
+						return array(false, 'You are not assigned to the selected subject for question ' . ((int) $idx + 1));
+					}
+				}
+			}
+			if ($chapter_id > 0) {
+				$chapter_cond = array('id' => $chapter_id);
+				if ($subject_id > 0) {
+					$chapter_cond['subject_id'] = $subject_id;
+				}
+				$chapter_row = $this->db_model->select_data('id', 'chapters use index (id)', $chapter_cond, 1);
+				if (empty($chapter_row)) {
+					return array(false, 'Question ' . ((int) $idx + 1) . ' has an invalid chapter');
+				}
+			}
+
+			$image_name = '';
+			$image_field = isset($question['image_field']) ? trim((string) $question['image_field']) : '';
+			if ($image_field !== '' && isset($_FILES[$image_field]) && !empty($_FILES[$image_field]['name'])) {
+				list($ok, $upload_result) = $this->upload_exam_question_image($image_field);
+				if (!$ok) {
+					return array(false, $upload_result);
+				}
+				$image_name = $upload_result;
+			}
+
+			$marks = isset($question['question_mask']) ? (float) $question['question_mask'] : 1;
+			if ($marks <= 0) {
+				$marks = 1;
+			}
+			$insert = array(
+				'admin_id' => (int) $admin_id,
+				'subject_id' => $subject_id,
+				'chapter_id' => $chapter_id,
+				'question' => $qtext,
+				'options' => json_encode($options, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE),
+				'answer' => $answer,
+				'question_mask' => $marks,
+				'added_by' => (int) $payload['uid'],
+				'status' => 1,
+			);
+			if ($this->db->field_exists('question_image', 'questions')) {
+				$insert['question_image'] = $image_name;
+			}
+			$insert = $this->security->xss_clean($insert);
+			$new_question_id = (int) $this->db_model->insert_data('questions', $insert);
+			if ($new_question_id < 1) {
+				return array(false, 'Could not save question ' . ((int) $idx + 1));
+			}
+			if ($subject_id > 0) {
+				$this->db_model->update_with_increment('subjects', 'no_of_questions', array('id' => $subject_id), 'plus', 1);
+			}
+			if ($chapter_id > 0) {
+				$this->db_model->update_with_increment('chapters', 'no_of_questions', array('id' => $chapter_id), 'plus', 1);
+			}
+			$question_ids[] = $new_question_id;
+			$total_marks += $marks;
+		}
+		return array(true, array(
+			'question_ids' => $question_ids,
+			'total_questions' => count($question_ids),
+			'total_marks' => $total_marks,
+		));
+	}
+
+	private function sync_exam_questions($exam_id, array $existing_question_ids, array $questions, array $payload, $batch_id, $admin_id)
+	{
+		$this->ensure_question_image_column();
+		$final_question_ids = array();
+		$total_marks = 0.0;
+		$allowed_existing_ids = array_values(array_unique(array_filter(array_map('intval', $existing_question_ids))));
+
+		foreach ($questions as $idx => $question) {
+			$qtext = isset($question['question']) ? trim((string) $question['question']) : '';
+			$options = isset($question['options']) && is_array($question['options']) ? $question['options'] : array();
+			$answer = isset($question['answer']) ? trim((string) $question['answer']) : '';
+			if ($qtext === '') {
+				return array(false, 'Question ' . ((int) $idx + 1) . ' is required');
+			}
+			if (count($options) !== 4 || in_array('', $options, true)) {
+				return array(false, 'Question ' . ((int) $idx + 1) . ' must have 4 options');
+			}
+			if (!in_array($answer, array('A', 'B', 'C', 'D'), true)) {
+				return array(false, 'Question ' . ((int) $idx + 1) . ' must have a correct answer');
+			}
+
+			$subject_id = isset($question['subject_id']) ? (int) $question['subject_id'] : 0;
+			$chapter_id = isset($question['chapter_id']) ? (int) $question['chapter_id'] : 0;
+			if ($subject_id > 0) {
+				$subject_row = $this->db_model->select_data('id', 'subjects use index (id)', array('id' => $subject_id), 1);
+				if (empty($subject_row)) {
+					return array(false, 'Question ' . ((int) $idx + 1) . ' has an invalid subject');
+				}
+				if (strtolower(trim((string) $payload['ut'])) === 'teacher') {
+					$assigned = $this->db_model->select_data('id', 'batch_subjects', array(
+						'teacher_id' => (int) $payload['uid'],
+						'batch_id' => (int) $batch_id,
+						'subject_id' => $subject_id
+					), 1);
+					if (empty($assigned)) {
+						return array(false, 'You are not assigned to the selected subject for question ' . ((int) $idx + 1));
+					}
+				}
+			}
+			if ($chapter_id > 0) {
+				$chapter_cond = array('id' => $chapter_id);
+				if ($subject_id > 0) {
+					$chapter_cond['subject_id'] = $subject_id;
+				}
+				$chapter_row = $this->db_model->select_data('id', 'chapters use index (id)', $chapter_cond, 1);
+				if (empty($chapter_row)) {
+					return array(false, 'Question ' . ((int) $idx + 1) . ' has an invalid chapter');
+				}
+			}
+
+			$marks = isset($question['question_mask']) ? (float) $question['question_mask'] : 1;
+			if ($marks <= 0) {
+				$marks = 1;
+			}
+
+			$question_id = isset($question['question_id']) ? (int) $question['question_id'] : 0;
+			$can_update_existing = ($question_id > 0 && in_array($question_id, $allowed_existing_ids, true));
+			$image_name = isset($question['question_image']) ? trim((string) $question['question_image']) : '';
+			$image_field = isset($question['image_field']) ? trim((string) $question['image_field']) : '';
+
+			if ($image_field !== '' && isset($_FILES[$image_field]) && !empty($_FILES[$image_field]['name'])) {
+				list($ok, $upload_result) = $this->upload_exam_question_image($image_field);
+				if (!$ok) {
+					return array(false, $upload_result);
+				}
+				if ($can_update_existing) {
+					$existing_row = $this->db_model->select_data('question_image', 'questions use index (id)', array('id' => $question_id), 1);
+					$old_image = !empty($existing_row[0]['question_image']) ? trim((string) $existing_row[0]['question_image']) : '';
+					if ($old_image !== '' && $old_image !== $upload_result) {
+						$old_path = './uploads/question_images/' . $old_image;
+						if (is_file($old_path)) {
+							@unlink($old_path);
+						}
+					}
+				}
+				$image_name = $upload_result;
+			}
+
+			$question_row = array(
+				'admin_id' => (int) $admin_id,
+				'subject_id' => $subject_id,
+				'chapter_id' => $chapter_id,
+				'question' => $qtext,
+				'options' => json_encode($options, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE),
+				'answer' => $answer,
+				'question_mask' => $marks,
+				'added_by' => (int) $payload['uid'],
+				'status' => 1,
+			);
+			if ($this->db->field_exists('question_image', 'questions')) {
+				$question_row['question_image'] = $image_name;
+			}
+			$question_row = $this->security->xss_clean($question_row);
+
+			if ($can_update_existing) {
+				$this->db_model->update_data_limit('questions', $question_row, array('id' => $question_id), 1);
+				$final_question_ids[] = $question_id;
+			} else {
+				$new_question_id = (int) $this->db_model->insert_data('questions', $question_row);
+				if ($new_question_id < 1) {
+					return array(false, 'Could not save question ' . ((int) $idx + 1));
+				}
+				if ($subject_id > 0) {
+					$this->db_model->update_with_increment('subjects', 'no_of_questions', array('id' => $subject_id), 'plus', 1);
+				}
+				if ($chapter_id > 0) {
+					$this->db_model->update_with_increment('chapters', 'no_of_questions', array('id' => $chapter_id), 'plus', 1);
+				}
+				$final_question_ids[] = $new_question_id;
+			}
+			$total_marks += $marks;
+		}
+
+		return array(true, array(
+			'question_ids' => $final_question_ids,
+			'total_questions' => count($final_question_ids),
+			'total_marks' => $total_marks,
+			'exam_id' => (int) $exam_id,
+		));
+	}
+
+	public function batch_chapters()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+		$subject_id = isset($data['subject_id']) ? (int) $data['subject_id'] : 0;
+		if ($batch_id < 1 || $subject_id < 1) {
+			$this->api_json(false, 'batch_id and subject_id are required');
+			return;
+		}
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+
+		$chapter_ids = array();
+		$this->db->select('chapter');
+		$this->db->from('batch_subjects');
+		$this->db->where('batch_id', $batch_id);
+		$this->db->where('subject_id', $subject_id);
+		if (strtolower(trim((string) $payload['ut'])) === 'teacher') {
+			$this->db->where('teacher_id', (int) $payload['uid']);
+		}
+		$rows = $this->db->get()->result_array();
+		foreach ($rows as $row) {
+			$decoded = json_decode(isset($row['chapter']) ? (string) $row['chapter'] : '', true);
+			if (is_array($decoded)) {
+				foreach ($decoded as $chapter_id) {
+					$chapter_ids[] = (int) $chapter_id;
+				}
+			}
+		}
+		$chapter_ids = array_values(array_unique(array_filter($chapter_ids)));
+		$list = array();
+		if (!empty($chapter_ids)) {
+			$this->db->select('id as chapterId, chapter_name as chapterName');
+			$this->db->from('chapters');
+			$this->db->where_in('id', $chapter_ids);
+			$this->db->order_by('chapter_name', 'asc');
+			$list = $this->db->get()->result_array();
+		}
+		$this->api_json(true, 'Success', array(
+			'batch_id' => $batch_id,
+			'subject_id' => $subject_id,
+			'chapters' => $list
+		));
+	}
+
 	public function notes_list()
 	{
 		$data = $this->read_request_data();
@@ -1350,7 +1833,7 @@ class Batch extends MY_Controller
 			$this->api_json(false, 'batch_id is required');
 			return;
 		}
-		if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id)) {
+		if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id, $data)) {
 			return;
 		}
 		$search = isset($data['search']) ? trim((string) $data['search']) : '';
@@ -1733,25 +2216,50 @@ class Batch extends MY_Controller
 			return;
 		}
 		$admin_id = ($payload['ut'] === 'teacher') ? (int) $this->teacher_tenant_admin_id((int) $payload['uid']) : (int) $payload['uid'];
+		$questions = $this->parse_exam_questions_payload($data);
+		$question_ids_json = isset($data['question_ids']) ? $data['question_ids'] : '';
+		$total_question = isset($data['total_question']) ? (int) $data['total_question'] : 0;
+		$total_marks = isset($data['total_marks']) ? (float) $data['total_marks'] : 0;
+
+		if (!empty($questions)) {
+			list($question_ok, $question_result) = $this->create_exam_questions($questions, $payload, $batch_id, $admin_id > 0 ? $admin_id : 1);
+			if (!$question_ok) {
+				$this->api_json(false, $question_result);
+				return;
+			}
+			$question_ids_json = json_encode($question_result['question_ids']);
+			$total_question = (int) $question_result['total_questions'];
+			$total_marks = (float) $question_result['total_marks'];
+		} elseif (is_array($question_ids_json)) {
+			$question_ids_json = json_encode(array_values(array_map('intval', $question_ids_json)));
+		} else {
+			$question_ids_json = trim((string) $question_ids_json);
+		}
+
 		$insert = $this->security->xss_clean(array(
 			'admin_id' => $admin_id > 0 ? $admin_id : 1,
 			'name' => $name,
 			'type' => isset($data['type']) ? (int) $data['type'] : 1,
 			'format' => isset($data['format']) ? (int) $data['format'] : 1,
 			'batch_id' => $batch_id,
-			'total_question' => isset($data['total_question']) ? (int) $data['total_question'] : 0,
+			'total_question' => $total_question,
 			'time_duration' => isset($data['time_duration']) ? trim((string) $data['time_duration']) : '',
-			'question_ids' => isset($data['question_ids']) ? trim((string) $data['question_ids']) : '',
+			'question_ids' => $question_ids_json,
 			'mock_sheduled_date' => isset($data['mock_sheduled_date']) ? trim((string) $data['mock_sheduled_date']) : date('Y-m-d'),
 			'mock_sheduled_time' => isset($data['mock_sheduled_time']) ? trim((string) $data['mock_sheduled_time']) : '',
-			'total_marks' => isset($data['total_marks']) ? (float) $data['total_marks'] : 0,
+			'total_marks' => $total_marks,
 			'marking_parcent' => isset($data['marking_parcent']) ? (float) $data['marking_parcent'] : 0,
 			'status' => 1,
 			'added_by' => (int) $payload['uid'],
 			'added_at' => date('Y-m-d H:i:s'),
 		));
 		$new_id = (int) $this->db_model->insert_data('exams', $insert);
-		$this->api_json(true, 'Exam added successfully', array('id' => $new_id, 'batch_id' => $batch_id));
+		$this->api_json(true, 'Exam added successfully', array(
+			'id' => $new_id,
+			'batch_id' => $batch_id,
+			'total_question' => $total_question,
+			'total_marks' => $total_marks
+		));
 	}
 
 	public function exam_edit()
@@ -1766,7 +2274,7 @@ class Batch extends MY_Controller
 			$this->api_json(false, 'exam_id is required');
 			return;
 		}
-		$exam = $this->db_model->select_data('id,batch_id', 'exams use index (id)', array('id' => $exam_id, 'status' => 1), 1);
+		$exam = $this->db_model->select_data('id,batch_id,question_ids', 'exams use index (id)', array('id' => $exam_id, 'status' => 1), 1);
 		if (empty($exam)) {
 			$this->api_json(false, 'Exam not found');
 			return;
@@ -1775,6 +2283,8 @@ class Batch extends MY_Controller
 		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
 			return;
 		}
+		$admin_id = ($payload['ut'] === 'teacher') ? (int) $this->teacher_tenant_admin_id((int) $payload['uid']) : (int) $payload['uid'];
+		$questions = $this->parse_exam_questions_payload($data);
 		$update = array();
 		foreach (array('name', 'time_duration', 'mock_sheduled_date', 'mock_sheduled_time', 'question_ids') as $f) {
 			if (isset($data[$f])) {
@@ -1785,6 +2295,22 @@ class Batch extends MY_Controller
 			if (isset($data[$f]) && $data[$f] !== '') {
 				$update[$f] = $data[$f];
 			}
+		}
+		if (!empty($questions)) {
+			$existing_question_ids = json_decode(isset($exam[0]['question_ids']) ? (string) $exam[0]['question_ids'] : '', true);
+			if (!is_array($existing_question_ids)) {
+				$existing_question_ids = array();
+			}
+			list($sync_ok, $sync_result) = $this->sync_exam_questions($exam_id, $existing_question_ids, $questions, $payload, $batch_id, $admin_id > 0 ? $admin_id : 1);
+			if (!$sync_ok) {
+				$this->api_json(false, $sync_result);
+				return;
+			}
+			$update['question_ids'] = json_encode($sync_result['question_ids']);
+			$update['total_question'] = (int) $sync_result['total_questions'];
+			$update['total_marks'] = (float) $sync_result['total_marks'];
+		} elseif (isset($update['question_ids']) && is_array($update['question_ids'])) {
+			$update['question_ids'] = json_encode(array_values(array_map('intval', $update['question_ids'])));
 		}
 		if (empty($update)) {
 			$this->api_json(false, 'No changes provided');
@@ -2010,7 +2536,7 @@ class Batch extends MY_Controller
 		}
 
 		$batch_id = (int) $data['batch_id'];
-		if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id)) {
+		if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id, $data)) {
 			return;
 		}
 
@@ -2132,7 +2658,7 @@ class Batch extends MY_Controller
 		}
 
 		$batch_id = (int) $row['batchId'];
-		if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id)) {
+		if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id, $data)) {
 			return;
 		}
 
@@ -2195,7 +2721,7 @@ class Batch extends MY_Controller
 
 	/**
 	 * POST/GET api/batch/video-lecture-list
-	 * Params: batch_id (required), search, sort_by, sort_dir, page, limit
+	 * Params: batch_id (optional), search, sort_by, sort_dir, page, limit
 	 */
 	public function video_lecture_list()
 	{
@@ -2205,13 +2731,27 @@ class Batch extends MY_Controller
 			return;
 		}
 
-		if (empty($data['batch_id'])) {
-			echo json_encode(array('status' => 'false', 'msg' => 'batch_id is required'));
+		$accessible_batch_ids = $this->video_lecture_accessible_batch_ids($payload, $data);
+		if ($accessible_batch_ids === false) {
 			return;
 		}
-		$batch_id = (int) $data['batch_id'];
-		if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id)) {
+		$batch_id = !empty($data['batch_id']) ? (int) $data['batch_id'] : 0;
+		if ($batch_id > 0 && !in_array($batch_id, $accessible_batch_ids, true)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'You are not allowed to access this batch'));
 			return;
+		}
+		if ($batch_id < 1 && empty($accessible_batch_ids)) {
+			echo json_encode(array(
+				'status' => 'true',
+				'message' => 'Success',
+				'data' => array(
+					'batch_id' => 0,
+					'accessibleBatchIds' => array(),
+					'videoLectures' => array(),
+					'pagination' => $this->build_api_list_pagination_meta(1, 100, 0),
+				)
+			), JSON_UNESCAPED_SLASHES);
+			die;
 		}
 
 		$search = isset($data['search']) ? trim($data['search']) : '';
@@ -2238,7 +2778,11 @@ class Batch extends MY_Controller
 
 		$this->db->from('video_lectures');
 		$this->db->where('status', 1);
-		$this->apply_text_batch_filter('batch', $batch_id);
+		if ($batch_id > 0) {
+			$this->apply_text_batch_filter('batch', $batch_id);
+		} else {
+			$this->apply_text_batch_ids_filter('batch', $accessible_batch_ids);
+		}
 		if ($search !== '') {
 			$this->db->group_start();
 			$this->db->like('title', $search);
@@ -2252,7 +2796,11 @@ class Batch extends MY_Controller
 		$this->db->select('id,admin_id as adminId,title,batch,topic,subject,description,url,video_type as videoType,preview_type as previewType,added_by as addedBy,added_at as addedAt');
 		$this->db->from('video_lectures');
 		$this->db->where('status', 1);
-		$this->apply_text_batch_filter('batch', $batch_id);
+		if ($batch_id > 0) {
+			$this->apply_text_batch_filter('batch', $batch_id);
+		} else {
+			$this->apply_text_batch_ids_filter('batch', $accessible_batch_ids);
+		}
 		if ($search !== '') {
 			$this->db->group_start();
 			$this->db->like('title', $search);
@@ -2270,6 +2818,7 @@ class Batch extends MY_Controller
 			'message' => 'Success',
 			'data' => array(
 				'batch_id' => $batch_id,
+				'accessibleBatchIds' => $batch_id > 0 ? array($batch_id) : array_values($accessible_batch_ids),
 				'videoLectures' => !empty($list) ? $list : array(),
 				'pagination' => $this->build_api_list_pagination_meta($page, $limit, $total),
 			)
@@ -2310,7 +2859,7 @@ class Batch extends MY_Controller
 		$ut = strtolower(trim((string) $payload['ut']));
 		$uid = (int) $payload['uid'];
 		if ($ut === 'student') {
-			if ($uid < 1 || $this->authorize_student_request($uid) === false) {
+			if ($uid < 1 || $this->authorize_student_request($uid, $data) === false) {
 				return;
 			}
 			// Validate student enrollment with at least one batch mapped in this lecture.
@@ -2368,7 +2917,7 @@ class Batch extends MY_Controller
 			return;
 		}
 		$batch_id = (int) $data['batch_id'];
-		if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id)) {
+		if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id, $data)) {
 			return;
 		}
 
@@ -2446,6 +2995,66 @@ class Batch extends MY_Controller
 	}
 
 	/**
+	 * POST/GET api/batch/exam-manage-list
+	 * Auth: teacher | institute. Params: batch_id (required), search, page, limit
+	 */
+	public function exam_manage_list()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+		if ($batch_id < 1) {
+			$this->api_json(false, 'batch_id is required');
+			return;
+		}
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+
+		$search = isset($data['search']) ? trim((string) $data['search']) : '';
+		$pg = $this->parse_api_list_pagination($data);
+		$this->db->from('exams');
+		$this->db->where(array('batch_id' => $batch_id, 'status' => 1));
+		if ($search !== '') {
+			$this->db->group_start();
+			$this->db->like('name', $search);
+			$this->db->or_like('mock_sheduled_date', $search);
+			$this->db->or_like('mock_sheduled_time', $search);
+			$this->db->group_end();
+		}
+		$total = (int) $this->db->count_all_results();
+
+		$this->db->select('id,admin_id as adminId,name,type,format,batch_id as batchId,total_question as totalQuestion,time_duration as timeDuration,question_ids as questionIds,mock_sheduled_date as scheduledDate,mock_sheduled_time as scheduledTime,total_marks as totalMarks,marking_parcent as markingPercent,added_by as addedBy,added_at as addedAt');
+		$this->db->from('exams');
+		$this->db->where(array('batch_id' => $batch_id, 'status' => 1));
+		if ($search !== '') {
+			$this->db->group_start();
+			$this->db->like('name', $search);
+			$this->db->or_like('mock_sheduled_date', $search);
+			$this->db->or_like('mock_sheduled_time', $search);
+			$this->db->group_end();
+		}
+		$this->db->order_by('id', 'desc');
+		$this->db->limit($pg['limit'], $pg['offset']);
+		$list = $this->db->get()->result_array();
+		foreach ($list as &$row) {
+			$row['examTypeLabel'] = ((int) $row['type'] === 1) ? 'mock_test' : 'practice';
+			$row['formatLabel'] = ((int) $row['format'] === 1) ? 'shuffle' : 'fixed';
+			$row['questionCount'] = isset($row['totalQuestion']) ? (int) $row['totalQuestion'] : 0;
+		}
+		unset($row);
+
+		$this->api_json(true, 'Success', array(
+			'batch_id' => $batch_id,
+			'exams' => $list,
+			'pagination' => $this->build_api_list_pagination_meta($pg['page'], $pg['limit'], $total),
+		));
+	}
+
+	/**
 	 * POST/GET api/batch/upcoming-exam-details
 	 * Required: exam_id
 	 */
@@ -2475,13 +3084,50 @@ class Batch extends MY_Controller
 		}
 		$e = $exam[0];
 
-		if (!$this->assert_batch_access_student_or_teacher($payload, (int) $e['batchId'])) {
-			return;
+		$ut = strtolower(trim((string) $payload['ut']));
+		if ($ut === 'institute') {
+			if (!$this->assert_batch_access_teacher_or_institute($payload, (int) $e['batchId'])) {
+				return;
+			}
+		} else {
+			if (!$this->assert_batch_access_student_or_teacher($payload, (int) $e['batchId'], $data)) {
+				return;
+			}
 		}
 
 		$e['completeBy'] = trim($e['scheduledTime'] . ', ' . date('M d, Y', strtotime($e['scheduledDate'])));
 		$e['examTypeLabel'] = ((int) $e['type'] === 1) ? 'mock' : 'practice';
 		$e['formatLabel'] = ((int) $e['format'] === 1) ? 'Shuffle' : (((int) $e['format'] === 2) ? 'Fix' : '');
+		$e['questionDetails'] = array();
+		$question_ids = json_decode(isset($e['questionIds']) ? (string) $e['questionIds'] : '', true);
+		if (is_array($question_ids)) {
+			$question_ids = array_values(array_unique(array_filter(array_map('intval', $question_ids))));
+			if (!empty($question_ids)) {
+				$select = 'id,subject_id as subjectId,chapter_id as chapterId,question,options,answer,question_mask as questionMask';
+				if ($this->db->field_exists('question_image', 'questions')) {
+					$select .= ',question_image as questionImage';
+				}
+				$this->db->select($select);
+				$this->db->from('questions');
+				$this->db->where_in('id', $question_ids);
+				$questions = $this->db->get()->result_array();
+				$by_id = array();
+				foreach ($questions as $question_row) {
+					$qid = isset($question_row['id']) ? (int) $question_row['id'] : 0;
+					if ($qid < 1) {
+						continue;
+					}
+					$image_name = isset($question_row['questionImage']) ? trim((string) $question_row['questionImage']) : '';
+					$question_row['questionImageUrl'] = $image_name !== '' ? base_url('uploads/question_images/') . $image_name : '';
+					$by_id[$qid] = $question_row;
+				}
+				foreach ($question_ids as $question_id) {
+					if (isset($by_id[$question_id])) {
+						$e['questionDetails'][] = $by_id[$question_id];
+					}
+				}
+			}
+		}
 
 		echo json_encode(array(
 			'status' => 'true',
@@ -2489,6 +3135,518 @@ class Batch extends MY_Controller
 			'exam' => $e
 		), JSON_UNESCAPED_SLASHES);
 		die;
+	}
+
+	private function student_exam_decode_question_ids($raw_question_ids)
+	{
+		$question_ids = json_decode((string) $raw_question_ids, true);
+		if (!is_array($question_ids)) {
+			return array();
+		}
+		return array_values(array_unique(array_filter(array_map('intval', $question_ids))));
+	}
+
+	private function student_exam_batch_card($batch_id)
+	{
+		$batch_id = (int) $batch_id;
+		if ($batch_id < 1) {
+			return array(
+				'batchId' => 0,
+				'batchName' => '',
+				'cardImageUrl' => '',
+			);
+		}
+		$row = $this->db_model->select_data('id,batch_name,batch_image', 'batches use index (id)', array('id' => $batch_id), 1);
+		$batch_name = !empty($row[0]['batch_name']) ? (string) $row[0]['batch_name'] : ('Batch #' . $batch_id);
+		$image_name = !empty($row[0]['batch_image']) ? trim((string) $row[0]['batch_image']) : '';
+		return array(
+			'batchId' => $batch_id,
+			'batchName' => $batch_name,
+			'cardImageUrl' => $image_name !== '' ? batch_image_url($image_name) : '',
+		);
+	}
+
+	/**
+	 * Batch-details tile "Upcoming" count: align with student_exam_dashboard (student)
+	 * and with still-open mock papers (teacher), not only mock_sheduled_date >= today.
+	 *
+	 * @param int    $batch_id
+	 * @param string $ut        student|teacher
+	 * @param int    $student_id
+	 * @return int
+	 */
+	private function count_upcoming_exams_for_batch_details($batch_id, $ut, $student_id)
+	{
+		$batch_id = (int) $batch_id;
+		if ($batch_id < 1) {
+			return 0;
+		}
+		$this->db->reset_query();
+		$this->db->select('id,type,mock_sheduled_date,mock_sheduled_time,time_duration');
+		$this->db->from('exams');
+		$this->db->where(array('batch_id' => $batch_id, 'status' => 1, 'type' => 1));
+		$this->db->order_by('mock_sheduled_date', 'asc');
+		$this->db->order_by('id', 'asc');
+		$rows = $this->db->get()->result_array();
+		if (empty($rows)) {
+			return 0;
+		}
+		$n = 0;
+		foreach ($rows as $exam_row) {
+			$eid = isset($exam_row['id']) ? (int) $exam_row['id'] : 0;
+			$etype = isset($exam_row['type']) ? (int) $exam_row['type'] : 1;
+			if ($eid < 1) {
+				continue;
+			}
+			if ($ut === 'student' && $student_id > 0) {
+				$result_row = $this->student_exam_find_result_row($student_id, $eid, $etype);
+				if (!empty($result_row)) {
+					continue;
+				}
+			}
+			if ($this->student_exam_is_over($exam_row)) {
+				continue;
+			}
+			$n++;
+		}
+		return $n;
+	}
+
+	private function student_exam_is_over(array $exam_row)
+	{
+		$type = isset($exam_row['type']) ? (int) $exam_row['type'] : 1;
+		if ($type !== 1) {
+			return false;
+		}
+		$scheduled_date = isset($exam_row['scheduledDate']) ? (string) $exam_row['scheduledDate'] : (isset($exam_row['mock_sheduled_date']) ? (string) $exam_row['mock_sheduled_date'] : '');
+		$scheduled_time = isset($exam_row['scheduledTime']) ? (string) $exam_row['scheduledTime'] : (isset($exam_row['mock_sheduled_time']) ? (string) $exam_row['mock_sheduled_time'] : '');
+		$duration = isset($exam_row['timeDuration']) ? (int) $exam_row['timeDuration'] : (isset($exam_row['time_duration']) ? (int) $exam_row['time_duration'] : 0);
+		if ($scheduled_date === '' || $scheduled_time === '') {
+			return false;
+		}
+		$end_ts = strtotime($scheduled_date . ' ' . $scheduled_time . ' +' . max(0, $duration) . ' minutes');
+		if ($end_ts === false) {
+			return false;
+		}
+		return $end_ts < time();
+	}
+
+	private function student_exam_fetch_questions(array $question_ids, $with_answers = false)
+	{
+		$question_ids = array_values(array_unique(array_filter(array_map('intval', $question_ids))));
+		if (empty($question_ids)) {
+			return array();
+		}
+		$select = 'id,question,options,question_mask as questionMask';
+		if ($with_answers) {
+			$select .= ',answer';
+		}
+		if ($this->db->field_exists('question_image', 'questions')) {
+			$select .= ',question_image as questionImage';
+		}
+		$this->db->select($select);
+		$this->db->from('questions');
+		$this->db->where_in('id', $question_ids);
+		$rows = $this->db->get()->result_array();
+		$by_id = array();
+		foreach ($rows as $row) {
+			$qid = isset($row['id']) ? (int) $row['id'] : 0;
+			if ($qid < 1) {
+				continue;
+			}
+			$options = json_decode(isset($row['options']) ? (string) $row['options'] : '', true);
+			if (!is_array($options)) {
+				$options = array();
+			}
+			$row['options'] = array_values(array_slice(array_pad(array_map(function ($value) {
+				return trim((string) $value);
+			}, $options), 4, ''), 0, 4));
+			$image_name = isset($row['questionImage']) ? trim((string) $row['questionImage']) : '';
+			$row['questionImageUrl'] = $image_name !== '' ? base_url('uploads/question_images/') . $image_name : '';
+			$by_id[$qid] = $row;
+		}
+		$ordered = array();
+		foreach ($question_ids as $question_id) {
+			if (isset($by_id[$question_id])) {
+				$ordered[] = $by_id[$question_id];
+			}
+		}
+		return $ordered;
+	}
+
+	private function student_exam_normalize_answer_map($raw)
+	{
+		if (is_string($raw) && trim($raw) !== '') {
+			$decoded = json_decode($raw, true);
+			if (is_array($decoded)) {
+				$raw = $decoded;
+			}
+		}
+		if (!is_array($raw)) {
+			return array();
+		}
+		$answers = array();
+		foreach ($raw as $key => $value) {
+			$question_id = (int) $key;
+			if ($question_id < 1 && is_array($value)) {
+				$question_id = isset($value['question_id']) ? (int) $value['question_id'] : (isset($value['id']) ? (int) $value['id'] : 0);
+				$value = isset($value['answer']) ? $value['answer'] : (isset($value['selected']) ? $value['selected'] : '');
+			}
+			if ($question_id < 1) {
+				continue;
+			}
+			$answer = $this->normalize_exam_question_answer($value);
+			if ($answer === '') {
+				continue;
+			}
+			$answers[$question_id] = $answer;
+		}
+		return $answers;
+	}
+
+	private function student_exam_remark($percentage)
+	{
+		$percentage = (float) $percentage;
+		if ($percentage >= 80) {
+			return 'Excellent work.';
+		}
+		if ($percentage >= 60) {
+			return 'Good effort.';
+		}
+		if ($percentage >= 40) {
+			return 'Fair attempt.';
+		}
+		return 'Need more improvement.';
+	}
+
+	private function student_exam_result_table($exam_type)
+	{
+		return ((int) $exam_type === 2) ? 'practice_result' : 'mock_result';
+	}
+
+	private function student_exam_find_result_row($student_id, $exam_id, $exam_type)
+	{
+		$table = $this->student_exam_result_table($exam_type);
+		$rows = $this->db_model->select_data('*', $table . ' use index (id)', array(
+			'student_id' => (int) $student_id,
+			'paper_id' => (int) $exam_id,
+		), 1, array('id', 'desc'));
+		return !empty($rows[0]) ? $rows[0] : array();
+	}
+
+	private function student_exam_format_exam_payload(array $exam_row, array $batch_card = array())
+	{
+		$scheduled_date = isset($exam_row['scheduledDate']) ? (string) $exam_row['scheduledDate'] : (isset($exam_row['mock_sheduled_date']) ? (string) $exam_row['mock_sheduled_date'] : '');
+		$scheduled_time = isset($exam_row['scheduledTime']) ? (string) $exam_row['scheduledTime'] : (isset($exam_row['mock_sheduled_time']) ? (string) $exam_row['mock_sheduled_time'] : '');
+		$total_question = isset($exam_row['totalQuestion']) ? (int) $exam_row['totalQuestion'] : (isset($exam_row['total_question']) ? (int) $exam_row['total_question'] : 0);
+		$time_duration = isset($exam_row['timeDuration']) ? (int) $exam_row['timeDuration'] : (isset($exam_row['time_duration']) ? (int) $exam_row['time_duration'] : 0);
+		$type = isset($exam_row['type']) ? (int) $exam_row['type'] : 1;
+		return array(
+			'id' => isset($exam_row['id']) ? (int) $exam_row['id'] : 0,
+			'adminId' => isset($exam_row['adminId']) ? (int) $exam_row['adminId'] : (isset($exam_row['admin_id']) ? (int) $exam_row['admin_id'] : 0),
+			'name' => isset($exam_row['name']) ? (string) $exam_row['name'] : 'Exam',
+			'type' => $type,
+			'batchId' => isset($exam_row['batchId']) ? (int) $exam_row['batchId'] : (isset($exam_row['batch_id']) ? (int) $exam_row['batch_id'] : 0),
+			'batchName' => isset($batch_card['batchName']) ? (string) $batch_card['batchName'] : '',
+			'cardImageUrl' => isset($batch_card['cardImageUrl']) ? (string) $batch_card['cardImageUrl'] : '',
+			'totalQuestion' => $total_question,
+			'timeDuration' => $time_duration,
+			'scheduledDate' => $scheduled_date,
+			'scheduledTime' => $scheduled_time,
+			'completeBy' => trim($scheduled_time . ', ' . ($scheduled_date !== '' ? date('M d, Y', strtotime($scheduled_date)) : '')),
+			'totalMarks' => isset($exam_row['totalMarks']) ? (float) $exam_row['totalMarks'] : (isset($exam_row['total_marks']) ? (float) $exam_row['total_marks'] : 0),
+			'markingPercent' => isset($exam_row['markingPercent']) ? (float) $exam_row['markingPercent'] : (isset($exam_row['marking_parcent']) ? (float) $exam_row['marking_parcent'] : 0),
+			'examTypeLabel' => ($type === 1) ? 'mock' : 'practice',
+		);
+	}
+
+	private function student_exam_summary_from_answer_map(array $exam_row, array $answer_map)
+	{
+		$question_ids = $this->student_exam_decode_question_ids(isset($exam_row['questionIds']) ? $exam_row['questionIds'] : (isset($exam_row['question_ids']) ? $exam_row['question_ids'] : ''));
+		$questions = $this->student_exam_fetch_questions($question_ids, true);
+		$total_question = !empty($questions) ? count($questions) : (isset($exam_row['totalQuestion']) ? (int) $exam_row['totalQuestion'] : (isset($exam_row['total_question']) ? (int) $exam_row['total_question'] : 0));
+		$correct = 0;
+		$wrong = 0;
+		$attempted = 0;
+		foreach ($questions as $question) {
+			$qid = isset($question['id']) ? (int) $question['id'] : 0;
+			if ($qid < 1 || !isset($answer_map[$qid])) {
+				continue;
+			}
+			$attempted++;
+			$right_answer = isset($question['answer']) ? strtoupper(trim((string) $question['answer'])) : '';
+			if ($answer_map[$qid] === $right_answer) {
+				$correct++;
+			} else {
+				$wrong++;
+			}
+		}
+		$negative = isset($exam_row['markingPercent']) ? (float) $exam_row['markingPercent'] : (isset($exam_row['marking_parcent']) ? (float) $exam_row['marking_parcent'] : 0);
+		$percentage = 0.0;
+		if ($total_question > 0) {
+			$percentage = (($correct - ($wrong * $negative)) / $total_question) * 100;
+			if ($percentage < 0) {
+				$percentage = 0;
+			}
+		}
+		return array(
+			'totalQuestion' => $total_question,
+			'attemptedQuestion' => $attempted,
+			'correctAnswers' => $correct,
+			'wrongAnswers' => $wrong,
+			'score' => $correct,
+			'scoreLabel' => $correct . '/' . max(0, $total_question),
+			'percentage' => round($percentage, 2),
+			'remarks' => $this->student_exam_remark($percentage),
+		);
+	}
+
+	private function student_exam_format_result_payload(array $exam_row, array $result_row)
+	{
+		$answer_map = $this->student_exam_normalize_answer_map(isset($result_row['question_answer']) ? $result_row['question_answer'] : '');
+		$summary = $this->student_exam_summary_from_answer_map($exam_row, $answer_map);
+		$start_time = isset($result_row['start_time']) ? trim((string) $result_row['start_time']) : '';
+		$submit_time = isset($result_row['submit_time']) ? trim((string) $result_row['submit_time']) : '';
+		$time_taken = '';
+		if ($start_time !== '' && $submit_time !== '') {
+			$stime = strtotime($start_time);
+			$etime = strtotime($submit_time);
+			if ($stime !== false && $etime !== false && $etime >= $stime) {
+				$time_taken = gmdate('H:i:s', $etime - $stime);
+			}
+		}
+		return array(
+			'resultId' => isset($result_row['id']) ? (int) $result_row['id'] : 0,
+			'examId' => isset($exam_row['id']) ? (int) $exam_row['id'] : 0,
+			'paperName' => isset($exam_row['name']) ? (string) $exam_row['name'] : '',
+			'date' => isset($result_row['date']) ? (string) $result_row['date'] : '',
+			'startTime' => $start_time,
+			'submitTime' => $submit_time,
+			'timeTaken' => $time_taken,
+			'assignedDate' => isset($exam_row['scheduledDate']) ? (string) $exam_row['scheduledDate'] : (isset($exam_row['mock_sheduled_date']) ? (string) $exam_row['mock_sheduled_date'] : ''),
+			'percentage' => $summary['percentage'],
+			'remarks' => $summary['remarks'],
+			'totalQuestion' => $summary['totalQuestion'],
+			'attemptedQuestion' => $summary['attemptedQuestion'],
+			'correctAnswers' => $summary['correctAnswers'],
+			'wrongAnswers' => $summary['wrongAnswers'],
+			'score' => $summary['score'],
+			'scoreLabel' => $summary['scoreLabel'],
+		);
+	}
+
+	public function student_exam_dashboard()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('student'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+		if ($batch_id < 1) {
+			$this->api_json(false, 'batch_id is required');
+			return;
+		}
+		if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id, $data)) {
+			return;
+		}
+		$student_id = (int) $payload['uid'];
+		$batch_card = $this->student_exam_batch_card($batch_id);
+		$this->db->select('id,admin_id as adminId,name,type,format,batch_id as batchId,total_question as totalQuestion,time_duration as timeDuration,question_ids as questionIds,mock_sheduled_date as scheduledDate,mock_sheduled_time as scheduledTime,total_marks as totalMarks,marking_parcent as markingPercent,added_at as addedAt');
+		$this->db->from('exams');
+		$this->db->where(array('batch_id' => $batch_id, 'status' => 1, 'type' => 1));
+		$this->db->order_by('mock_sheduled_date', 'asc');
+		$this->db->order_by('mock_sheduled_time', 'asc');
+		$exam_rows = $this->db->get()->result_array();
+		$upcoming = array();
+		$completed = array();
+		foreach ($exam_rows as $exam_row) {
+			$result_row = $this->student_exam_find_result_row($student_id, (int) $exam_row['id'], (int) $exam_row['type']);
+			$exam_payload = $this->student_exam_format_exam_payload($exam_row, $batch_card);
+			if (!empty($result_row)) {
+				$result_payload = $this->student_exam_format_result_payload($exam_row, $result_row);
+				$completed[] = array_merge($exam_payload, $result_payload, array(
+					'statusLabel' => 'Completed',
+				));
+			} else {
+				if ($this->student_exam_is_over($exam_row)) {
+					continue;
+				}
+				$upcoming[] = array_merge($exam_payload, array(
+					'statusLabel' => 'Upcoming',
+					'ctaLabel' => 'Start Assessment',
+				));
+			}
+		}
+		$this->api_json(true, 'Success', array(
+			'batch' => $batch_card,
+			'upcomingExams' => $upcoming,
+			'completedExams' => array_values(array_reverse($completed)),
+		));
+	}
+
+	public function student_exam_paper()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('student'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$exam_id = isset($data['exam_id']) ? (int) $data['exam_id'] : 0;
+		if ($exam_id < 1) {
+			$this->api_json(false, 'exam_id is required');
+			return;
+		}
+		$exam_rows = $this->db_model->select_data(
+			'id,admin_id as adminId,name,type,format,batch_id as batchId,total_question as totalQuestion,time_duration as timeDuration,question_ids as questionIds,mock_sheduled_date as scheduledDate,mock_sheduled_time as scheduledTime,total_marks as totalMarks,marking_parcent as markingPercent,status,added_at as addedAt',
+			'exams use index (id)',
+			array('id' => $exam_id, 'status' => 1, 'type' => 1),
+			1
+		);
+		if (empty($exam_rows)) {
+			$this->api_json(false, 'Exam not found');
+			return;
+		}
+		$exam_row = $exam_rows[0];
+		if (!$this->assert_batch_access_student_or_teacher($payload, (int) $exam_row['batchId'], $data)) {
+			return;
+		}
+		$student_id = (int) $payload['uid'];
+		$result_row = $this->student_exam_find_result_row($student_id, $exam_id, (int) $exam_row['type']);
+		if (!empty($result_row)) {
+			$this->api_json(true, 'Exam already completed', array(
+				'alreadySubmitted' => true,
+				'result' => $this->student_exam_format_result_payload($exam_row, $result_row),
+			));
+			return;
+		}
+		if ($this->student_exam_is_over($exam_row)) {
+			$this->api_json(false, 'Exam over');
+			return;
+		}
+		$question_ids = $this->student_exam_decode_question_ids($exam_row['questionIds']);
+		$questions = $this->student_exam_fetch_questions($question_ids, false);
+		if ((int) $exam_row['format'] === 1 && !empty($questions)) {
+			shuffle($questions);
+		}
+		foreach ($questions as $index => $question) {
+			$questions[$index]['displayIndex'] = $index + 1;
+		}
+		$exam_payload = $this->student_exam_format_exam_payload($exam_row, $this->student_exam_batch_card((int) $exam_row['batchId']));
+		$exam_payload['totalQuestion'] = count($questions);
+		$this->api_json(true, 'Success', array(
+			'alreadySubmitted' => false,
+			'exam' => $exam_payload,
+			'questions' => $questions,
+			'serverTime' => date('Y-m-d H:i:s'),
+		));
+	}
+
+	public function student_submit_exam()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('student'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$exam_id = isset($data['exam_id']) ? (int) $data['exam_id'] : 0;
+		if ($exam_id < 1) {
+			$this->api_json(false, 'exam_id is required');
+			return;
+		}
+		$exam_rows = $this->db_model->select_data(
+			'id,admin_id as adminId,name,type,format,batch_id as batchId,total_question as totalQuestion,time_duration as timeDuration,question_ids as questionIds,mock_sheduled_date as scheduledDate,mock_sheduled_time as scheduledTime,total_marks as totalMarks,marking_parcent as markingPercent,status,added_at as addedAt',
+			'exams use index (id)',
+			array('id' => $exam_id, 'status' => 1, 'type' => 1),
+			1
+		);
+		if (empty($exam_rows)) {
+			$this->api_json(false, 'Exam not found');
+			return;
+		}
+		$exam_row = $exam_rows[0];
+		if (!$this->assert_batch_access_student_or_teacher($payload, (int) $exam_row['batchId'], $data)) {
+			return;
+		}
+		$student_id = (int) $payload['uid'];
+		$existing_result = $this->student_exam_find_result_row($student_id, $exam_id, (int) $exam_row['type']);
+		if (!empty($existing_result)) {
+			$this->api_json(true, 'Paper already submitted', array(
+				'alreadySubmitted' => true,
+				'result' => $this->student_exam_format_result_payload($exam_row, $existing_result),
+			));
+			return;
+		}
+		$answer_map = $this->student_exam_normalize_answer_map(isset($data['answers']) ? $data['answers'] : (isset($data['question_answer']) ? $data['question_answer'] : array()));
+		$summary = $this->student_exam_summary_from_answer_map($exam_row, $answer_map);
+		$start_raw = isset($data['started_at']) ? (string) $data['started_at'] : (isset($data['start_time']) ? (string) $data['start_time'] : date('Y-m-d H:i:s'));
+		$start_ts = strtotime($start_raw);
+		if ($start_ts === false) {
+			$start_ts = time();
+		}
+		$submit_ts = time();
+		$insert = array(
+			'admin_id' => (int) $exam_row['adminId'],
+			'student_id' => $student_id,
+			'paper_id' => $exam_id,
+			'paper_name' => isset($exam_row['name']) ? (string) $exam_row['name'] : 'Exam',
+			'date' => date('Y-m-d', $submit_ts),
+			'start_time' => date('H:i:s', $start_ts),
+			'submit_time' => date('H:i:s', $submit_ts),
+			'total_question' => (int) $summary['totalQuestion'],
+			'time_duration' => isset($exam_row['timeDuration']) ? (int) $exam_row['timeDuration'] : 0,
+			'attempted_question' => (int) $summary['attemptedQuestion'],
+			'question_answer' => json_encode($answer_map, JSON_UNESCAPED_UNICODE),
+			'percentage' => number_format((float) $summary['percentage'], 2, '.', ''),
+		);
+		$table = $this->student_exam_result_table((int) $exam_row['type']);
+		$new_id = (int) $this->db_model->insert_data($table, $insert);
+		if ($new_id < 1) {
+			$this->api_json(false, 'Could not submit exam');
+			return;
+		}
+		$insert['id'] = $new_id;
+		$this->api_json(true, 'Exam submitted successfully', array(
+			'alreadySubmitted' => false,
+			'result' => $this->student_exam_format_result_payload($exam_row, $insert),
+		));
+	}
+
+	public function student_exam_result()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('student'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$exam_id = isset($data['exam_id']) ? (int) $data['exam_id'] : 0;
+		if ($exam_id < 1) {
+			$this->api_json(false, 'exam_id is required');
+			return;
+		}
+		$exam_rows = $this->db_model->select_data(
+			'id,admin_id as adminId,name,type,format,batch_id as batchId,total_question as totalQuestion,time_duration as timeDuration,question_ids as questionIds,mock_sheduled_date as scheduledDate,mock_sheduled_time as scheduledTime,total_marks as totalMarks,marking_parcent as markingPercent,status,added_at as addedAt',
+			'exams use index (id)',
+			array('id' => $exam_id, 'status' => 1, 'type' => 1),
+			1
+		);
+		if (empty($exam_rows)) {
+			$this->api_json(false, 'Exam not found');
+			return;
+		}
+		$exam_row = $exam_rows[0];
+		if (!$this->assert_batch_access_student_or_teacher($payload, (int) $exam_row['batchId'], $data)) {
+			return;
+		}
+		$result_row = $this->student_exam_find_result_row((int) $payload['uid'], $exam_id, (int) $exam_row['type']);
+		if (empty($result_row)) {
+			$this->api_json(false, 'Result not found');
+			return;
+		}
+		$this->api_json(true, 'Success', array(
+			'exam' => $this->student_exam_format_exam_payload($exam_row, $this->student_exam_batch_card((int) $exam_row['batchId'])),
+			'result' => $this->student_exam_format_result_payload($exam_row, $result_row),
+		));
 	}
 
 	/**
@@ -2989,7 +4147,7 @@ class Batch extends MY_Controller
 				return;
 			}
 		} else {
-			if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id)) {
+			if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id, $data)) {
 				return;
 			}
 		}
@@ -3014,7 +4172,7 @@ class Batch extends MY_Controller
 			return;
 		}
 		$student_id = (int) $payload['uid'];
-		if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
+		if ($student_id < 1 || $this->authorize_student_request($student_id, $data) === false) {
 			return;
 		}
 		if (empty($data['homework_id'])) {
@@ -3030,7 +4188,7 @@ class Batch extends MY_Controller
 			return;
 		}
 		$hw_row = $hw[0];
-		if (!$this->assert_batch_access_student_or_teacher($payload, (int) $hw_row['batch_id'])) {
+		if (!$this->assert_batch_access_student_or_teacher($payload, (int) $hw_row['batch_id'], $data)) {
 			return;
 		}
 
@@ -3256,7 +4414,7 @@ class Batch extends MY_Controller
 			return;
 		}
 		$student_id = (int) $payload['uid'];
-		if ($student_id < 1 || $this->authorize_student_request($student_id) === false) {
+		if ($student_id < 1 || $this->authorize_student_request($student_id, $data) === false) {
 			return;
 		}
 		$this->ensure_homework_submissions_table();
@@ -3351,7 +4509,7 @@ class Batch extends MY_Controller
 		$ut = strtolower(trim((string) $payload['ut']));
 		$uid = (int) $payload['uid'];
 		if ($ut === 'student') {
-			if ($uid < 1 || $this->authorize_student_request($uid) === false) {
+			if ($uid < 1 || $this->authorize_student_request($uid, $data) === false) {
 				return;
 			}
 			if ((int) $row['studentId'] !== $uid) {

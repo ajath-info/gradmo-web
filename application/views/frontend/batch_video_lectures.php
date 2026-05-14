@@ -3,10 +3,39 @@
 .vl-shell { max-width: 1060px; margin: 0 auto; }
 .vl-search-card { border-radius: 16px; box-shadow: 0 8px 28px rgba(30, 58, 138, 0.08); border: 1px solid #e7ecf7; }
 .vl-search-wrap { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+.vl-batch-select {
+	flex: 0 1 260px;
+	min-width: 220px;
+	min-height: 42px;
+	border-radius: 10px;
+	border: 1px solid #d7deed;
+	padding: 0 12px;
+	background: #fff;
+}
 .vl-search-input { flex: 1 1 280px; min-height: 42px; border-radius: 10px; border: 1px solid #d7deed; padding: 0 12px; }
 .vl-search-btn { min-height: 42px; border-radius: 10px; padding: 0 16px; font-weight: 600; }
 .vl-msg { margin: 4px 2px 0; font-size: 13px; }
 .vl-grid { display:grid; grid-template-columns: repeat(auto-fill,minmax(240px,1fr)); gap:14px; }
+.vl-pagination {
+	display:flex;
+	align-items:center;
+	justify-content:center;
+	gap:12px;
+	flex-wrap:wrap;
+	padding-top: 8px;
+}
+.vl-page-info {
+	font-size:13px;
+	color:#64748b;
+	min-width: 110px;
+	text-align:center;
+}
+.vl-page-btn {
+	min-width: 108px;
+	min-height: 40px;
+	border-radius: 10px;
+	font-weight: 600;
+}
 .vl-card { background:#fff; border:1px solid #e9eef8; border-radius:14px; box-shadow:0 7px 22px rgba(15, 23, 42, 0.07); overflow:hidden; transition: transform .14s ease, box-shadow .14s ease; }
 .vl-card:hover { transform: translateY(-2px); box-shadow:0 12px 28px rgba(15, 23, 42, 0.11); }
 .vl-thumb {
@@ -72,12 +101,20 @@
 			<div class="inst-panel-stack">
 				<div class="inst-detail-summary-card vl-search-card">
 					<div class="vl-search-wrap">
+						<select id="vlBatch" class="vl-batch-select">
+							<option value="">All My Batches</option>
+						</select>
 						<input type="text" id="vlSearch" class="vl-search-input" placeholder="Search by title, topic, subject...">
 						<button type="button" id="vlSearchBtn" class="btn btn-primary vl-search-btn"><i class="fas fa-search"></i> Search</button>
 					</div>
 				</div>
 				<div id="vlMsg" class="small text-muted vl-msg"></div>
 				<div id="vlList" class="vl-grid"></div>
+				<div class="vl-pagination">
+					<button type="button" id="vlPrevBtn" class="btn btn-outline-primary vl-page-btn" disabled>Previous</button>
+					<span id="vlPageInfo" class="vl-page-info"></span>
+					<button type="button" id="vlNextBtn" class="btn btn-outline-primary vl-page-btn" disabled>Next</button>
+				</div>
 			</div>
 		</div>
 	</div>
@@ -96,14 +133,24 @@
 (function () {
 	'use strict';
 	var endpoint = <?php echo json_encode((string) (isset($video_list_api_url) ? $video_list_api_url : site_url('api/batch/video-lecture-list'))); ?>;
+	var batchOptionsEndpoint = <?php echo json_encode((string) (isset($batch_mylist_data_url) ? $batch_mylist_data_url : site_url('batch/mylist-data'))); ?>;
 	var token = <?php echo json_encode((string) (isset($api_access_token) ? $api_access_token : '')); ?>;
 	var batchId = <?php echo (int) (isset($batch_id) ? $batch_id : 0); ?>;
 	var msgEl = document.getElementById('vlMsg');
 	var listEl = document.getElementById('vlList');
 	var searchEl = document.getElementById('vlSearch');
+	var batchEl = document.getElementById('vlBatch');
+	var prevBtn = document.getElementById('vlPrevBtn');
+	var nextBtn = document.getElementById('vlNextBtn');
+	var pageInfoEl = document.getElementById('vlPageInfo');
 	var modalEl = document.getElementById('vlPlayerModal');
 	var playerBodyEl = document.getElementById('vlPlayerBody');
 	var playerTitleEl = document.getElementById('vlPlayerTitle');
+	var batchNameMap = {};
+	var currentPage = 1;
+	var pageLimit = 12;
+	var totalPages = 1;
+	var totalRecords = 0;
 
 	function esc(v) {
 		return String(v == null ? '' : v).replace(/[&<>"']/g, function (m) {
@@ -113,6 +160,61 @@
 	function setMsg(text, isError) {
 		msgEl.className = isError ? 'small text-danger' : 'small text-muted';
 		msgEl.textContent = text || '';
+	}
+	function updatePagination() {
+		var pageText = totalRecords > 0 ? ('Page ' + currentPage + ' / ' + totalPages) : 'No pages';
+		pageInfoEl.textContent = pageText;
+		prevBtn.disabled = currentPage <= 1 || totalRecords < 1;
+		nextBtn.disabled = currentPage >= totalPages || totalRecords < 1;
+	}
+	function postJson(url, payload, headers) {
+		var reqHeaders = headers || {};
+		return fetch(url, {
+			method: 'POST',
+			headers: reqHeaders,
+			body: JSON.stringify(payload || {})
+		}).then(function (r) { return r.json(); });
+	}
+	function parseBatchIds(raw) {
+		if (Array.isArray(raw)) {
+			return raw.map(function (value) { return parseInt(value, 10) || 0; }).filter(function (value) { return value > 0; });
+		}
+		var text = String(raw == null ? '' : raw).trim();
+		if (!text) return [];
+		try {
+			var decoded = JSON.parse(text);
+			if (Array.isArray(decoded)) {
+				return decoded.map(function (value) { return parseInt(value, 10) || 0; }).filter(function (value) { return value > 0; });
+			}
+		} catch (err) {}
+		var matches = text.match(/\d+/g);
+		if (!matches) return [];
+		var ids = [];
+		for (var i = 0; i < matches.length; i++) {
+			var bid = parseInt(matches[i], 10);
+			if (bid > 0 && ids.indexOf(bid) === -1) {
+				ids.push(bid);
+			}
+		}
+		return ids;
+	}
+	function batchLabel(item) {
+		var selected = batchEl && batchEl.value ? parseInt(batchEl.value, 10) : 0;
+		if (selected > 0 && batchNameMap[selected]) {
+			return batchNameMap[selected];
+		}
+		var ids = parseBatchIds(item.batch);
+		if (!ids.length) return '';
+		var labels = [];
+		for (var i = 0; i < ids.length; i++) {
+			if (batchNameMap[ids[i]] && labels.indexOf(batchNameMap[ids[i]]) === -1) {
+				labels.push(batchNameMap[ids[i]]);
+			}
+		}
+		if (!labels.length && ids[0] > 0) {
+			return 'Batch #' + ids[0];
+		}
+		return labels.join(', ');
 	}
 	function youtubeThumbUrl(raw) {
 		var u = String(raw || '');
@@ -208,7 +310,7 @@
 	}
 	function buildCard(item) {
 		var title = item.title || 'Video lecture';
-		var meta = [item.subject || '', item.topic || ''].filter(Boolean).join(' | ');
+		var meta = [batchLabel(item), item.subject || '', item.topic || ''].filter(Boolean).join(' | ');
 		var date = item.addedAt || '';
 		var desc = item.description || '';
 		var url = item.url || '';
@@ -261,14 +363,48 @@
 		card.appendChild(body);
 		return card;
 	}
-	function loadVideos() {
-		if (batchId < 1) {
-			listEl.innerHTML = '<div class="inst-detail-summary-card text-muted">Invalid batch id.</div>';
-			return;
+	function loadBatchOptions() {
+		if (!batchEl) {
+			return Promise.resolve();
+		}
+		batchEl.innerHTML = '<option value="">All My Batches</option>';
+		batchNameMap = {};
+		return postJson(batchOptionsEndpoint, { page: 1, limit: 100 }, {
+			'Content-Type': 'application/json',
+			'Accept': 'application/json',
+			'X-Requested-With': 'XMLHttpRequest'
+		}).then(function (res) {
+			var ok = res && (res.status === true || res.status === 'true');
+			var rows = ok && res.data && Array.isArray(res.data.enrolled_batches) ? res.data.enrolled_batches : [];
+			for (var i = 0; i < rows.length; i++) {
+				var row = rows[i] || {};
+				var bid = parseInt(row.batchId || row.batch_id || 0, 10);
+				if (bid < 1) continue;
+				var name = row.batchName || row.batch_name || ('Batch #' + bid);
+				batchNameMap[bid] = name;
+				var option = document.createElement('option');
+				option.value = String(bid);
+				option.textContent = name;
+				if (batchId > 0 && bid === batchId) {
+					option.selected = true;
+				}
+				batchEl.appendChild(option);
+			}
+		}).catch(function () {
+			// Keep the page usable even if the dropdown source fails.
+		});
+	}
+	function loadVideos(page) {
+		if (page != null) {
+			currentPage = Math.max(1, parseInt(page, 10) || 1);
 		}
 		setMsg('Loading video lectures...', false);
 		listEl.innerHTML = '';
-		var payload = { batch_id: batchId, search: (searchEl.value || '').trim(), page: 1, limit: 100 };
+		var selectedBatchId = batchEl && batchEl.value ? parseInt(batchEl.value, 10) : 0;
+		var payload = { search: (searchEl.value || '').trim(), page: currentPage, limit: pageLimit };
+		if (selectedBatchId > 0) {
+			payload.batch_id = selectedBatchId;
+		}
 		fetch(endpoint, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
@@ -276,26 +412,64 @@
 		}).then(function (r) { return r.json(); }).then(function (res) {
 			var ok = res && (res.status === true || res.status === 'true');
 			var rows = ok && res.data && Array.isArray(res.data.videoLectures) ? res.data.videoLectures : [];
+			var pagination = ok && res.data && res.data.pagination ? res.data.pagination : {};
 			if (!ok) throw new Error((res && (res.msg || res.message)) || 'Unable to load videos');
+			totalRecords = parseInt(pagination.totalRecords || pagination.total || 0, 10) || 0;
+			totalPages = Math.max(1, parseInt(pagination.totalPages || 0, 10) || 1);
+			currentPage = Math.max(1, parseInt(pagination.page || currentPage, 10) || 1);
 			if (!rows.length) {
-				listEl.innerHTML = '<div class="inst-detail-summary-card text-muted">No video lectures found for this batch.</div>';
+				listEl.innerHTML = '<div class="inst-detail-summary-card text-muted">' + esc(selectedBatchId > 0 ? 'No video lectures found for the selected batch.' : 'No video lectures found for your batches.') + '</div>';
 				setMsg('', false);
+				updatePagination();
 				return;
 			}
 			for (var i = 0; i < rows.length; i++) {
 				listEl.appendChild(buildCard(rows[i]));
 			}
 			setMsg('', false);
+			updatePagination();
 		}).catch(function (err) {
 			listEl.innerHTML = '<div class="inst-detail-summary-card text-danger">Could not fetch video lectures.</div>';
+			totalRecords = 0;
+			totalPages = 1;
+			updatePagination();
 			setMsg(err && err.message ? err.message : 'Request failed', true);
 		});
 	}
-	document.getElementById('vlSearchBtn').addEventListener('click', loadVideos);
+	document.getElementById('vlSearchBtn').addEventListener('click', function () {
+		currentPage = 1;
+		loadVideos(1);
+	});
+	if (batchEl) {
+		batchEl.addEventListener('change', function () {
+			currentPage = 1;
+			loadVideos(1);
+		});
+	}
+	searchEl.addEventListener('keydown', function (ev) {
+		if (ev.key === 'Enter') {
+			ev.preventDefault();
+			currentPage = 1;
+			loadVideos(1);
+		}
+	});
+	prevBtn.addEventListener('click', function () {
+		if (currentPage > 1) {
+			loadVideos(currentPage - 1);
+		}
+	});
+	nextBtn.addEventListener('click', function () {
+		if (currentPage < totalPages) {
+			loadVideos(currentPage + 1);
+		}
+	});
 	document.getElementById('vlPlayerClose').addEventListener('click', closePlayer);
 	modalEl.addEventListener('click', function (ev) {
 		if (ev.target === modalEl) closePlayer();
 	});
-	loadVideos();
+	loadBatchOptions().then(function () {
+		updatePagination();
+		loadVideos(1);
+	});
 })();
 </script>

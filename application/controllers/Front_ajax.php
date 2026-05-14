@@ -175,7 +175,7 @@ class Front_ajax extends CI_Controller {
                                     if($userDetails[0]['role']=='1'){
                                         $url = base_url().'admin/dashboard';
                                     }else if($userDetails[0]['role']=='3'){
-                                        $url = base_url().'teacher/dashboard';
+                                        $url = $front_home_url;
                                         $sess_arr['subject_id'] =implode(",",json_decode($userDetails[0]['teach_subject'])) ;
                                         $sess_arr['batch_id'] = $userDetails[0]['teach_batch'];
                                     }

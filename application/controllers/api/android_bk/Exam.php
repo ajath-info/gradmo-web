@@ -137,7 +137,17 @@ class Exam extends CI_Controller {
                 $questions = json_decode($paperDetails[0]['questionIds'],true);
                 if(!empty($questions)){
                     $question_id = implode(',',$questions);
-                    $questionData = $this->db_model->select_data('id,question,options,answer','questions use index (id)',"id in ($question_id)",'',array('id','desc'));
+                    $question_fields = 'id,question,options,answer';
+                    if ($this->db->field_exists('question_image', 'questions')) {
+                        $question_fields .= ',question_image as questionImage';
+                    }
+                    $questionData = $this->db_model->select_data($question_fields,'questions use index (id)',"id in ($question_id)",'',array('id','desc'));
+                    if(!empty($questionData) && $this->db->field_exists('question_image', 'questions')){
+                        foreach($questionData as $k => $questionRow){
+                            $img = isset($questionRow['questionImage']) ? trim((string)$questionRow['questionImage']) : '';
+                            $questionData[$k]['questionImageUrl'] = $img !== '' ? base_url('uploads/question_images/').$img : '';
+                        }
+                    }
                     if($paperDetails[0]['format'] == 1){
                     $questionData = $this->shuffle_array($questionData);
                     }

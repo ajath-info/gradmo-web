@@ -46,6 +46,45 @@ class Website extends MY_Controller
 			);
 		}
 
+		private function home_batch_instructor_map(array $batch_ids)
+		{
+			$batch_ids = array_values(array_unique(array_filter(array_map('intval', $batch_ids))));
+			if (empty($batch_ids)) {
+				return array();
+			}
+
+			$this->db->reset_query();
+			$rows = $this->db->select('batch_subjects.batch_id, users.name')
+				->from('batch_subjects')
+				->join('users', 'users.id = batch_subjects.teacher_id', 'left')
+				->where_in('batch_subjects.batch_id', $batch_ids)
+				->where('users.name IS NOT NULL', null, false)
+				->where("TRIM(users.name) <> ''", null, false)
+				->order_by('users.name', 'ASC')
+				->get()
+				->result_array();
+
+			$map = array();
+			foreach ($rows as $row) {
+				$batch_id = isset($row['batch_id']) ? (int) $row['batch_id'] : 0;
+				$name = isset($row['name']) ? trim((string) $row['name']) : '';
+				if ($batch_id < 1 || $name === '') {
+					continue;
+				}
+				if (!isset($map[$batch_id])) {
+					$map[$batch_id] = array();
+				}
+				if (!in_array($name, $map[$batch_id], true)) {
+					$map[$batch_id][] = $name;
+				}
+			}
+
+			foreach ($map as $batch_id => $names) {
+				$map[$batch_id] = implode(', ', $names);
+			}
+			return $map;
+		}
+
 		function index(){
 			// Public home: require a logged-in session (same idea as front_header). No role-based redirects here.
 			if (empty($_SESSION['role'])) {
@@ -65,8 +104,24 @@ class Website extends MY_Controller
 			$data['site_Details'] = $this->db_model->select_data('*','site_details',array('id'=>'1'),1);
 			$data['currency_decimal'] =$this->general_settings('currency_decimal_code');
 			if(!empty($batches)){
+				$batch_ids = array();
+				foreach ($batches as $value) {
+					$batch_ids[] = isset($value['id']) ? (int) $value['id'] : 0;
+				}
+				$teacher_map = $this->home_batch_instructor_map($batch_ids);
 				foreach($batches as $key =>$value){
 					$batches[$key]['description'] = $this->readMoreWord($value['description'], 150);
+					$batch_id = isset($value['id']) ? (int) $value['id'] : 0;
+					$start_time = isset($value['start_time']) ? trim((string) $value['start_time']) : '';
+					$end_time = isset($value['end_time']) ? trim((string) $value['end_time']) : '';
+					$from = ($start_time !== '' && strtotime($start_time)) ? date('g:i A', strtotime($start_time)) : '';
+					$to = ($end_time !== '' && strtotime($end_time)) ? date('g:i A', strtotime($end_time)) : '';
+					$schedule = '';
+					if ($from !== '' || $to !== '') {
+						$schedule = $from . (($from !== '' && $to !== '') ? ' - ' : '') . $to;
+					}
+					$batches[$key]['instructor'] = isset($teacher_map[$batch_id]) ? $teacher_map[$batch_id] : '';
+					$batches[$key]['schedule'] = $schedule;
 				}
 				$data['batches']= $batches;
 			}else{
@@ -80,7 +135,7 @@ class Website extends MY_Controller
 
 		function login(){
 			if (! empty($_SESSION['role'])) {
-				redirect(rtrim(base_url(), '/') . '/');
+				redirect($this->website_default_logged_in_url());
 				return;
 			}
 			$data = $this->frontend_shell_data($this->lang->line('ltr_login'));
@@ -409,7 +464,7 @@ class Website extends MY_Controller
 				return;
 			}
 			$login_redirect_home = in_array(trim((string) $this->input->post('login_redirect', TRUE)), array('index', 'home'), TRUE);
-			$front_home_url = rtrim(base_url(), '/') . '/';
+			$front_home_url = $this->website_front_home_url();
 
 			$email = trim((string) $this->input->post('email', TRUE));
 			$password_raw = $this->input->post('password', false);
@@ -452,21 +507,7 @@ class Website extends MY_Controller
 				setcookie('SSD', base64_encode(urlencode(base64_encode($password))), time() - 86400, '/');
 			}
 
-			$url = isset($web['url']) ? $web['url'] : $front_home_url;
-			if (! $login_redirect_home) {
-				$role = $this->session->userdata('role');
-				if ($role === '1' || $role === 1) {
-					$url = base_url() . 'admin/dashboard';
-				} elseif ($role === '3' || $role === 3) {
-					$url = base_url() . 'teacher/dashboard';
-				} elseif ($role === 'student') {
-					$url = base_url() . 'student/my-course';
-				} else {
-					$url = $front_home_url;
-				}
-			} else {
-				$url = $front_home_url;
-			}
+			$url = $login_redirect_home ? $front_home_url : $this->website_default_logged_in_url();
 
 			echo json_encode(array(
 				'status' => '1',
@@ -481,6 +522,18 @@ class Website extends MY_Controller
 		 */
 		private function website_proxy_post_json($url, array $payload, array $extra_headers = array())
 		{
+			// Many Apache setups strip Authorization on internal subrequests; duplicate Bearer into JSON
+			// so API helpers that only re-read the body still see access_token.
+			foreach ($extra_headers as $h) {
+				$h = trim((string) $h);
+				if ($h !== '' && preg_match('/^Authorization:\s*Bearer\s*:?\s*(.+)$/i', $h, $m)) {
+					$bearer = trim($m[1]);
+					if ($bearer !== '' && empty($payload['access_token']) && empty($payload['token'])) {
+						$payload['access_token'] = $bearer;
+					}
+					break;
+				}
+			}
 			$json = json_encode($payload);
 			$headers = array(
 				'Content-Type: application/json',
@@ -573,6 +626,16 @@ class Website extends MY_Controller
 			return rtrim(base_url(), '/') . '/';
 		}
 
+		private function website_default_logged_in_url()
+		{
+			$role = $this->session->userdata('role');
+			if ($role === '1' || $role === 1) {
+				return base_url('admin/dashboard');
+			}
+			// Teachers use the same post-login landing page as students (public home).
+			return $this->website_front_home_url();
+		}
+
 		private function website_session_access_token()
 		{
 			$tok = (string) $this->session->userdata('access_token');
@@ -623,7 +686,7 @@ class Website extends MY_Controller
 				return array(
 					'status' => 1,
 					'msg' => $this->lang->line('ltr_logged_msg'),
-					'url' => $this->website_front_home_url(),
+					'url' => $this->website_default_logged_in_url(),
 				);
 			}
 
@@ -660,7 +723,7 @@ class Website extends MY_Controller
 			return array(
 				'status' => 1,
 				'msg' => $this->lang->line('ltr_logged_msg'),
-				'url' => $this->website_front_home_url(),
+				'url' => $this->website_default_logged_in_url(),
 			);
 		}
 
@@ -930,6 +993,7 @@ class Website extends MY_Controller
 			$data['batch_id'] = $batch_id;
 			$data['api_access_token'] = $this->website_session_access_token();
 			$data['video_list_api_url'] = site_url('api/batch/video-lecture-list');
+			$data['batch_mylist_data_url'] = site_url('batch/mylist-data');
 			$this->render_frontend_layout('frontend/batch_video_lectures', $data);
 		}
 
@@ -950,8 +1014,59 @@ class Website extends MY_Controller
 			$data = $this->frontend_shell_data('Exams');
 			$data['batch_id'] = $batch_id;
 			$data['api_access_token'] = $this->website_session_access_token();
-			$data['upcoming_exam_list_api_url'] = site_url('api/batch/upcoming-exam-list');
+			$data['student_exam_dashboard_api_url'] = site_url('api/batch/student-exam-dashboard');
+			$data['student_exam_attempt_url'] = site_url('batch/exam-attempt');
+			$data['student_exam_result_url'] = site_url('batch/exam-result');
 			$this->render_frontend_layout('frontend/batch_exams', $data);
+		}
+
+		public function batch_exam_attempt()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$exam_id = (int) $this->input->get('exam_id');
+			if ($exam_id < 1) {
+				$exam_id = (int) $this->input->get('id');
+			}
+			$data = $this->frontend_shell_data('Assessment');
+			$data['exam_id'] = $exam_id;
+			$data['batch_id'] = (int) $this->input->get('batch_id');
+			$data['api_access_token'] = $this->website_session_access_token();
+			$data['student_exam_paper_api_url'] = site_url('api/batch/student-exam-paper');
+			$data['student_submit_exam_api_url'] = site_url('api/batch/student-submit-exam');
+			$data['student_exam_result_page_url'] = site_url('batch/exam-result');
+			$data['student_exam_list_page_url'] = site_url('batch/exams');
+			$this->render_frontend_layout('frontend/batch_exam_attempt', $data);
+		}
+
+		public function batch_exam_result()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$exam_id = (int) $this->input->get('exam_id');
+			if ($exam_id < 1) {
+				$exam_id = (int) $this->input->get('id');
+			}
+			$data = $this->frontend_shell_data('Assessment');
+			$data['exam_id'] = $exam_id;
+			$data['batch_id'] = (int) $this->input->get('batch_id');
+			$data['exam_done'] = (int) $this->input->get('done') === 1;
+			$data['api_access_token'] = $this->website_session_access_token();
+			$data['student_exam_result_api_url'] = site_url('api/batch/student-exam-result');
+			$data['student_exam_list_page_url'] = site_url('batch/exams');
+			$this->render_frontend_layout('frontend/batch_exam_result', $data);
 		}
 
 		public function batch_live_room()
@@ -989,6 +1104,8 @@ class Website extends MY_Controller
 			$data['attendance_api_url'] = site_url('api/user/attendance-list');
 			$data['batch_id'] = (int) $this->input->get('batch_id');
 			$data['api_access_token'] = $this->website_session_access_token();
+			$data['attendance_batch_options_url'] = site_url('batch/mylist-data');
+			$data['attendance_is_teacher'] = $this->website_session_is_teacher();
 			$this->render_frontend_layout('frontend/attendance_page', $data);
 		}
 
@@ -1151,7 +1268,7 @@ class Website extends MY_Controller
 
 		public function teacher_exams_page()
 		{
-			if (! isset($this->session->userdata['role']) || ! $this->website_session_is_teacher()) {
+			if (! isset($this->session->userdata['role']) || (! $this->website_session_is_teacher() && ! $this->website_session_is_institute())) {
 				redirect(base_url('login'));
 				return;
 			}
@@ -1159,15 +1276,21 @@ class Website extends MY_Controller
 				redirect(base_url('login'));
 				return;
 			}
-			$data = $this->frontend_shell_data('Teacher Exams');
+			$is_institute = $this->website_session_is_institute();
+			$data = $this->frontend_shell_data($is_institute ? 'Institute Exams' : 'Teacher Exams');
 			$data['batch_id'] = (int) $this->input->get('batch_id');
 			$data['api_access_token'] = $this->website_session_access_token();
-			$data['exam_list_api_url'] = site_url('api/batch/upcoming-exam-list');
+			$data['exam_list_api_url'] = site_url('api/batch/exam-manage-list');
+			$data['exam_details_api_url'] = site_url('api/batch/upcoming-exam-details');
 			$data['exam_add_api_url'] = site_url('api/batch/exam-add');
 			$data['exam_edit_api_url'] = site_url('api/batch/exam-edit');
 			$data['exam_delete_api_url'] = site_url('api/batch/exam-delete');
-			$data['legacy_question_manage_url'] = site_url('teacher/exam-manage');
-			$this->render_frontend_layout('frontend/teacher/teacher_exams', $data);
+			$data['batch_subjects_api_url'] = site_url('api/batch/batch-subjects');
+			$data['batch_chapters_api_url'] = site_url('api/batch/batch-chapters');
+			$data['batch_mylist_data_url'] = site_url('batch/mylist-data');
+			$data['exam_builder_role_label'] = $is_institute ? 'Institute' : 'Teacher';
+			$data['legacy_question_manage_url'] = $is_institute ? '' : site_url('teacher/exam-manage');
+			$this->render_frontend_layout('frontend/exam_builder_page', $data);
 		}
 
 		public function institute_listing()

@@ -25,7 +25,6 @@
 							<div class="tab-content edu-auth-tab-content">
 								<div class="tab-pane fade show active" id="tab-password" role="tabpanel">
 									<form class="form edu-auth-form" method="post" action="<?php echo base_url('login-password'); ?>" data-redirect="yes">
-										<input type="hidden" name="login_redirect" value="index">
 										<div class="edu-auth-field">
 											<label class="edu-auth-label" for="password_login_user_type">Account type</label>
 											<div class="edu_field_holder">

@@ -7,9 +7,50 @@ class Db_model extends CI_Model {
 		$this->load->database();		 # load the database
 		$this->setCode();
 	} 
+
+	private function has_empty_in_clause($where)
+	{
+		if (is_string($where) && preg_match('/\bin\s*\(\s*\)/i', $where)) {
+			return true;
+		}
+		if (is_array($where)) {
+			foreach ($where as $key => $value) {
+				if (is_string($key) && preg_match('/\bin\s*\(\s*\)/i', $key)) {
+					return true;
+				}
+				if (is_string($value) && preg_match('/\bin\s*\(\s*\)/i', $value)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	private function normalize_where_in_values($where_in)
+	{
+		if ($where_in == '' || !is_array($where_in) || !isset($where_in[1])) {
+			return array();
+		}
+		$raw_values = explode(',', (string) $where_in[1]);
+		$values = array();
+		foreach ($raw_values as $value) {
+			$value = trim((string) $value);
+			if ($value !== '') {
+				$values[] = $value;
+			}
+		}
+		return $values;
+	}
 	
 	# function for select data from database , with condition , limit , order , like and join clause
 	function select_data($field , $table , $where = '' , $limit = '' , $order = '' , $like = '' , $join_array = '' , $group = '', $or_like = '',$where_in =''){ 
+		if ($this->has_empty_in_clause($where)) {
+			return array();
+		}
+		$where_in_values = $this->normalize_where_in_values($where_in);
+		if ($where_in != '' && empty($where_in_values)) {
+			return array();
+		}
 		// Reset QB so this query is never merged with a half-built query on the same DB instance
 		// (e.g. api/main/notifications_list sets select/from then calls select_data for batch_subjects).
 		$this->db->reset_query();
@@ -20,7 +61,7 @@ class Db_model extends CI_Model {
 		}
 	    if($where_in !='' ){
            
-           $this->db->where_in($where_in[0],explode(',',$where_in[1]));
+           $this->db->where_in($where_in[0],$where_in_values);
         }
 		if($join_array != ''){
 			if(in_array('multiple',$join_array)){
@@ -205,12 +246,20 @@ class Db_model extends CI_Model {
 	}
 	
 	function select_track($field , $table , $where = '' , $wherein = array()){
+		if ($this->has_empty_in_clause($where)) {
+			return array();
+		}
 		$this->db->select($field);
 		$this->db->from($table);
 		if($where != "")
 			$this->db->where($where);
-		if(!empty($wherein))
-			$this->db->where_in($wherein[0],explode(',',$wherein[1]));
+		if(!empty($wherein)){
+			$where_in_values = $this->normalize_where_in_values($wherein);
+			if (empty($where_in_values)) {
+				return array();
+			}
+			$this->db->where_in($wherein[0],$where_in_values);
+		}
 		
 		return $this->db->get()->result_array();
 		die();
@@ -258,6 +307,13 @@ class Db_model extends CI_Model {
 	}
 
 	public function countAll($tbl_name,$where='',$like='',$where1='',$likes='',$join_array='',$group='',$or_like='',$where_in=''){
+        if ($this->has_empty_in_clause($where) || $this->has_empty_in_clause($where1)) {
+            return 0;
+        }
+        $where_in_values = $this->normalize_where_in_values($where_in);
+        if($where_in !='' && empty($where_in_values)){
+            return 0;
+        }
         $this->db->from($tbl_name);
         if($where !=''){
             $this->db->where($where);
@@ -271,7 +327,7 @@ class Db_model extends CI_Model {
         }
         if($where_in !='' ){
            
-           $this->db->where_in($where_in[0],explode(',',$where_in[1]));
+           $this->db->where_in($where_in[0],$where_in_values);
         }
         
 		

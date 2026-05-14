@@ -143,12 +143,10 @@ class MY_Controller extends CI_Controller
 
 		$user_type = (string) $payload['ut'];
 		$user_id = (int) $payload['uid'];
-		$iat = (int) $payload['iat'];
 
-		// Server-side session validation.
-		// Without this, a signed token stays valid until expiry even after logout or re-login.
+		// Server-side session validation (account active + not logged out). Tokens remain valid until exp or logout.
 		if ($user_type === 'student') {
-			$rows = $this->db_model->select_data('id, login_status, last_login_app', 'students', array('id' => $user_id), 1);
+			$rows = $this->db_model->select_data('id, login_status', 'students', array('id' => $user_id), 1);
 			if (empty($rows)) {
 				return false;
 			}
@@ -158,18 +156,11 @@ class MY_Controller extends CI_Controller
 				return false;
 			}
 
-			// Only the token from the latest login: last_login_app is set from that token's iat on login.
-			// Reject any other token (e.g. after logging in again without logout). Slack covers DB/PHP second alignment.
-			$last_login = isset($rows[0]['last_login_app']) ? trim((string) $rows[0]['last_login_app']) : '';
-			if ($last_login !== '' && $last_login !== '0000-00-00 00:00:00') {
-				$last_login_ts = strtotime($last_login);
-				if ($last_login_ts && abs($iat - $last_login_ts) > 2) {
-					return false;
-				}
-			}
+			// Allow multiple concurrent devices: do not tie the token to last_login_app (that changes on every login).
+			// Logout sets login_status = 0, which invalidates all tokens for this account until they sign in again.
 		} else {
 			// Teacher/Institute/Admin users
-			$rows = $this->db_model->select_data('id, login_status, updated_at', 'users', array('id' => $user_id), 1);
+			$rows = $this->db_model->select_data('id, login_status', 'users', array('id' => $user_id), 1);
 			if (empty($rows)) {
 				return false;
 			}
@@ -179,14 +170,8 @@ class MY_Controller extends CI_Controller
 				return false;
 			}
 
-			// Reject tokens issued before the latest login/update timestamp set at login.
-			$updated_at = isset($rows[0]['updated_at']) ? trim((string) $rows[0]['updated_at']) : '';
-			if ($updated_at !== '' && $updated_at !== '0000-00-00 00:00:00') {
-				$updated_ts = strtotime($updated_at);
-				if ($updated_ts && $iat < $updated_ts) {
-					return false;
-				}
-			}
+			// Allow multiple concurrent sessions: do not reject tokens based on users.updated_at (updated on each login).
+			// Logout sets login_status = 0 for non-student paths that use this endpoint.
 		}
 
 		return $payload;
@@ -231,9 +216,13 @@ class MY_Controller extends CI_Controller
 		return '';
 	}
 
-	protected function authorize_student_request($student_id)
+	/**
+	 * @param array|null $request_data Same merged request body as {@see require_auth_payload()} (JSON/POST/GET),
+	 *                    so access_token in the body is honored when Authorization is missing (e.g. internal CURL).
+	 */
+	protected function authorize_student_request($student_id, $request_data = null)
 	{
-		$token = $this->get_access_token_from_request();
+		$token = $this->get_access_token_from_request(is_array($request_data) ? $request_data : null);
 		$payload = $this->parse_access_token($token);
 
 		if ($payload === false || $payload['ut'] !== 'student' || (int) $payload['uid'] !== (int) $student_id) {

@@ -90,6 +90,13 @@ $ft_twitter = !empty($fd0['twitter']) ? trim((string) $fd0['twitter']) : '';
 	<!---------- GO To Top ------------>
 	<a href="javascript:void(0);" id="scroll"><span class="icofont-swoosh-up"></span></a>
     <!----- Script Start ----->
+	<?php
+		$_fa_ver = trim((string) $this->config->item('frontend_asset_version'));
+		$_fa_q = ($_fa_ver !== '') ? ('?v=' . rawurlencode($_fa_ver)) : '';
+		$_uri1 = strtolower((string) $this->uri->segment(1));
+		// Razorpay is only needed where enrollment / payment runs (not auth pages).
+		$_skip_rzp = in_array($_uri1, array('login', 'register', 'forgot-password'), true);
+	?>
 	<script src="<?php echo base_url();?>assets/js/jquery.min.js"></script>
 	<script src="<?php echo base_url();?>assets/js/popper.min.js"></script>
 	<script src="<?php echo base_url();?>assets/js/bootstrap.min.js"></script>
@@ -100,10 +107,12 @@ $ft_twitter = !empty($fd0['twitter']) ? trim((string) $fd0['twitter']) : '';
 	<script src="<?php echo base_url();?>assets/js/jquery.countTo.js"></script>
 	<script src="<?php echo base_url();?>assets/js/toastr.min.js"></script>
 	<script src="<?php echo base_url();?>assets/js/tilt.js"></script>
+	<?php if (! $_skip_rzp) { ?>
 	<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-	<script src="<?php echo base_url();?>assets/js/front-custom.js?<?php echo time();?>"></script>
-	<script src="<?php echo base_url();?>assets/js/form-submit-loader.js?<?php echo time();?>"></script>
-	<script src="<?php echo base_url();?>assets/js/auth-select.js?<?php echo time();?>"></script>
+	<?php } ?>
+	<script src="<?php echo base_url();?>assets/js/front-custom.js<?php echo $_fa_q; ?>"></script>
+	<script src="<?php echo base_url();?>assets/js/form-submit-loader.js<?php echo $_fa_q; ?>"></script>
+	<script src="<?php echo base_url();?>assets/js/auth-select.js<?php echo $_fa_q; ?>"></script>
 	<?php if (!empty($load_auth_form_assets)): ?>
 	<!-- Student re-login popup (used by login.js after AJAX login) -->
 	<div id="studentLogin" class="edu_popup_container mfp-hide">
@@ -117,8 +126,8 @@ $ft_twitter = !empty($fd0['twitter']) ? trim((string) $fd0['twitter']) : '';
 			</div>
 		</div>
 	</div>
-	<script src="<?php echo base_url();?>assets/js/login.js?<?php echo time();?>"></script>
-	<script src="<?php echo base_url();?>assets/js/valid.js?<?php echo time();?>"></script>
+	<script src="<?php echo base_url();?>assets/js/login.js<?php echo $_fa_q; ?>"></script>
+	<script src="<?php echo base_url();?>assets/js/valid.js<?php echo $_fa_q; ?>"></script>
 	<?php endif; ?>
 	<?php if (!empty($load_register_otp_script)) { $this->load->view('frontend/register_otp_script'); } ?>
 	<?php if (!empty($load_login_otp_script)) { $this->load->view('frontend/login_otp_script'); } ?>

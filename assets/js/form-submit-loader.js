@@ -46,6 +46,14 @@
 		});
 	}
 
+	function hideLoader() {
+		var nodes = document.querySelectorAll('.edu_preloader');
+		Array.prototype.forEach.call(nodes, function (el) {
+			el.style.display = 'none';
+			el.style.backgroundColor = '';
+		});
+	}
+
 	function unlockForm(form) {
 		if (!form) {
 			return;
@@ -125,5 +133,12 @@
 		Array.prototype.forEach.call(document.querySelectorAll('form[' + LOCKED_ATTR + '], form[' + ARMED_ATTR + ']'), function (form) {
 			unlockForm(form);
 		});
+		hideLoader();
 	});
+
+	if (document.readyState === 'interactive' || document.readyState === 'complete') {
+		hideLoader();
+	} else {
+		document.addEventListener('DOMContentLoaded', hideLoader);
+	}
 })();

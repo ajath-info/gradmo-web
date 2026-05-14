@@ -17,8 +17,12 @@
 	<link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/magnific-popup.css">
     <link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/swiper.min.css">
 	<link rel="stylesheet" type="text/css" href="<?php echo base_url().'assets/css/toastr.min.css';?>"/>
-	<link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/frontend-rtl.css?<?php echo time();?>">
-    <link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/frontend-style.css?<?php echo time();?>">
+	<?php
+		$_fa_ver = trim((string) $this->config->item('frontend_asset_version'));
+		$_fa_q = ($_fa_ver !== '') ? ('?v=' . rawurlencode($_fa_ver)) : '';
+	?>
+	<link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/frontend-rtl.css<?php echo $_fa_q; ?>">
+    <link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/frontend-style.css<?php echo $_fa_q; ?>">
     
 	<!----- Favicon ----->
 	<link rel="shortcut icon" type="image/ico" href="<?php echo html_escape($this->common->siteFavicon); ?>" />
@@ -185,13 +189,6 @@
 	</div>
 	<!----- Preloader Box ----->
 	<?php
-	$timezoneDB = $this->db_model->select_data('timezone','site_details',array('id'=>1));
-
-	if(isset($timezoneDB[0]['timezone']) && !empty($timezoneDB[0]['timezone'])){
-		date_default_timezone_set($timezoneDB[0]['timezone']);
-	}
-	?>
-	<?php
 		$front_logo_src = trim((string) $this->common->siteLogo);
 		if ($front_logo_src === '' || stripos($front_logo_src, 'favicon') !== false) {
 			$front_logo_src = base_url('assets/images/logo.png');
@@ -212,23 +209,15 @@
 						<div class="col-xl-8 col-lg-8 d-none d-lg-block">
 							<div class="edu_main_menu main_menu_parent">
 								<div class="edu_nav_items main_menu_wrapper text-left">
-									<ul>
-										<li><a href="<?php echo base_url(); ?>">Home</a></li>
-										<?php if(!empty($_SESSION['role'])){ ?>
-											<li><a href="<?php echo base_url('batch/mylist');?>">My Batches</a></li>
-											<li><a href="<?php echo base_url('batch/video-lectures');?>">Recorded Lectures</a></li>
-											<li><a href="<?php echo base_url('homework-list');?>">Homework</a></li>
-											<li><a href="<?php echo base_url('attendance');?>">Attendance</a></li>
-											<li><a href="<?php echo base_url('batch/exams');?>">Assignments</a></li>
-										<?php } else { ?>
-											<li><a href="<?php echo base_url('contact-us');?>"><?php echo html_escape($this->common->languageTranslator('ltr_contact_us')); ?></a></li>
-										<?php } ?>
-									</ul>
+									<?php $this->load->view('common/partials/front_primary_nav_ul'); ?>
 								</div>
 							</div>
 						</div>
 						<div class="col-xl-2 col-lg-2 col-md-8 col-sm-6 col-6">
-							<div class="edu_header_info">
+							<div class="edu_header_info edu_header_info--with-mobile-toggle">
+								<div class="menu_btn_wrap d-lg-none">
+									<a href="javascript:void(0);" class="menu_btn" id="frontMobileNavToggle" aria-label="Open menu" aria-expanded="false" aria-controls="eduFrontMobileNavDrawer"><span></span><span></span><span></span></a>
+								</div>
 								<ul>
 									<li>
 									  <?php if(!empty($_SESSION['role'])){ ?>
@@ -281,6 +270,13 @@
 								</ul>
 							</div>
 						</div>
+					</div>
+				</div>
+			</div>
+			<div class="d-lg-none edu-front-mobile-nav-drawer" id="eduFrontMobileNavDrawer" aria-hidden="true">
+				<div class="edu_main_menu main_menu_parent">
+					<div class="edu_nav_items main_menu_wrapper text-left">
+						<?php $this->load->view('common/partials/front_primary_nav_ul'); ?>
 					</div>
 				</div>
 			</div>

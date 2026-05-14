@@ -511,6 +511,53 @@ header.edu-header-gradmo .main_menu_wrapper {
     margin-left: 0;
     text-align: center;
 }
+header.edu-header-gradmo .edu_header_info--with-mobile-toggle {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: flex-end;
+	flex-wrap: nowrap;
+	gap: 10px;
+}
+header.edu-header-gradmo .edu_header_info--with-mobile-toggle > ul {
+	flex-shrink: 1;
+	min-width: 0;
+	margin-bottom: 0;
+}
+header.edu-header-gradmo .edu-front-mobile-nav-drawer .main_menu_wrapper ul>li>a {
+	color: #1a1a2e;
+	font-weight: 600;
+}
+header.edu-header-gradmo .edu-front-mobile-nav-drawer .main_menu_wrapper ul>li>a:hover,
+header.edu-header-gradmo .edu-front-mobile-nav-drawer .main_menu_wrapper ul>li>a:focus {
+	color: var(--Primary-Color, #4d4a81);
+	background-color: rgba(0, 0, 0, 0.05);
+}
+header.edu-header-gradmo .menu_btn {
+	cursor: pointer;
+	-webkit-tap-highlight-color: transparent;
+	-webkit-user-select: none;
+	user-select: none;
+	touch-action: manipulation;
+}
+header.edu-header-gradmo .menu_btn_wrap.open {
+	position: relative;
+	z-index: 1001;
+}
+body.front-mobile-nav-open {
+	overflow: hidden;
+}
+body.front-mobile-nav-open::before {
+	content: '';
+	position: fixed;
+	left: 0;
+	right: 0;
+	top: 0;
+	bottom: 0;
+	background: rgba(15, 23, 42, 0.45);
+	z-index: 990;
+	pointer-events: none;
+}
 header.edu-header-gradmo .front-profile-trigger-avatar {
     width: 30px;
     height: 30px;
@@ -4248,6 +4295,7 @@ section.edu_courseInfo_wrapper.edu_courseInfo_wrapper_privacyPolicy h1 {
     }
     .main_menu_wrapper.open {
         left: 0;
+        padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
     }
     .main_menu_wrapper,
     .main_menu_wrapper.open {

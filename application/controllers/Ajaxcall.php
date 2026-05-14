@@ -3934,15 +3934,28 @@ function subcategory_table(){
                         $chapterArray=array();
                        
                         foreach($chaData as $key=>$value){
-                            $chapterArray[] = json_decode($value['chapter']);
+                            $decodedChapter = json_decode($value['chapter'], true);
+                            if(is_array($decodedChapter) && !empty($decodedChapter)){
+                                $chapterArray[] = array_values(array_filter(array_map('intval', $decodedChapter)));
+                            }
                         }
-                        $a_diff=call_user_func_array('array_intersect',$chapterArray);
-                        $chapterData = $this->db_model->select_data('id,chapter_name,no_of_questions','chapters use index (id)','','',array('id','desc'),'','','','',array('id',implode(',',$a_diff)));
+                        if(!empty($chapterArray)){
+                            $a_diff=call_user_func_array('array_intersect',$chapterArray);
+                            $a_diff = array_values(array_filter(array_map('intval', $a_diff)));
+                            if(!empty($a_diff)){
+                                $chapterData = $this->db_model->select_data('id,chapter_name,no_of_questions','chapters use index (id)','','',array('id','desc'),'','','','',array('id',implode(',', $a_diff)));
+                            }else{
+                                $chapterData = array();
+                            }
+                        }else{
+                            $chapterData = array();
+                        }
                     }else{
                         $chaData = current($this->db_model->custom_slect_query(" `id`,`chapter` FROM batch_subjects use index (id) WHERE `batch_id` in($batch_id) AND `subject_id`=$subject ORDER BY `id` DESC"));
-                        $chapterArray=json_decode($chaData['chapter']);
+                        $chapterArray=!empty($chaData['chapter']) ? json_decode($chaData['chapter'], true) : array();
+                        $chapterArray = is_array($chapterArray) ? array_values(array_filter(array_map('intval', $chapterArray))) : array();
                         //print_r($chapterArray);
-                         $chapterData = $this->db_model->select_data('id,chapter_name,no_of_questions','chapters use index (id)','','',array('id','desc'),'','','','',array('id',implode(',',$chapterArray)));
+                         $chapterData = !empty($chapterArray) ? $this->db_model->select_data('id,chapter_name,no_of_questions','chapters use index (id)','','',array('id','desc'),'','','','',array('id',implode(',', $chapterArray))) : array();
                         //echo $this->db->last_query();
                        // print_r($chapterData);
                         
@@ -12097,10 +12110,19 @@ function result_table($type){
                  $chapterArray=array();
                   for($i=0;$i<count($this->input->post('batch_id',TRUE));$i++){
                       $sub_data = current($this->db_model->select_data('GROUP_CONCAT(subjects.id) as subject','subjects use index (id)',array('batch_id'=>$_POST['batch_id'][$i]),'','','',array('batch_subjects','batch_subjects.subject_id=subjects.id')));
-                      $chapterArray[] = explode(',',$sub_data['subject']);
+                      if(!empty($sub_data['subject'])){
+                          $chapterArray[] = array_values(array_filter(array_map('intval', explode(',',$sub_data['subject']))));
+                      }
                     }
-                        $a_diff=call_user_func_array('array_intersect',$chapterArray);
-                        $subjectData = $this->db_model->select_data('subjects.id,subjects.subject_name','subjects use index (id)','','','','','','','',array('id',implode($a_diff)));
+                        if(!empty($chapterArray)){
+                            $a_diff=call_user_func_array('array_intersect',$chapterArray);
+                            $a_diff = array_values(array_filter(array_map('intval', $a_diff)));
+                            $subjectData = !empty($a_diff)
+                                ? $this->db_model->select_data('subjects.id,subjects.subject_name','subjects use index (id)','','','','','','','',array('id',implode(',', $a_diff)))
+                                : array();
+                        }else{
+                            $subjectData = array();
+                        }
                   
 				}else{
 				    $subjectData = $this->db_model->select_data('subjects.id,subjects.subject_name','subjects use index (id)',$condd,'',array('id','desc'),'',array('batch_subjects','batch_subjects.subject_id=subjects.id'));
@@ -13070,10 +13092,19 @@ function themesOption(){
                                 $chapterArray=array();
                                 for($i=0;$i<count($this->input->post('batch_id',TRUE));$i++){
                                     $sub_data = current($this->db_model->select_data('GROUP_CONCAT(subjects.id) as subject','subjects use index (id)',array('batch_id'=>$_POST['batch_id'][$i]),'','','',array('batch_subjects','batch_subjects.subject_id=subjects.id')));
-                                    $chapterArray[] = explode(',',$sub_data['subject']);
+                                    if(!empty($sub_data['subject'])){
+                                        $chapterArray[] = array_values(array_filter(array_map('intval', explode(',',$sub_data['subject']))));
+                                    }
                                 }
-                                    $a_diff=call_user_func_array('array_intersect',$chapterArray);
-                                    $subjectData = $this->db_model->select_data('subjects.id,subjects.subject_name','subjects use index (id)','','','','','','','',array('id',implode($a_diff)));
+                                    if(!empty($chapterArray)){
+                                        $a_diff=call_user_func_array('array_intersect',$chapterArray);
+                                        $a_diff = array_values(array_filter(array_map('intval', $a_diff)));
+                                        $subjectData = !empty($a_diff)
+                                            ? $this->db_model->select_data('subjects.id,subjects.subject_name','subjects use index (id)','','','','','','','',array('id',implode(',', $a_diff)))
+                                            : array();
+                                    }else{
+                                        $subjectData = array();
+                                    }
                                 
                             }else{
                                 $subjectData = $this->db_model->select_data('subjects.id,subjects.subject_name','subjects use index (id)',$condd,'',array('id','desc'),'',array('batch_subjects','batch_subjects.subject_id=subjects.id'));
