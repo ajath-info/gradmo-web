@@ -889,6 +889,9 @@ class Website extends MY_Controller
 			$data['batch_details_data_url'] = site_url('api/batch/batch-details');
 			$data['batch_payment_plan_url'] = site_url('batch/payment-plan');
 			$data['api_access_token'] = $this->website_session_access_token();
+			$api_ut = strtolower(trim((string) $this->session->userdata('api_user_type')));
+			$role = $this->session->userdata('role');
+			$data['can_manage_batch_zoom'] = ($api_ut === 'teacher' || $api_ut === 'institute' || (string) $role === '3' || (string) $role === '4' || $role === 3 || $role === 4);
 			$this->render_frontend_layout('frontend/batch_details', $data);
 		}
 
@@ -1085,8 +1088,10 @@ class Website extends MY_Controller
 			}
 			$data = $this->frontend_shell_data('Live room');
 			$data['live_class_id'] = $live_class_id;
+			$data['batch_id'] = (int) $this->input->get('batch_id');
 			$data['api_access_token'] = $this->website_session_access_token();
 			$data['live_class_details_url'] = site_url('api/batch/live-class-details');
+			$data['is_teacher_host'] = $this->website_session_is_teacher() || $this->website_session_is_institute();
 			$this->render_frontend_layout('frontend/batch_live_room', $data);
 		}
 

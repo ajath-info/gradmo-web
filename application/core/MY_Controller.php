@@ -317,6 +317,16 @@ class MY_Controller extends CI_Controller
 	}
 
 	/**
+	 * Fan-out in-app notifications to all students enrolled in a batch (table `notifications`).
+	 * @return int number of rows inserted
+	 */
+	protected function save_batch_student_notifications($batch_id, $notification_type, $msg, $url = '')
+	{
+		$this->load->library('notification_service');
+		return $this->notification_service->fan_out_batch_students((int) $batch_id, (string) $notification_type, (string) $msg, (string) $url);
+	}
+
+	/**
 	 * Standard list pagination from request (page, limit, per_page).
 	 *
 	 * @param array $data Merged request body / query

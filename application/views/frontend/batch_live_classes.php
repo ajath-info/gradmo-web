@@ -19,12 +19,18 @@
 	var msgEl = document.getElementById('lc_msg');
 	var listEl = document.getElementById('lc_list');
 	function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+	function joinHref(row) {
+		if (row.isBatchZoom == 1 || row.liveClassId === 0 || row.liveClassId === '0') {
+			return roomUrl + '?live_class_id=0&batch_id=' + encodeURIComponent(batchId);
+		}
+		return roomUrl + '?live_class_id=' + encodeURIComponent(row.liveClassId || 0);
+	}
 	function card(row) {
 		var liveBadge = row.isLive ? '<span class="badge badge-success">Live</span>' : '<span class="badge badge-secondary">Ended</span>';
 		return '<div class="inst-batch-card"><div class="inst-batch-content">' +
 			'<h4>' + esc(row.subjectName || 'Live Class') + ' ' + liveBadge + '</h4>' +
 			'<p class="inst-batch-meta">' + esc(row.teacherName || '') + ' | ' + esc(row.date || '') + ' ' + esc(row.startTime || '') + '</p>' +
-			'<a class="btn btn-primary btn-sm" href="' + esc(roomUrl + '?live_class_id=' + encodeURIComponent(row.liveClassId || 0)) + '">Join</a>' +
+			'<a class="btn btn-primary btn-sm" href="' + esc(joinHref(row)) + '">Join</a>' +
 		'</div></div>';
 	}
 	if (batchId < 1) {

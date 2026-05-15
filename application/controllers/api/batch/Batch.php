@@ -194,20 +194,241 @@ class Batch extends MY_Controller
 		return false;
 	}
 
-	private function zoom_signature($sdk_key, $sdk_secret, $meeting_number, $role)
+	/**
+	 * Meeting SDK signature (JWT for General app, legacy for old SDK Key in live_class_setting).
+	 *
+	 * @param string $mode 'jwt'|'legacy'|'auto'
+	 */
+	private function zoom_signature($sdk_key, $sdk_secret, $meeting_number, $role, $mode = 'auto')
 	{
-		$sdk_key = trim((string) $sdk_key);
-		$sdk_secret = trim((string) $sdk_secret);
-		$meeting_number = trim((string) $meeting_number);
+		$sdk_key = $this->normalize_zoom_credential($sdk_key);
+		$sdk_secret = $this->normalize_zoom_credential($sdk_secret);
+		$meeting_number = preg_replace('/\D+/', '', trim((string) $meeting_number));
 		$role = (int) $role;
 		if ($sdk_key === '' || $sdk_secret === '' || $meeting_number === '') {
 			return '';
 		}
+		if ($mode === 'auto') {
+			$mode = $this->zoom_signature_mode_for_credentials($sdk_key, $sdk_secret);
+		}
+		if ($mode === 'legacy') {
+			return $this->zoom_signature_legacy($sdk_key, $sdk_secret, $meeting_number, $role);
+		}
+		return $this->zoom_signature_jwt($sdk_key, $sdk_secret, $meeting_number, $role);
+	}
+
+	/** @see https://developers.zoom.us/docs/meeting-sdk/auth/ */
+	private function zoom_signature_jwt($sdk_key, $sdk_secret, $meeting_number, $role)
+	{
+		$iat = time() - 30;
+		$exp = $iat + 60 * 60 * 2;
+		$header = array('alg' => 'HS256', 'typ' => 'JWT');
+		$payload = array(
+			'appKey' => $sdk_key,
+			'sdkKey' => $sdk_key,
+			'mn' => (string) $meeting_number,
+			'role' => (int) $role,
+			'iat' => $iat,
+			'exp' => $exp,
+			'tokenExp' => $exp,
+		);
+		$segments = array(
+			$this->zoom_jwt_base64url(json_encode($header)),
+			$this->zoom_jwt_base64url(json_encode($payload)),
+		);
+		$signing_input = $segments[0] . '.' . $segments[1];
+		$signature = hash_hmac('sha256', $signing_input, $sdk_secret, true);
+		$segments[] = $this->zoom_jwt_base64url($signature);
+		return implode('.', $segments);
+	}
+
+	/** Legacy Meeting SDK signature (same as Student_profile::generate_signature). */
+	private function zoom_signature_legacy($sdk_key, $sdk_secret, $meeting_number, $role)
+	{
 		$time = (time() - 5 * 60) * 1000;
 		$data = base64_encode($sdk_key . $meeting_number . $time . $role);
 		$hash = hash_hmac('sha256', $data, $sdk_secret, true);
-		$_sig = $sdk_key . "." . $meeting_number . "." . $time . "." . $role . "." . base64_encode($hash);
+		$_sig = $sdk_key . '.' . $meeting_number . '.' . $time . '.' . $role . '.' . base64_encode($hash);
 		return rtrim(strtr(base64_encode($_sig), '+/', '-_'), '=');
+	}
+
+	private function zoom_signature_mode_for_credentials($sdk_key, $sdk_secret)
+	{
+		// General app Client ID/Secret (Meeting SDK Embed) → JWT. Old SDK Key in live_class_setting → legacy.
+		if (strlen($sdk_secret) >= 36 || strlen($sdk_key) >= 22) {
+			return 'jwt';
+		}
+		if (strlen($sdk_key) >= 18 && strlen($sdk_key) <= 24 && strlen($sdk_secret) >= 22 && strlen($sdk_secret) <= 40) {
+			return 'legacy';
+		}
+		return 'jwt';
+	}
+
+	private function normalize_zoom_credential($value)
+	{
+		$s = trim((string) $value);
+		if ($s !== '' && strlen($s) >= 3 && substr($s, 0, 3) === "\xEF\xBB\xBF") {
+			$s = trim(substr($s, 3));
+		}
+		return $s;
+	}
+
+	private function zoom_jwt_base64url($data)
+	{
+		return rtrim(strtr(base64_encode((string) $data), '+/', '-_'), '=');
+	}
+
+	/**
+	 * Zoom Meeting SDK (Web) credentials — NOT Server-to-Server OAuth.
+	 * Order: meeting_sdk_* → config → live_class_setting (batch) → android_*.
+	 *
+	 * @return array{sdk_key:string, sdk_secret:string, signature_mode:string, source:string}
+	 */
+	private function resolve_zoom_meeting_sdk_credentials($batch_id)
+	{
+		$batch_id = (int) $batch_id;
+		$key = '';
+		$secret = '';
+		$source = '';
+		if (is_file(APPPATH . 'config/zoom.php')) {
+			$this->config->load('zoom', true);
+			$cfg_k = $this->normalize_zoom_credential((string) $this->config->item('meeting_sdk_key', 'zoom'));
+			$cfg_s = $this->normalize_zoom_credential((string) $this->config->item('meeting_sdk_secret', 'zoom'));
+			if ($cfg_k !== '' && $cfg_s !== '') {
+				return array(
+					'sdk_key' => $cfg_k,
+					'sdk_secret' => $cfg_s,
+					'signature_mode' => 'jwt',
+					'source' => 'config',
+				);
+			}
+		}
+		$cols = 'android_api_key,android_api_secret';
+		if ($this->db->field_exists('meeting_sdk_key', 'zoom_api_credentials')) {
+			$cols = 'meeting_sdk_key,meeting_sdk_secret,android_api_key,android_api_secret';
+		}
+		$cred = $this->db_model->select_data($cols, 'zoom_api_credentials', '', 1, array('id', 'desc'));
+		if (!empty($cred[0])) {
+			if (isset($cred[0]['meeting_sdk_key']) && trim((string) $cred[0]['meeting_sdk_key']) !== '') {
+				$key = $this->normalize_zoom_credential($cred[0]['meeting_sdk_key']);
+				$source = 'meeting_sdk';
+			}
+			if (isset($cred[0]['meeting_sdk_secret']) && trim((string) $cred[0]['meeting_sdk_secret']) !== '') {
+				$secret = $this->normalize_zoom_credential($cred[0]['meeting_sdk_secret']);
+			}
+			if ($secret === '' && trim((string) $cred[0]['android_api_secret']) !== '') {
+				$secret = $this->normalize_zoom_credential($cred[0]['android_api_secret']);
+			}
+			if ($key === '' && trim((string) $cred[0]['android_api_key']) !== '') {
+				$key = $this->normalize_zoom_credential($cred[0]['android_api_key']);
+				$source = 'android_api';
+			}
+		}
+		if ($key === '' || $secret === '') {
+			if (is_file(APPPATH . 'config/zoom.php')) {
+				$this->config->load('zoom', true);
+				if ($key === '') {
+					$v = $this->config->item('meeting_sdk_key', 'zoom');
+					$key = $this->normalize_zoom_credential(is_string($v) ? $v : '');
+					if ($key !== '') {
+						$source = 'config';
+					}
+				}
+				if ($secret === '') {
+					$v = $this->config->item('meeting_sdk_secret', 'zoom');
+					$secret = $this->normalize_zoom_credential(is_string($v) ? $v : '');
+				}
+			}
+		}
+		if ($batch_id > 0 && ($key === '' || $secret === '')) {
+			$row = $this->db_model->select_data(
+				'zoom_api_key,zoom_api_secret',
+				'live_class_setting',
+				array('batch' => $batch_id, 'status' => 1),
+				1,
+				array('id', 'desc')
+			);
+			if (!empty($row[0])) {
+				if ($key === '') {
+					$key = $this->normalize_zoom_credential($row[0]['zoom_api_key']);
+					$source = 'live_class_setting';
+				}
+				if ($secret === '') {
+					$secret = $this->normalize_zoom_credential($row[0]['zoom_api_secret']);
+				}
+			}
+		}
+		$mode = 'jwt';
+		if ($source === 'live_class_setting' || $source === 'android_api') {
+			$mode = 'legacy';
+		}
+		return array(
+			'sdk_key' => $key,
+			'sdk_secret' => $secret,
+			'signature_mode' => $mode,
+			'source' => $source,
+		);
+	}
+
+	/**
+	 * Explain credential problems (e.g. old Android SDK Key used instead of General app Client ID).
+	 */
+	private function zoom_sdk_credential_diagnostic($batch_id)
+	{
+		$batch_id = (int) $batch_id;
+		$cols = 'meeting_sdk_key,meeting_sdk_secret,android_api_key,android_api_secret,s2s_client_id';
+		if (!$this->db->field_exists('meeting_sdk_key', 'zoom_api_credentials')) {
+			return '';
+		}
+		$cred = $this->db_model->select_data($cols, 'zoom_api_credentials', '', 1, array('id', 'desc'));
+		if (empty($cred[0])) {
+			return 'Add meeting_sdk_key and meeting_sdk_secret in zoom_api_credentials (Zoom General app → Development → Client ID + Client Secret).';
+		}
+		$msk = $this->normalize_zoom_credential($cred[0]['meeting_sdk_key']);
+		$mss = $this->normalize_zoom_credential($cred[0]['meeting_sdk_secret']);
+		$ak = $this->normalize_zoom_credential($cred[0]['android_api_key']);
+		$as = $this->normalize_zoom_credential($cred[0]['android_api_secret']);
+		$s2id = $this->normalize_zoom_credential($cred[0]['s2s_client_id']);
+		if ($msk === '' || $mss === '') {
+			return 'Set meeting_sdk_key and meeting_sdk_secret in zoom_api_credentials from your Zoom General app (Meeting SDK) Development credentials.';
+		}
+		if ($ak !== '' && $msk === $ak) {
+			return 'Wrong credentials: meeting_sdk_key is the same as the old Android SDK Key. For in-page Zoom (SDK 3.8) you must use your General app Development Client ID and Client Secret — not the legacy SDK Key or Gradmo S2S keys. Update both columns in zoom_api_credentials, then Ctrl+F5.';
+		}
+		if ($s2id !== '' && $msk === $s2id) {
+			return 'Wrong credentials: meeting_sdk_key must not be the Gradmo Server-to-Server Client ID. Use the General app (Meeting SDK) Development Client ID and Client Secret instead.';
+		}
+		if ($batch_id > 0) {
+			$batch = $this->db_model->select_data('zoom_api_key,zoom_api_secret', 'live_class_setting', array('batch' => $batch_id, 'status' => 1), 1, array('id', 'desc'));
+			if (!empty($batch[0]['zoom_api_key']) && !empty($batch[0]['zoom_api_secret']) && ($msk !== $this->normalize_zoom_credential($batch[0]['zoom_api_key']))) {
+				return 'This batch has different Zoom keys in Live class settings than in zoom_api_credentials. Use one General app Client ID + Secret pair everywhere, or clear the old batch keys in Live class settings.';
+			}
+		}
+		if ($as !== '' && $mss !== $as) {
+			return 'Tip: meeting_sdk_secret does not match android_api_secret. Use the same General app Client Secret in meeting_sdk_secret (and remove or update the old Android SDK keys).';
+		}
+		return 'If Signature is invalid: open Zoom General app → Development → copy Client ID into meeting_sdk_key and Client Secret into meeting_sdk_secret (not webhook Secret Token, not Gradmo S2S). Enable programmatic join on Embed tab. Use Development on localhost.';
+	}
+
+	/** Public meeting number for Meeting SDK (stored id first; join URL as fallback). */
+	private function zoom_public_meeting_number_from_batch_zoom_row(array $row)
+	{
+		$id = preg_replace('/\D+/', '', trim((string) (isset($row['zoom_meeting_id']) ? $row['zoom_meeting_id'] : '')));
+		if (strlen($id) >= 9 && strlen($id) <= 12) {
+			return $id;
+		}
+		$join = isset($row['join_url']) ? trim((string) $row['join_url']) : '';
+		if ($join !== '' && preg_match('#(?:/j/|/wc/join/|/join/)(\d{9,12})#i', $join, $m)) {
+			return preg_replace('/\D+/', '', $m[1]);
+		}
+		return $id;
+	}
+
+	/** Zoom SDK role: 1 host (teacher/institute), 0 participant (student). */
+	private function zoom_meeting_role_from_payload(array $payload)
+	{
+		$ut = strtolower(trim((string) (isset($payload['ut']) ? $payload['ut'] : '')));
+		return ($ut === 'teacher' || $ut === 'institute') ? 1 : 0;
 	}
 
 	private function zoom_display_name_from_payload(array $payload)
@@ -2610,6 +2831,45 @@ class Batch extends MY_Controller
 			}
 		}
 
+		if ($this->db->table_exists('batch_zoom_meetings')) {
+			$bz = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id, 'status' => 1), 1, array('id', 'desc'));
+			$has_bz = !empty($bz[0]) && (
+				trim((string) (isset($bz[0]['zoom_meeting_id']) ? $bz[0]['zoom_meeting_id'] : '')) !== ''
+				|| trim((string) (isset($bz[0]['join_url']) ? $bz[0]['join_url'] : '')) !== ''
+			);
+			if ($has_bz) {
+				$already = false;
+				foreach ($list as $ex) {
+					if (isset($ex['isBatchZoom']) && (int) $ex['isBatchZoom'] === 1) {
+						$already = true;
+						break;
+					}
+				}
+				if (!$already) {
+					$list[] = array(
+						'liveClassId' => 0,
+						'isBatchZoom' => 1,
+						'teacherId' => 0,
+						'batchId' => $batch_id,
+						'subjectId' => 0,
+						'chapterId' => 0,
+						'subjectName' => !empty($bz[0]['topic']) ? (string) $bz[0]['topic'] : 'Batch Zoom room',
+						'teacherName' => '',
+						'teacherImage' => '',
+						'date' => '',
+						'startTime' => '',
+						'endTime' => '',
+						'typeClass' => 1,
+						'typeLabel' => 'Zoom',
+						'chapterName' => '',
+						'entryDateTime' => '',
+						'teacherImageUrl' => '',
+						'isLive' => 1,
+					);
+				}
+			}
+		}
+
 		echo json_encode(array(
 			'status' => 'true',
 			'message' => 'Success',
@@ -2623,8 +2883,99 @@ class Batch extends MY_Controller
 	}
 
 	/**
+	 * Build join/meeting payload for live_class_details (mutates $row).
+	 *
+	 * @param array $row Must include batchId, typeClass, teacherImage, endTime
+	 */
+	private function live_class_details_attach_meeting(array &$row, array $payload)
+	{
+		$batch_id = (int) $row['batchId'];
+		$type = isset($row['typeClass']) ? (int) $row['typeClass'] : 0;
+		$row['typeLabel'] = ($type === 1) ? 'Zoom' : (($type === 2) ? 'Jetsi' : '');
+		$row['teacherImageUrl'] = !empty($row['teacherImage']) ? profile_image_url($row['teacherImage'], 3, 'teacher') : '';
+		$row['isLive'] = (isset($row['endTime']) && (trim((string) $row['endTime']) === '' || $row['endTime'] === '0000-00-00 00:00:00')) ? 1 : 0;
+
+		if ($type === 2) {
+			$meeting = $this->db_model->select_data('meeting_number as meetingNumber', 'jetsi_setting', array('batch' => $batch_id), 1, array('id', 'desc'));
+			$row['meeting'] = array(
+				'type' => 'jetsi',
+				'meetingNumber' => !empty($meeting[0]['meetingNumber']) ? $meeting[0]['meetingNumber'] : '',
+				'password' => ''
+			);
+			return;
+		}
+
+		$meeting_number = '';
+		$meeting_pwd = '';
+		$meeting = $this->db_model->select_data(
+			'meeting_number as meetingNumber,password',
+			'live_class_setting',
+			array('batch' => $batch_id, 'status' => 1),
+			1,
+			array('id', 'desc')
+		);
+		if (!empty($meeting[0])) {
+			$meeting_number = trim((string) $meeting[0]['meetingNumber']);
+			$meeting_pwd = trim((string) (isset($meeting[0]['password']) ? $meeting[0]['password'] : ''));
+		}
+
+		if ($this->db->table_exists('batch_zoom_meetings')) {
+			$bz = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id, 'status' => 1), 1, array('id', 'desc'));
+			if (!empty($bz[0])) {
+				$api_mid = $this->zoom_public_meeting_number_from_batch_zoom_row($bz[0]);
+				if ($api_mid !== '') {
+					$meeting_number = $api_mid;
+				}
+				if (isset($bz[0]['password']) && trim((string) $bz[0]['password']) !== '') {
+					$meeting_pwd = trim((string) $bz[0]['password']);
+				}
+			}
+		}
+
+		$sdk = $this->resolve_zoom_meeting_sdk_credentials($batch_id);
+		$sdk_key = $sdk['sdk_key'];
+		$sdk_secret = $sdk['sdk_secret'];
+		$sig_mode = isset($sdk['signature_mode']) ? (string) $sdk['signature_mode'] : 'jwt';
+		$is_teacher_or_institute = ($this->zoom_meeting_role_from_payload($payload) === 1);
+		$role = 0;
+		$display_name = $this->zoom_display_name_from_payload($payload);
+		$meeting_number = preg_replace('/\D+/', '', $meeting_number);
+		$signature = ($meeting_number !== '') ? $this->zoom_signature($sdk_key, $sdk_secret, $meeting_number, $role, $sig_mode) : '';
+		$join_ready = ($meeting_number !== '' && $sdk_key !== '' && $sdk_secret !== '' && $signature !== '');
+		$row['meeting'] = array(
+			'type' => 'zoom',
+			'meetingNumber' => $meeting_number,
+			'password' => $meeting_pwd,
+			'sdkKey' => $sdk_key,
+			'signature' => $signature,
+			'signatureMode' => $sig_mode,
+			'role' => $role,
+			'displayName' => $display_name,
+			'joinReady' => $join_ready ? 1 : 0,
+			'isHost' => $is_teacher_or_institute ? 1 : 0,
+		);
+		if ($join_ready && $sig_mode === 'jwt') {
+			$alt = $this->zoom_signature_legacy($sdk_key, $sdk_secret, $meeting_number, $role);
+			if ($alt !== '') {
+				$row['meeting']['signatureAlt'] = $alt;
+				$row['meeting']['signatureAltMode'] = 'legacy';
+			}
+		} elseif ($join_ready && $sig_mode === 'legacy') {
+			$alt = $this->zoom_signature_jwt($sdk_key, $sdk_secret, $meeting_number, $role);
+			if ($alt !== '') {
+				$row['meeting']['signatureAlt'] = $alt;
+				$row['meeting']['signatureAltMode'] = 'jwt';
+			}
+		}
+		$cred_hint = $this->zoom_sdk_credential_diagnostic($batch_id);
+		if ($cred_hint !== '') {
+			$row['meeting']['sdkConfigHint'] = $cred_hint;
+		}
+	}
+
+	/**
 	 * POST/GET api/batch/live-class-details
-	 * Required: live_class_id
+	 * Required: live_class_id (or live_class_id=0 with batch_id for batch-level Zoom only — no live_class_history row).
 	 */
 	public function live_class_details()
 	{
@@ -2634,12 +2985,57 @@ class Batch extends MY_Controller
 			return;
 		}
 
-		if (empty($data['live_class_id'])) {
-			echo json_encode(array('status' => 'false', 'msg' => 'live_class_id is required'));
+		$live_class_id = isset($data['live_class_id']) ? (int) $data['live_class_id'] : 0;
+		$batch_id_req = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+
+		// Batch Zoom room only (no scheduled row in live_class_history yet)
+		if ($live_class_id === 0 && $batch_id_req > 0) {
+			if (!$this->db->table_exists('batch_zoom_meetings')) {
+				echo json_encode(array('status' => 'false', 'msg' => 'batch_zoom_meetings is not installed'));
+				return;
+			}
+			$bz = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id_req, 'status' => 1), 1, array('id', 'desc'));
+			$has_zoom = !empty($bz[0]) && (trim((string) (isset($bz[0]['zoom_meeting_id']) ? $bz[0]['zoom_meeting_id'] : '')) !== '' || trim((string) (isset($bz[0]['join_url']) ? $bz[0]['join_url'] : '')) !== '');
+			if (!$has_zoom) {
+				echo json_encode(array('status' => 'false', 'msg' => 'No batch Zoom meeting is linked for this batch'));
+				return;
+			}
+			if (!$this->assert_batch_zoom_viewer($payload, $batch_id_req, $data)) {
+				return;
+			}
+			$topic = !empty($bz[0]['topic']) ? (string) $bz[0]['topic'] : 'Batch Zoom';
+			$row = array(
+				'liveClassId' => 0,
+				'teacherId' => 0,
+				'batchId' => $batch_id_req,
+				'subjectId' => 0,
+				'chapterId' => 0,
+				'startTime' => '',
+				'endTime' => '',
+				'date' => '',
+				'entryDateTime' => '',
+				'adminId' => 0,
+				'typeClass' => 1,
+				'teacherName' => '',
+				'teacherImage' => '',
+				'subjectName' => $topic,
+				'chapterName' => '',
+			);
+			$this->live_class_details_attach_meeting($row, $payload);
+			$row['isBatchZoom'] = 1;
+			echo json_encode(array(
+				'status' => 'true',
+				'message' => 'Success',
+				'liveClass' => $row
+			), JSON_UNESCAPED_SLASHES);
+			die;
+		}
+
+		if ($live_class_id < 1) {
+			echo json_encode(array('status' => 'false', 'msg' => 'live_class_id is required (or use live_class_id=0 with batch_id for batch Zoom)'));
 			return;
 		}
 
-		$live_class_id = (int) $data['live_class_id'];
 		$this->db->select(
 			'lch.id as liveClassId,lch.uid as teacherId,lch.batch_id as batchId,lch.subject_id as subjectId,lch.chapter_id as chapterId,' .
 			'lch.start_time as startTime,lch.end_time as endTime,lch.date,lch.entry_date_time as entryDateTime,lch.admin_id as adminId,lch.type_class as typeClass,' .
@@ -2658,58 +3054,11 @@ class Batch extends MY_Controller
 		}
 
 		$batch_id = (int) $row['batchId'];
-		if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id, $data)) {
+		if (!$this->assert_batch_zoom_viewer($payload, $batch_id, $data)) {
 			return;
 		}
 
-		$type = isset($row['typeClass']) ? (int) $row['typeClass'] : 0;
-		$row['typeLabel'] = ($type === 1) ? 'Zoom' : (($type === 2) ? 'Jetsi' : '');
-		$row['teacherImageUrl'] = !empty($row['teacherImage']) ? profile_image_url($row['teacherImage'], 3, 'teacher') : '';
-		$row['isLive'] = (isset($row['endTime']) && (trim((string) $row['endTime']) === '' || $row['endTime'] === '0000-00-00 00:00:00')) ? 1 : 0;
-
-		// Attach meeting settings by class type.
-		if ($type === 2) {
-			$meeting = $this->db_model->select_data('meeting_number as meetingNumber', 'jetsi_setting', array('batch' => $batch_id), 1, array('id', 'desc'));
-			$row['meeting'] = array(
-				'type' => 'jetsi',
-				'meetingNumber' => !empty($meeting[0]['meetingNumber']) ? $meeting[0]['meetingNumber'] : '',
-				'password' => ''
-			);
-		} else {
-			$meeting = $this->db_model->select_data(
-				'meeting_number as meetingNumber,password',
-				'live_class_setting',
-				array('batch' => $batch_id, 'status' => 1),
-				1,
-				array('id', 'desc')
-			);
-			$row['meeting'] = array(
-				'type' => 'zoom',
-				'meetingNumber' => !empty($meeting[0]['meetingNumber']) ? $meeting[0]['meetingNumber'] : '',
-				'password' => !empty($meeting[0]['password']) ? $meeting[0]['password'] : ''
-			);
-
-			$meeting_number = (string) $row['meeting']['meetingNumber'];
-			$meeting_pwd = (string) $row['meeting']['password'];
-			$zoom_keys = $this->db_model->select_data(
-				'zoom_api_key,zoom_api_secret',
-				'live_class_setting',
-				array('batch' => $batch_id, 'status' => 1),
-				1,
-				array('id', 'desc')
-			);
-			$sdk_key = !empty($zoom_keys[0]['zoom_api_key']) ? trim((string) $zoom_keys[0]['zoom_api_key']) : '';
-			$sdk_secret = !empty($zoom_keys[0]['zoom_api_secret']) ? trim((string) $zoom_keys[0]['zoom_api_secret']) : '';
-			$role = (strtolower(trim((string) $payload['ut'])) === 'teacher') ? 1 : 0;
-			$signature = $this->zoom_signature($sdk_key, $sdk_secret, $meeting_number, $role);
-			$display_name = $this->zoom_display_name_from_payload($payload);
-			$row['meeting']['sdkKey'] = $sdk_key;
-			$row['meeting']['signature'] = $signature;
-			$row['meeting']['role'] = $role;
-			$row['meeting']['displayName'] = $display_name;
-			$row['meeting']['webJoinUrl'] = ($meeting_number !== '') ? ('https://zoom.us/wc/join/' . rawurlencode($meeting_number)) : '';
-			$row['meeting']['mobileJoinUrl'] = ($meeting_number !== '') ? ('zoomus://zoom.us/join?confno=' . rawurlencode($meeting_number) . ($meeting_pwd !== '' ? ('&pwd=' . rawurlencode($meeting_pwd)) : '')) : '';
-		}
+		$this->live_class_details_attach_meeting($row, $payload);
 
 		echo json_encode(array(
 			'status' => 'true',
@@ -4532,5 +4881,312 @@ class Batch extends MY_Controller
 		$row['teacherImageUrl'] = !empty($row['teacherImage']) ? profile_image_url($row['teacherImage'], 3, 'teacher') : '';
 
 		$this->api_json(true, 'Success', array('submission' => $row));
+	}
+
+	private function assert_batch_zoom_viewer(array $payload, $batch_id, $request_data = null)
+	{
+		$ut = strtolower(trim((string) $payload['ut']));
+		if ($ut === 'institute') {
+			return $this->assert_batch_access_teacher_or_institute($payload, $batch_id);
+		}
+		return $this->assert_batch_access_student_or_teacher($payload, $batch_id, $request_data);
+	}
+
+	private function zoom_logs_table_exists()
+	{
+		return $this->db->table_exists('zoom_logs');
+	}
+
+	private function zoom_log($batch_id, $action, $http_status, $message, $request_json, $response_json, array $payload = array())
+	{
+		if (!$this->zoom_logs_table_exists()) {
+			return;
+		}
+		// Direct insert: db_model::insert_data runs xss_clean on all fields; integers break PHP 8 (TypeError).
+		$this->db->insert('zoom_logs', array(
+			'batch_id' => (int) $batch_id,
+			'action' => substr((string) $action, 0, 64),
+			'http_status' => (int) $http_status,
+			'message' => substr((string) $message, 0, 512),
+			'request_json' => is_string($request_json) ? $request_json : json_encode($request_json),
+			'response_json' => is_string($response_json) ? $response_json : json_encode($response_json),
+			'user_uid' => isset($payload['uid']) ? (int) $payload['uid'] : 0,
+			'user_ut' => isset($payload['ut']) ? substr((string) $payload['ut'], 0, 32) : '',
+			'created_at' => date('Y-m-d H:i:s'),
+		));
+	}
+
+	/**
+	 * POST/GET api/batch/batch-zoom-details
+	 * Params: batch_id. Auth: student (enrolled), teacher (assigned), or institute (owns batch).
+	 */
+	public function batch_zoom_details()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('student', 'teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		if (empty($data['batch_id'])) {
+			$this->api_json(false, 'batch_id is required');
+			return;
+		}
+		$batch_id = (int) $data['batch_id'];
+		if (!$this->assert_batch_zoom_viewer($payload, $batch_id, $data)) {
+			return;
+		}
+		if (!$this->db->table_exists('batch_zoom_meetings')) {
+			$this->api_json(false, 'batch_zoom_meetings table is not installed. Run installer/create_batch_zoom_meetings_and_zoom_s2s.sql');
+			return;
+		}
+		$row = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id, 'status' => 1), 1, array('id', 'desc'));
+		if (empty($row)) {
+			$this->api_json(false, 'No Zoom meeting linked for this batch', array('batchId' => $batch_id));
+			return;
+		}
+		$r = $row[0];
+		$out = array(
+			'batchId' => $batch_id,
+			'zoomMeetingId' => isset($r['zoom_meeting_id']) ? (string) $r['zoom_meeting_id'] : '',
+			'password' => isset($r['password']) ? (string) $r['password'] : '',
+			'topic' => isset($r['topic']) ? (string) $r['topic'] : '',
+			'startTime' => isset($r['start_time']) ? $r['start_time'] : null,
+			'duration' => isset($r['duration']) ? (int) $r['duration'] : 60,
+			'timezone' => isset($r['timezone']) ? (string) $r['timezone'] : 'UTC',
+			'inAppOnly' => 1,
+		);
+		$ut = strtolower(trim((string) $payload['ut']));
+		if ($ut === 'teacher' || $ut === 'institute') {
+			$out['hostId'] = isset($r['host_id']) ? (string) $r['host_id'] : '';
+		}
+		$this->api_json(true, 'Success', array('zoom' => $out));
+	}
+
+	/**
+	 * POST api/batch/batch-zoom-create — teacher or institute; creates Zoom meeting via REST and stores row.
+	 */
+	public function batch_zoom_create()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		if (!$this->db->table_exists('batch_zoom_meetings')) {
+			$this->api_json(false, 'batch_zoom_meetings table is not installed.');
+			return;
+		}
+		if (empty($data['batch_id'])) {
+			$this->api_json(false, 'batch_id is required');
+			return;
+		}
+		$batch_id = (int) $data['batch_id'];
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		$existing = $this->db_model->select_data('id', 'batch_zoom_meetings', array('batch_id' => $batch_id, 'status' => 1), 1);
+		if (!empty($existing)) {
+			$this->api_json(false, 'A Zoom meeting is already linked. Use batch-zoom-update or batch-zoom-delete first.');
+			return;
+		}
+		$this->load->library('zoom_rest_client');
+		$zc = $this->zoom_rest_client;
+		if (!$zc->is_configured()) {
+			$this->api_json(false, 'Configure Zoom Server-to-Server OAuth in zoom_api_credentials (s2s_account_id, s2s_client_id, s2s_client_secret, zoom_host_email).');
+			return;
+		}
+		$topic = isset($data['topic']) ? trim((string) $data['topic']) : '';
+		$agenda = isset($data['agenda']) ? trim((string) $data['agenda']) : '';
+		$start = isset($data['start_time']) ? trim((string) $data['start_time']) : '';
+		$duration = isset($data['duration']) ? (int) $data['duration'] : 60;
+		$timezone = isset($data['timezone']) ? trim((string) $data['timezone']) : 'UTC';
+		$created = $zc->create_meeting_for_batch($topic, $agenda, ($start !== '' ? $start : null), $duration, $timezone);
+		if (!$created['ok']) {
+			$this->zoom_log($batch_id, 'create', 0, $created['error'], $data, array(), $payload);
+			$this->api_json(false, $created['error']);
+			return;
+		}
+		$d = $created['data'];
+		$mid = isset($d['id']) ? (string) $d['id'] : '';
+		if (!empty($d['join_url']) && preg_match('#/(?:j|w)/(\d{9,12})#i', (string) $d['join_url'], $m)) {
+			$mid = preg_replace('/\D+/', '', $m[1]);
+		}
+		$ins = array(
+			'batch_id' => $batch_id,
+			'zoom_meeting_id' => $mid,
+			'join_url' => isset($d['join_url']) ? (string) $d['join_url'] : '',
+			'start_url' => isset($d['start_url']) ? (string) $d['start_url'] : '',
+			'password' => isset($d['password']) ? (string) $d['password'] : (isset($d['encrypted_password']) ? (string) $d['encrypted_password'] : ''),
+			'host_id' => isset($d['host_id']) ? (string) $d['host_id'] : '',
+			'topic' => isset($d['topic']) ? (string) $d['topic'] : $topic,
+			'agenda' => $agenda,
+			'start_time' => null,
+			'duration' => $duration,
+			'timezone' => $timezone,
+			'meeting_type' => isset($d['type']) ? (int) $d['type'] : 3,
+			'status' => 1,
+			'raw_json' => json_encode($d, JSON_UNESCAPED_SLASHES),
+			'created_by_uid' => (int) $payload['uid'],
+			'created_by_ut' => substr((string) $payload['ut'], 0, 32),
+			'created_at' => date('Y-m-d H:i:s'),
+			'updated_at' => date('Y-m-d H:i:s'),
+		);
+		if (!empty($d['start_time'])) {
+			$st = strtotime((string) $d['start_time']);
+			if ($st) {
+				$ins['start_time'] = date('Y-m-d H:i:s', $st);
+			}
+		}
+		// Direct insert: insert_data/xss_clean on ints (batch_id, duration, …) fatals on PHP 8; URLs must not be stripped.
+		if (!$this->db->insert('batch_zoom_meetings', $ins)) {
+			$db_err = $this->db->error();
+			$this->zoom_log($batch_id, 'create', 0, 'DB save failed: ' . (isset($db_err['message']) ? $db_err['message'] : ''), $data, $d, $payload);
+			$this->api_json(false, 'Could not save the Zoom meeting to the database.');
+			return;
+		}
+		$this->zoom_log($batch_id, 'create', 201, 'created', $data, $d, $payload);
+		$this->api_json(true, 'Zoom meeting created. Students and teachers join only from Live classes in your app or website.', array('zoomMeetingId' => $mid));
+	}
+
+	/**
+	 * POST api/batch/batch-zoom-update
+	 */
+	public function batch_zoom_update()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		if (!$this->db->table_exists('batch_zoom_meetings')) {
+			$this->api_json(false, 'batch_zoom_meetings table is not installed.');
+			return;
+		}
+		if (empty($data['batch_id'])) {
+			$this->api_json(false, 'batch_id is required');
+			return;
+		}
+		$batch_id = (int) $data['batch_id'];
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		$row = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id, 'status' => 1), 1, array('id', 'desc'));
+		if (empty($row[0]['zoom_meeting_id'])) {
+			$this->api_json(false, 'No active Zoom meeting for this batch');
+			return;
+		}
+		$zoom_mid = trim((string) $row[0]['zoom_meeting_id']);
+		$patch = array();
+		if (isset($data['topic'])) {
+			$patch['topic'] = trim((string) $data['topic']);
+		}
+		if (isset($data['agenda'])) {
+			$patch['agenda'] = trim((string) $data['agenda']);
+		}
+		if (isset($data['duration'])) {
+			$patch['duration'] = (int) $data['duration'];
+		}
+		if (isset($data['timezone'])) {
+			$patch['timezone'] = trim((string) $data['timezone']);
+		}
+		if (!empty($data['start_time'])) {
+			$patch['start_time'] = trim((string) $data['start_time']);
+		}
+		if (empty($patch)) {
+			$this->api_json(false, 'Nothing to update');
+			return;
+		}
+		$this->load->library('zoom_rest_client');
+		$res = $this->zoom_rest_client->update_meeting($zoom_mid, $patch);
+		if (!$res['ok']) {
+			$this->zoom_log($batch_id, 'update', 0, $res['error'], $data, $patch, $payload);
+			$this->api_json(false, $res['error']);
+			return;
+		}
+		$upd = array(
+			'topic' => isset($data['topic']) ? trim((string) $data['topic']) : $row[0]['topic'],
+			'agenda' => isset($data['agenda']) ? trim((string) $data['agenda']) : $row[0]['agenda'],
+			'duration' => isset($data['duration']) ? (int) $data['duration'] : (int) $row[0]['duration'],
+			'timezone' => isset($data['timezone']) ? trim((string) $data['timezone']) : $row[0]['timezone'],
+			'updated_at' => date('Y-m-d H:i:s'),
+		);
+		$this->db->where('id', (int) $row[0]['id']);
+		$this->db->limit(1);
+		$this->db->update('batch_zoom_meetings', $upd);
+		$this->zoom_log($batch_id, 'update', 204, 'ok', $data, $patch, $payload);
+		$this->api_json(true, 'Zoom meeting updated', array('zoomMeetingId' => $zoom_mid));
+	}
+
+	/**
+	 * POST api/batch/batch-zoom-delete
+	 */
+	public function batch_zoom_delete()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		if (!$this->db->table_exists('batch_zoom_meetings')) {
+			$this->api_json(false, 'batch_zoom_meetings table is not installed.');
+			return;
+		}
+		if (empty($data['batch_id'])) {
+			$this->api_json(false, 'batch_id is required');
+			return;
+		}
+		$batch_id = (int) $data['batch_id'];
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		$row = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id, 'status' => 1), 1, array('id', 'desc'));
+		if (empty($row[0]['zoom_meeting_id'])) {
+			$this->api_json(false, 'No active Zoom meeting for this batch');
+			return;
+		}
+		$this->load->library('zoom_rest_client');
+		$del = $this->zoom_rest_client->delete_meeting(trim((string) $row[0]['zoom_meeting_id']));
+		if (!$del['ok']) {
+			$this->zoom_log($batch_id, 'delete', 0, $del['error'], $data, array(), $payload);
+			$this->api_json(false, $del['error']);
+			return;
+		}
+		$this->db->where('id', (int) $row[0]['id']);
+		$this->db->limit(1);
+		$this->db->update('batch_zoom_meetings', array('status' => 0, 'updated_at' => date('Y-m-d H:i:s')));
+		$this->zoom_log($batch_id, 'delete', 204, 'deleted', $data, array(), $payload);
+		$this->api_json(true, 'Zoom meeting removed for this batch');
+	}
+
+	/**
+	 * POST api/batch/batch-zoom-join — same payload as batch-zoom-details (access-validated join info).
+	 */
+	public function batch_zoom_join()
+	{
+		$this->batch_zoom_details();
+	}
+
+	/**
+	 * POST api/batch/batch-notify-students — save notifications for all enrolled students.
+	 */
+	public function batch_notify_students()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		if (empty($data['batch_id']) || empty($data['notification_type']) || empty($data['msg'])) {
+			$this->api_json(false, 'batch_id, notification_type, and msg are required');
+			return;
+		}
+		$batch_id = (int) $data['batch_id'];
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		$this->load->library('notification_service');
+		$url = isset($data['url']) ? (string) $data['url'] : '';
+		$n = $this->notification_service->fan_out_batch_students($batch_id, (string) $data['notification_type'], (string) $data['msg'], $url);
+		$this->api_json(true, 'Notifications saved', array('inserted' => $n));
 	}
 }

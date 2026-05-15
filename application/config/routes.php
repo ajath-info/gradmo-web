@@ -396,6 +396,12 @@ $route['api/batch/notes-details'] = 'api/batch/batch/notes_details';
 
 $route['api/batch/live-class-list'] = 'api/batch/batch/live_class_list';
 $route['api/batch/live-class-details'] = 'api/batch/batch/live_class_details';
+$route['api/batch/batch-zoom-details'] = 'api/batch/batch/batch_zoom_details';
+$route['api/batch/batch-zoom-create'] = 'api/batch/batch/batch_zoom_create';
+$route['api/batch/batch-zoom-update'] = 'api/batch/batch/batch_zoom_update';
+$route['api/batch/batch-zoom-delete'] = 'api/batch/batch/batch_zoom_delete';
+$route['api/batch/batch-zoom-join'] = 'api/batch/batch/batch_zoom_join';
+$route['api/batch/batch-notify-students'] = 'api/batch/batch/batch_notify_students';
 $route['api/batch/video-lecture-list'] = 'api/batch/batch/video_lecture_list';
 $route['api/batch/video-lecture-details'] = 'api/batch/batch/video_lecture_details';
 $route['api/batch/video-lecture-add'] = 'api/batch/batch/video_lecture_add';

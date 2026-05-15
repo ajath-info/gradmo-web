@@ -60,6 +60,35 @@
 	font-size: .86rem;
 	color: #606774;
 }
+.bd-zoom-panel {
+	background: #fff;
+	border-radius: 14px;
+	padding: 16px 18px;
+	margin-top: 16px;
+	box-shadow: 0 7px 20px rgba(17, 24, 39, 0.08);
+	border: 1px solid #edf0f5;
+}
+.bd-zoom-panel h3 {
+	font-size: 1.05rem;
+	font-weight: 700;
+	margin: 0 0 8px;
+	color: #121212;
+}
+.bd-zoom-panel p {
+	margin: 0 0 12px;
+	font-size: 0.92rem;
+	color: #606774;
+}
+.bd-zoom-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	align-items: center;
+}
+.bd-zoom-actions .btn {
+	border-radius: 10px;
+	font-weight: 600;
+}
 </style>
 <div class="inst-detail-page">
 	<div class="inst-detail-mobile-bar">
@@ -83,6 +112,16 @@
 					</div>
 				</div>
 			</div>
+			<?php if (!empty($can_manage_batch_zoom)) { ?>
+			<div id="bd_zoom_panel" class="bd-zoom-panel inst-detail-hidden">
+				<h3><i class="fas fa-video" aria-hidden="true"></i> Zoom meeting (this batch)</h3>
+				<p id="bd_zoom_status">Checking Zoom link…</p>
+				<div class="bd-zoom-actions">
+					<button type="button" id="bd_zoom_create" class="btn btn-primary btn-sm">Create Zoom link</button>
+					<a id="bd_zoom_live_link" class="btn btn-outline-primary btn-sm inst-detail-hidden" href="#">Open live classes</a>
+				</div>
+			</div>
+			<?php } ?>
 			<div class="inst-detail-panel bd-lockable">
 				<div class="inst-panel-head"><h3>Modules</h3></div>
 				<div id="bd_modules" class="inst-panel-stack"></div>
@@ -110,6 +149,9 @@
 	var teacherBooksUrl = <?php echo json_encode(site_url('teacher/books')); ?>;
 	var teacherHomeworkUrl = <?php echo json_encode(site_url('teacher/homework')); ?>;
 	var teacherExamsUrl = <?php echo json_encode(site_url('teacher/exams')); ?>;
+	var canManageBatchZoom = <?php echo !empty($can_manage_batch_zoom) ? 'true' : 'false'; ?>;
+	var zoomDetailsUrl = <?php echo json_encode(site_url('api/batch/batch-zoom-details')); ?>;
+	var zoomCreateUrl = <?php echo json_encode(site_url('api/batch/batch-zoom-create')); ?>;
 	var canEnrollForBatch = true;
 	function ok(s) { return s === true || s === 'true' || s === 1 || s === '1'; }
 	function truthy(v) { return v === true || v === 1 || v === '1' || v === 'true'; }
@@ -122,6 +164,44 @@
 			'<span class="bd-mod-title">' + esc(title) + '</span>' +
 			'<span class="bd-mod-sub">' + esc(sub) + '</span>' +
 			close;
+	}
+	function authHeaders() {
+		var headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+		if (accessToken) { headers.Authorization = 'Bearer ' + accessToken; }
+		return headers;
+	}
+	function refreshZoomPanel() {
+		if (!canManageBatchZoom || !accessToken) { return; }
+		var panel = document.getElementById('bd_zoom_panel');
+		var statusEl = document.getElementById('bd_zoom_status');
+		var btnCreate = document.getElementById('bd_zoom_create');
+		var linkLive = document.getElementById('bd_zoom_live_link');
+		if (!panel || !statusEl) { return; }
+		panel.classList.remove('inst-detail-hidden');
+		statusEl.textContent = 'Checking Zoom link…';
+		btnCreate.disabled = false;
+		linkLive.classList.add('inst-detail-hidden');
+		fetch(zoomDetailsUrl, {
+			method: 'POST',
+			headers: authHeaders(),
+			body: JSON.stringify({ batch_id: batchId, access_token: accessToken })
+		}).then(function (r) { return r.json(); }).then(function (j) {
+			var okz = ok(j.status);
+			var z = (j.data && j.data.zoom) ? j.data.zoom : {};
+			if (okz && (z.zoomMeetingId || z.joinUrl)) {
+				statusEl.textContent = 'Zoom is linked. Everyone joins only inside your website/app (Live classes).';
+				btnCreate.textContent = 'Zoom already linked';
+				btnCreate.disabled = true;
+				linkLive.href = liveClassesUrl + '?batch_id=' + encodeURIComponent(batchId);
+				linkLive.classList.remove('inst-detail-hidden');
+				return;
+			}
+			statusEl.textContent = 'No Zoom meeting yet. Create one to generate a join link for this batch (Server-to-Server Zoom must be configured on the server).';
+			btnCreate.textContent = 'Create Zoom link';
+			btnCreate.disabled = false;
+		}).catch(function () {
+			statusEl.textContent = 'Could not check Zoom status. Try again or verify Zoom API credentials.';
+		});
 	}
 	function load() {
 		if (batchId < 1) {
@@ -178,11 +258,45 @@
 			document.getElementById('bd_next_btn').textContent = canEnroll ? 'Pay Now' : 'Continue';
 			document.getElementById('bd_body').classList.toggle('bd-locked', canEnroll);
 			document.getElementById('bd_lock_hint').classList.toggle('inst-detail-hidden', !canEnroll);
+			if (canManageBatchZoom) {
+				refreshZoomPanel();
+			}
 		}).catch(function () {
 			document.getElementById('bd_msg').textContent = 'Network error.';
 		});
 	}
 	document.addEventListener('DOMContentLoaded', function () {
+		var btnCreate = document.getElementById('bd_zoom_create');
+		if (btnCreate && canManageBatchZoom) {
+			btnCreate.addEventListener('click', function () {
+				if (btnCreate.disabled) { return; }
+				var topic = (document.getElementById('bd_name') && document.getElementById('bd_name').textContent)
+					? document.getElementById('bd_name').textContent.trim() : ('Batch ' + batchId);
+				btnCreate.disabled = true;
+				btnCreate.textContent = 'Creating…';
+				fetch(zoomCreateUrl, {
+					method: 'POST',
+					headers: authHeaders(),
+					body: JSON.stringify({ batch_id: batchId, topic: topic || 'Live class', access_token: accessToken })
+				}).then(function (r) { return r.json(); }).then(function (j) {
+					btnCreate.disabled = false;
+					if (ok(j.status)) {
+						if (typeof toastr !== 'undefined') { toastr.success(j.msg || 'Zoom meeting created'); }
+						else { alert(j.msg || 'Zoom meeting created'); }
+						refreshZoomPanel();
+						return;
+					}
+					if (typeof toastr !== 'undefined') { toastr.error(j.msg || 'Could not create Zoom meeting'); }
+					else { alert(j.msg || 'Could not create Zoom meeting'); }
+					btnCreate.textContent = 'Create Zoom link';
+				}).catch(function () {
+					btnCreate.disabled = false;
+					btnCreate.textContent = 'Create Zoom link';
+					if (typeof toastr !== 'undefined') { toastr.error('Network error'); }
+					else { alert('Network error'); }
+				});
+			});
+		}
 		document.getElementById('bd_next_btn').addEventListener('click', function () {
 			if (canEnrollForBatch) {
 				window.location.href = paymentPlanUrl + '?batch_id=' + encodeURIComponent(batchId);
