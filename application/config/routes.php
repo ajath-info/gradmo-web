@@ -249,6 +249,9 @@ $route['batch/list'] = 'website/batch_list';
 $route['batch/list-data'] = 'website/batch_list_data';
 $route['batch/mylist'] = 'website/batch_mylist';
 $route['batch/mylist-data'] = 'website/batch_mylist_data';
+$route['batch/create'] = 'website/teacher_create_batch';
+$route['batch/create/(:any)'] = 'website/teacher_create_batch/$1';
+$route['batch/delete-batch'] = 'website/delete_batch';
 $route['batch/details'] = 'website/batch_details';
 $route['batch/payment-plan'] = 'website/batch_payment_plan';
 $route['batch/payment-success'] = 'website/batch_payment_success';
@@ -258,6 +261,7 @@ $route['batch/exams'] = 'website/batch_exams';
 $route['batch/exam-attempt'] = 'website/batch_exam_attempt';
 $route['batch/exam-result'] = 'website/batch_exam_result';
 $route['batch/live-room'] = 'website/batch_live_room';
+$route['batch/recorded-meetings'] = 'website/batch_recorded_meetings';
 $route['attendance'] = 'website/attendance_page';
 $route['homework-list'] = 'website/homework_page';
 $route['teacher/attendance'] = 'website/teacher_attendance_page';
@@ -396,6 +400,11 @@ $route['api/batch/notes-details'] = 'api/batch/batch/notes_details';
 
 $route['api/batch/live-class-list'] = 'api/batch/batch/live_class_list';
 $route['api/batch/live-class-details'] = 'api/batch/batch/live_class_details';
+$route['api/batch/class-status'] = 'api/batch/batch/class_status';
+$route['api/batch/live-meeting-end'] = 'api/batch/batch/live_meeting_end';
+$route['api/batch/recorded-meeting-list'] = 'api/batch/batch/recorded_meeting_list';
+$route['api/batch/recorded-meeting-details'] = 'api/batch/batch/recorded_meeting_details';
+$route['api/batch/recorded-meeting-sync'] = 'api/batch/batch/recorded_meeting_sync';
 $route['api/batch/batch-zoom-details'] = 'api/batch/batch/batch_zoom_details';
 $route['api/batch/batch-zoom-create'] = 'api/batch/batch/batch_zoom_create';
 $route['api/batch/batch-zoom-update'] = 'api/batch/batch/batch_zoom_update';
@@ -418,3 +427,18 @@ $route['api/batch/exam-add'] = 'api/batch/batch/exam_add';
 $route['api/batch/exam-edit'] = 'api/batch/batch/exam_edit';
 $route['api/batch/exam-delete'] = 'api/batch/batch/exam_delete';
 $route['api/batch/batch-chapters'] = 'api/batch/batch/batch_chapters';
+
+// Teacher batch CRUD routes
+$route['api/batch/teacher-batches'] = 'api/batch/batch/teacher_batches';
+$route['api/batch/teacher-create-batch'] = 'api/batch/batch/teacher_create_batch';
+$route['api/batch/teacher-update-batch'] = 'api/batch/batch/teacher_update_batch';
+$route['api/batch/teacher-delete-batch'] = 'api/batch/batch/teacher_delete_batch';
+
+// Zoom webhook for recording notifications (no auth required)
+$route['api/batch/zoom-webhook'] = 'api/batch/batch/zoom_webhook';
+
+// Zoom CRON sync for processing recordings (run every 5 minutes)
+$route['api/batch/zoom-cron-sync'] = 'api/batch/batch/zoom_cron_sync';
+
+// Zoom debug endpoint — test API calls directly
+$route['api/batch/zoom-debug'] = 'api/batch/batch/zoom_debug';

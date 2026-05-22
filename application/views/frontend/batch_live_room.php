@@ -76,10 +76,16 @@
 	var batchId = <?php echo (int) (isset($batch_id) ? $batch_id : 0); ?>;
 	var token = <?php echo json_encode((string) (isset($api_access_token) ? $api_access_token : '')); ?>;
 	var detailsUrl = <?php echo json_encode((string) (isset($live_class_details_url) ? $live_class_details_url : site_url('api/batch/live-class-details'))); ?>;
+	var classStatusUrl = <?php echo json_encode((string) site_url('api/batch/class-status')); ?>;
+	var endMeetingUrl = <?php echo json_encode((string) (isset($live_meeting_end_url) ? $live_meeting_end_url : site_url('api/batch/live-meeting-end'))); ?>;
 	var pageIsTeacherHost = <?php echo !empty($is_teacher_host) ? 'true' : 'false'; ?>;
 	var currentMeeting = null;
 	var zoomClient = null;
 	var joinStarted = false;
+	var zoomInitialized = false;
+	var pollInterval = null;
+	var lastClassStarted = false;
+	var lastClassEnded = false;
 
 	function ok(s) { return s === true || s === 'true'; }
 	function showMsg(t) { document.getElementById('lr_msg').textContent = t || ''; }
@@ -93,13 +99,100 @@
 		return m && (m.joinReady === 1 || m.joinReady === '1' || (m.sdkKey && m.signature && m.meetingNumber));
 	}
 	function leaveClass() {
+		console.log('[Leave] Leaving class, cleaning up Zoom');
+
+		// Disconnect from Zoom meeting
+		if (zoomClient && zoomInitialized) {
+			try {
+				console.log('[Leave] Calling zoomClient.leave()');
+				zoomClient.leave();
+			} catch (e) {
+				console.log('[Leave] Error leaving Zoom:', e.message);
+			}
+		}
+
 		var wrap = document.getElementById('lr_zoom_wrap');
-		wrap.classList.remove('lr-zoom-active', 'inst-detail-hidden');
-		document.getElementById('lr_card').classList.remove('inst-detail-hidden');
-		document.getElementById('lr_join_embed').disabled = false;
-		document.getElementById('lr_join_embed').textContent = pageIsTeacherHost ? 'Start / join class' : 'Join class';
+		if (wrap) {
+			wrap.classList.remove('lr-zoom-active');
+			wrap.classList.add('inst-detail-hidden');
+		}
+		var card = document.getElementById('lr_card');
+		if (card) {
+			card.classList.remove('inst-detail-hidden');
+		}
+		var btn = document.getElementById('lr_join_embed');
+		if (btn) {
+			btn.disabled = false;
+			btn.textContent = pageIsTeacherHost ? 'Start / join class' : 'Join class';
+		}
+		var closeBtn = document.getElementById('lr_zoom_close');
+		if (closeBtn) {
+			closeBtn.style.display = 'none';
+			closeBtn.textContent = 'Leave class';
+			closeBtn.disabled = false;
+		}
+
+		// CRITICAL: Reset ALL flags so user can rejoin without page refresh
 		joinStarted = false;
+		zoomInitialized = false;
+
+		console.log('[Leave] Cleanup complete');
 		showMsg('');
+		showAlert('');
+	}
+
+	function onZoomConnectionChange(payload) {
+		// Called when Zoom connection changes (Closed, Failed, etc)
+		if (payload && (payload.state === 'Closed' || payload.state === 'Fail')) {
+			console.log('Zoom disconnected. State:', payload.state);
+			leaveClass();
+		}
+	}
+
+	// TEACHER: End class and disconnect all students
+	function endClassForAllStudents() {
+		if (!pageIsTeacherHost) {
+			showAlert('Only teachers can end the class.', true);
+			return;
+		}
+		if (!confirm('Are you sure you want to end the class for all students?')) {
+			return;
+		}
+
+		var closeBtn = document.getElementById('lr_zoom_close');
+		if (closeBtn) {
+			closeBtn.disabled = true;
+			closeBtn.textContent = 'Ending class...';
+		}
+
+		// Call API to end meeting and notify all students
+		var body = { batch_id: batchId, access_token: token };
+		if (liveClassId > 0) { body.live_class_id = liveClassId; }
+
+		fetch(endMeetingUrl, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+			body: JSON.stringify(body)
+		}).then(function (r) { return r.json(); }).then(function (j) {
+			if (ok(j.status)) {
+				showAlert('Class ended. All students have been disconnected.', false);
+				setTimeout(function () {
+					leaveClass();
+				}, 2000);
+			} else {
+				showAlert('Error ending class: ' + (j.msg || 'Unknown error'), true);
+				if (closeBtn) {
+					closeBtn.disabled = false;
+					closeBtn.textContent = 'End class';
+				}
+			}
+		}).catch(function (e) {
+			showAlert('Could not end class: ' + (e.message || 'Network error'), true);
+			if (closeBtn) {
+				closeBtn.disabled = false;
+				closeBtn.textContent = 'End class';
+			}
+		});
 	}
 	function fetchMeetingDetails() {
 		var detailsBody = { live_class_id: liveClassId };
@@ -120,6 +213,22 @@
 			return row;
 		});
 	}
+
+	// CRITICAL: Fetch real-time class status for polling
+	function fetchClassStatus() {
+		var body = { batch_id: batchId };
+		if (liveClassId > 0) { body.live_class_id = liveClassId; }
+		return fetch(classStatusUrl, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+			body: JSON.stringify(body)
+		}).then(function (r) { return r.json(); }).then(function (j) {
+			if (!ok(j.status)) {
+				throw new Error(j.msg || 'Could not fetch class status.');
+			}
+			return j.data || {};
+		});
+	}
 	function runZoomJoin(m, signatureOverride) {
 		var mn = String(m.meetingNumber || '').replace(/\D/g, '');
 		var sig = signatureOverride || m.signature;
@@ -134,8 +243,13 @@
 		return zoomClient.join(joinOpts);
 	}
 	function joinEmbeddedZoom() {
-		if (joinStarted) { return; }
+		console.log('[Join] joinEmbeddedZoom called, joinStarted=' + joinStarted + ', zoomInitialized=' + zoomInitialized);
+		if (joinStarted) {
+			console.log('[Join] Already joining, skipping');
+			return;
+		}
 		if (!window.ZoomMtgEmbedded || !window.ZoomMtgEmbedded.createClient) {
+			console.log('[Join] Zoom SDK not loaded');
 			showAlert('Zoom Meeting SDK failed to load. Refresh and try again.', true);
 			return;
 		}
@@ -162,16 +276,51 @@
 				language: 'en-US',
 				patchJsMedia: true,
 				leaveOnPageUnload: true
-			}).then(function () { return runZoomJoin(m); });
+			}).then(function () {
+				zoomInitialized = true;
+				return runZoomJoin(m);
+			});
 		}).then(function () {
 			btn.textContent = 'In class';
+			// For teachers: show "End Class" button
+			if (pageIsTeacherHost) {
+				var closeBtn = document.getElementById('lr_zoom_close');
+				if (closeBtn) {
+					closeBtn.style.display = 'inline-block';
+					closeBtn.textContent = 'End Class';
+					closeBtn.disabled = false;
+				}
+				// Notify server that teacher has joined
+				var notifyBody = { batch_id: batchId, action: 'host_joined' };
+				if (liveClassId > 0) { notifyBody.live_class_id = liveClassId; }
+				fetch(endMeetingUrl, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+					body: JSON.stringify(notifyBody)
+				}).catch(function () {
+					// Silently continue even if notification fails
+				});
+			}
 		}).catch(function (e) {
 			var err = (e && (e.reason || e.message)) ? String(e.reason || e.message) : 'Could not join.';
+			console.log('[Join] Error:', err, e);
 			if (currentMeeting && currentMeeting.signatureAlt && err.toLowerCase().indexOf('signature') !== -1) {
+				console.log('[Join] Retrying with alt signature');
 				return runZoomJoin(currentMeeting, currentMeeting.signatureAlt).then(function () {
 					btn.textContent = 'In class';
+					// Show "End Class" button for teachers
+					if (pageIsTeacherHost) {
+						var closeBtn = document.getElementById('lr_zoom_close');
+						if (closeBtn) {
+							closeBtn.style.display = 'inline-block';
+							closeBtn.textContent = 'End Class';
+							closeBtn.disabled = false;
+						}
+					}
 				}).catch(function (e2) {
 					err = (e2 && (e2.reason || e2.message)) ? String(e2.reason || e2.message) : err;
+					console.log('[Join] Alt signature failed:', err);
+					zoomInitialized = false;
 					joinStarted = false;
 					btn.disabled = false;
 					btn.textContent = pageIsTeacherHost ? 'Start / join class' : 'Join class';
@@ -180,6 +329,7 @@
 					showAlert('Could not join in-page: ' + err + hint, true);
 				});
 			}
+			zoomInitialized = false;
 			joinStarted = false;
 			btn.disabled = false;
 			btn.textContent = pageIsTeacherHost ? 'Start / join class' : 'Join class';
@@ -194,7 +344,16 @@
 		return;
 	}
 	document.getElementById('lr_join_embed').addEventListener('click', joinEmbeddedZoom);
-	document.getElementById('lr_zoom_close').addEventListener('click', leaveClass);
+
+	// Close button behavior depends on user role
+	var closeBtn = document.getElementById('lr_zoom_close');
+	closeBtn.addEventListener('click', function () {
+		if (pageIsTeacherHost) {
+			endClassForAllStudents();
+		} else {
+			leaveClass();
+		}
+	});
 
 	fetchMeetingDetails().then(function (row) {
 		var m = row.meeting || {};
@@ -202,6 +361,9 @@
 		document.getElementById('lr_body').classList.remove('inst-detail-hidden');
 
 		var isHost = (m.isHost === 1 || m.isHost === '1' || m.role === 1 || m.role === '1');
+		var classStarted = m.classStarted === 1 || m.classStarted === '1' || (m.hostJoinedAt && m.hostJoinedAt !== '');
+		var classEnded = m.endedAt && m.endedAt !== '';
+
 		document.getElementById('lr_title').textContent = row.subjectName || 'Live Class';
 		document.getElementById('lr_meta').textContent = [row.teacherName || '', row.date || '', row.startTime || ''].filter(Boolean).join(' | ');
 		document.getElementById('lr_meeting').textContent = m.meetingNumber
@@ -220,9 +382,108 @@
 			showAlert(m.sdkConfigHint || 'In-page Zoom is not configured yet. Admin must add Meeting SDK Key + Secret.', true);
 			return;
 		}
+
+		// Check if class has been ended
+		if (classEnded) {
+			if (pageIsTeacherHost || isHost) {
+				// Teacher: offer to start a new session
+				joinBtn.disabled = false;
+				showAlert('Previous class session ended. You can start a new session now.', false);
+				return;
+			} else {
+				// Student: show class ended message
+				joinBtn.disabled = true;
+				showAlert('This class session has ended.', false);
+				return;
+			}
+		}
+
+		// For students: Always start polling to detect class start/end
+		if (!pageIsTeacherHost && !isHost) {
+			// Start polling regardless of current status
+			startStudentStatusPolling();
+
+			if (!classStarted) {
+				joinBtn.disabled = true;
+				showAlert('Please wait for the teacher to start the class.', false);
+				lastClassStarted = false;
+				return;
+			}
+		}
 	}).catch(function (e) {
 		showMsg('');
 		showAlert((e && e.message) ? e.message : 'Network error loading class.', true);
+	});
+
+	// STUDENT POLLING: Monitor class status every 2 seconds
+	function startStudentStatusPolling() {
+		if (pageIsTeacherHost) { return; } // Teachers don't poll
+		if (pollInterval) { return; } // Already polling
+
+		console.log('[LiveClass] Starting student status polling');
+
+		pollInterval = setInterval(function () {
+			if (joinStarted) {
+				// Student is in meeting - check if teacher ended class
+				fetchClassStatus().then(function (status) {
+					console.log('[Poll] In meeting:', { shouldAutoDisconnect: status.shouldAutoDisconnect, lastClassEnded: lastClassEnded, joinStarted: joinStarted });
+
+					// Reset lastClassEnded if teacher started a new session
+					if (status.classStarted && lastClassEnded) {
+						lastClassEnded = false;
+					}
+
+					// CRITICAL: Auto-disconnect when teacher ends class
+					if (status.shouldAutoDisconnect && !lastClassEnded) {
+						console.log('[Poll] AUTO-DISCONNECT TRIGGERED');
+						lastClassEnded = true;
+						if (joinStarted) {
+							leaveClass();
+							showAlert('Teacher ended the class. You have been disconnected.', false);
+							setTimeout(function () {
+								window.location.reload();
+							}, 3000);
+						}
+					}
+				}).catch(function (e) {
+					console.log('[Poll] Error fetching status:', e.message);
+				});
+			} else {
+				// Student is NOT in meeting - check if teacher started
+				fetchClassStatus().then(function (status) {
+					console.log('[Poll] Waiting:', { classStarted: status.classStarted, lastClassStarted: lastClassStarted });
+
+					if (status.classStarted && !lastClassStarted) {
+						// Teacher just started - enable join button
+						lastClassStarted = true;
+						lastClassEnded = false;
+						var joinBtn = document.getElementById('lr_join_embed');
+						if (joinBtn) {
+							joinBtn.disabled = false;
+							showAlert('Teacher started the class! You can now join.', false);
+							setTimeout(function () { showAlert(''); }, 5000);
+						}
+					}
+					if (status.classEnded && !status.classStarted) {
+						// Class is over
+						var joinBtn = document.getElementById('lr_join_embed');
+						if (joinBtn) {
+							joinBtn.disabled = true;
+							showAlert('This class session has ended.', false);
+						}
+					}
+				}).catch(function (e) {
+					console.log('[Poll] Error fetching status:', e.message);
+				});
+			}
+		}, 2000); // Poll every 2 seconds
+	}
+
+	// Stop polling when page unloads
+	window.addEventListener('beforeunload', function () {
+		if (pollInterval) {
+			clearInterval(pollInterval);
+		}
 	});
 })();
 </script>

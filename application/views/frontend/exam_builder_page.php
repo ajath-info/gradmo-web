@@ -1,7 +1,7 @@
 <link rel="stylesheet" href="<?php echo base_url('assets/css/institute-frontend.css'); ?>?v=9">
 <div class="inst-detail-page exb-page">
 	<div class="inst-detail-mobile-bar">
-		<a href="javascript:history.back()" class="inst-detail-mobile-back" aria-label="Back"><i class="fas fa-arrow-left"></i></a>
+		<a href="javascript:history.back()" class="inst-back inst-detail-mobile-back" aria-label="Back"><i class="fas fa-arrow-left"></i></a>
 		<div class="inst-detail-mobile-title">Create Exam</div>
 	</div>
 	<div class="inst-detail-container">
@@ -303,15 +303,6 @@
 	color: #64748b;
 	background: #fff;
 }
-@media (max-width: 767px) {
-	.exb-field-grid,
-	.exb-question-grid {
-		grid-template-columns: 1fr;
-	}
-	.exb-local-item {
-		flex-direction: column;
-	}
-}
 </style>
 
 <script>
@@ -552,8 +543,7 @@
 	function resetQuestionForm() {
 		refs.question.value = '';
 		refs.image.value = '';
-		refs.subject.value = '';
-		refs.chapter.innerHTML = '<option value="">Select chapter</option>';
+		resetSubjectChapterFields();
 		refs.option1.value = '';
 		refs.option2.value = '';
 		refs.option3.value = '';
@@ -654,12 +644,27 @@
 		return ['', '', '', ''];
 	}
 
+	function syncSelectDisplay(sel) {
+		if (!sel) {
+			return;
+		}
+		sel.dispatchEvent(new Event('change', { bubbles: true }));
+	}
+
 	function setChapterOptions(rows) {
 		var html = '<option value="">Select chapter</option>';
 		for (var i = 0; i < rows.length; i++) {
 			html += '<option value="' + esc(rows[i].chapterId) + '">' + esc(rows[i].chapterName) + '</option>';
 		}
 		refs.chapter.innerHTML = html;
+	}
+
+	function resetSubjectChapterFields() {
+		refs.subject.value = '';
+		refs.subject.selectedIndex = 0;
+		setChapterOptions([]);
+		syncSelectDisplay(refs.subject);
+		syncSelectDisplay(refs.chapter);
 	}
 
 	function loadChapters() {
@@ -888,9 +893,11 @@
 		refs.marks.value = item.question_mask || 1;
 		refs.image.value = '';
 		refs.subject.value = item.subject_id ? String(item.subject_id) : '';
+		syncSelectDisplay(refs.subject);
 		setSelectedAnswer(item.correct_option || normalizeOptionNumber(item.answer));
 		loadChapters().then(function () {
 			refs.chapter.value = item.chapter_id ? String(item.chapter_id) : '';
+			syncSelectDisplay(refs.chapter);
 		});
 		refs.questionSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 	}

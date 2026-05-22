@@ -16,3 +16,10 @@ $config['zoom_host_user_id'] = '';
 // Optional override (wins over DB when both are set). Use General app Development Client ID + Secret on localhost.
 $config['meeting_sdk_key'] = '';
 $config['meeting_sdk_secret'] = '';
+
+/**
+ * Zoom Webhook Secret for recording notifications.
+ * Get this from Zoom App → Event Subscriptions → Webhook Token.
+ * Leave empty to disable webhook signature verification.
+ */
+$config['webhook_secret'] = 'l8hb5CWyTnGU5UI0LO9NOw';

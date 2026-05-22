@@ -31,6 +31,7 @@ if (strlen($ft_tel_href) < 5) {
 }
 $ft_brand = html_escape(trim((string) $this->common->siteTitle) !== '' ? $this->common->siteTitle : 'Gradmo');
 $ft_logo = html_escape($this->common->siteLogo);
+
 if ($ft_logo === '' || stripos($ft_logo, 'favicon') !== false) {
 	$ft_logo = base_url('assets/images/logo.png');
 }
@@ -46,7 +47,7 @@ $ft_twitter = !empty($fd0['twitter']) ? trim((string) $fd0['twitter']) : '';
 						<div class="edu-footer-gradmo__logo-icon" aria-hidden="true">
 							<img src="<?php echo $ft_logo; ?>" alt="<?php echo $ft_brand; ?>">
 						</div>
-						<h2 class="edu-footer-gradmo__brand"><?php echo $ft_brand; ?></h2>
+						<!-- <h2 class="edu-footer-gradmo__brand"><?php echo $ft_brand; ?></h2> -->
 					</div>
 					<div class="edu-footer-gradmo__about">
 						<h4 class="edu-footer-gradmo__heading"><?php echo $ft_brand; ?></h4>

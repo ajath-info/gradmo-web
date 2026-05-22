@@ -189,8 +189,8 @@
 	</div>
 	<!----- Preloader Box ----->
 	<?php
-		$front_logo_src = trim((string) $this->common->siteLogo);
-		if ($front_logo_src === '' || stripos($front_logo_src, 'favicon') !== false) {
+		$front_logo_src = trim((string) $this->common->siteminiLogo);
+		if ($front_logo_src === '') {
 			$front_logo_src = base_url('assets/images/logo.png');
 		}
 	?>

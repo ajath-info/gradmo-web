@@ -22,10 +22,13 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 		function __construct(){
 			$this->CI = get_instance();
 			$this->CI->load->model('db_model');
+			/** @var object{db_model: Db_model} $ci */
+			$ci = $this->CI;
+			$db_model = $ci->db_model;
 
-			$site_details = $this->CI->db_model->select_data('*','site_details',array('id'=>1),1);
-			$front_details = $this->CI->db_model->select_data('email','frontend_details',array('id'=>1),1);
-			$theme_colors =$this->CI->db_model->select_data('*','theme_color  use index (id)',array('status'=>'1'),1,array('id','desc'));
+			$site_details = $db_model->select_data('*','site_details',array('id'=>1),1);
+			$front_details = $db_model->select_data('email','frontend_details',array('id'=>1),1);
+			$theme_colors = $db_model->select_data('*','theme_color  use index (id)',array('status'=>'1'),1,array('id','desc'));
 				if(!empty($site_details)){
 					if($site_details[0]['site_logo']!='')
 						$img = base_url().'uploads/site_data/'.$site_details[0]['site_logo'];
@@ -89,7 +92,9 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 			}
 		}	
 		function general_settings($key_text=''){
-			$data = $this->CI->db_model->select_data('*','general_settings',array('key_text'=>$key_text),1);
+			/** @var object{db_model: Db_model} $ci */
+			$ci = $this->CI;
+			$data = $ci->db_model->select_data('*','general_settings',array('key_text'=>$key_text),1);
 			return $data[0]['velue_text'];
 		}
 		function languageTranslator($traWord=''){

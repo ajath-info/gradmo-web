@@ -104,7 +104,7 @@
 						<!--
                         <div class="sglblog_cmntbox sglblog_userreply">
                             <div class="sglblog_cmntimg">
-                                <img src="http://192.168.0.10/e-academy/assets/images/mission_bg.png" alt="image">
+                                <img src="http://192.168.0.10/Gradmo/assets/images/mission_bg.png" alt="image">
                             </div>
                             <div class="sglblog_cmntdata">
                                 <div class="sglblog_cmnthead">    

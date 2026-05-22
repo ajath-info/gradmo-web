@@ -139,6 +139,12 @@
 	var dataUrl = <?php echo json_encode(isset($batch_details_data_url) ? $batch_details_data_url : ''); ?>;
 	var paymentPlanUrl = <?php echo json_encode(isset($batch_payment_plan_url) ? $batch_payment_plan_url : ''); ?>;
 	var liveClassesUrl = <?php echo json_encode(site_url('batch/live-classes')); ?>;
+	var liveRoomUrl = <?php echo json_encode(site_url('batch/live-room')); ?>;
+	function liveRoomHref(joinNow) {
+		var q = '?batch_id=' + encodeURIComponent(batchId) + '&live_class_id=0';
+		return liveRoomUrl + q + (joinNow ? '&join=1' : '');
+	}
+	var recordedMeetingsUrl = <?php echo json_encode(site_url('batch/recorded-meetings')); ?>;
 	var videoLecturesPageUrl = <?php echo json_encode(site_url('batch/video-lectures')); ?>;
 	var examsPageUrl = <?php echo json_encode(site_url('batch/exams')); ?>;
 	var libraryPageUrl = <?php echo json_encode(site_url('library')); ?>;
@@ -192,7 +198,8 @@
 				statusEl.textContent = 'Zoom is linked. Everyone joins only inside your website/app (Live classes).';
 				btnCreate.textContent = 'Zoom already linked';
 				btnCreate.disabled = true;
-				linkLive.href = liveClassesUrl + '?batch_id=' + encodeURIComponent(batchId);
+				linkLive.href = liveRoomHref(true);
+				linkLive.textContent = 'Join live class';
 				linkLive.classList.remove('inst-detail-hidden');
 				return;
 			}
@@ -246,7 +253,8 @@
 			var examHref = isTeacher ? (teacherExamsUrl + '?batch_id=' + encodeURIComponent(batchId)) : (examsPageUrl + '?batch_id=' + encodeURIComponent(batchId));
 			var homeworkHref = isTeacher ? (teacherHomeworkUrl + '?batch_id=' + encodeURIComponent(batchId)) : (homeworkPageUrl + '?batch_id=' + encodeURIComponent(batchId));
 			document.getElementById('bd_modules').innerHTML = '<div class="bd-mod-grid">' +
-				modTile('Live classes', (m.live_classes && m.live_classes.is_live) ? 'Live now' : 'Tap to open', 'fas fa-broadcast-tower', liveClassesUrl + '?batch_id=' + encodeURIComponent(batchId)) +
+				modTile('Live classes', (m.live_classes && m.live_classes.is_live) ? 'Live now' : 'Tap to open', 'fas fa-broadcast-tower', liveRoomHref(true)) +
+				modTile('Recorded meetings', 'Watch past Zoom classes', 'fas fa-video', recordedMeetingsUrl + '?batch_id=' + encodeURIComponent(batchId)) +
 				modTile('Video Lectures', (m.video_lectures && m.video_lectures.count != null) ? ('Videos: ' + m.video_lectures.count) : 'No data', 'fas fa-play-circle', videoHref) +
 				modTile('Library', (m.library && m.library.book_count != null) ? ('Books: ' + m.library.book_count) : 'Tap to open', 'fas fa-book', libraryHref) +
 				modTile('Exams', (m.upcoming_exams && m.upcoming_exams.count != null) ? ('Upcoming: ' + m.upcoming_exams.count) : 'No data', 'fas fa-file-alt', examHref) +
@@ -302,7 +310,7 @@
 				window.location.href = paymentPlanUrl + '?batch_id=' + encodeURIComponent(batchId);
 				return;
 			}
-			window.location.href = liveClassesUrl + '?batch_id=' + encodeURIComponent(batchId);
+			window.location.href = liveRoomHref(false);
 		});
 		load();
 	});

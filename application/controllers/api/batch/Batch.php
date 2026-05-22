@@ -225,7 +225,6 @@ class Batch extends MY_Controller
 		$header = array('alg' => 'HS256', 'typ' => 'JWT');
 		$payload = array(
 			'appKey' => $sdk_key,
-			'sdkKey' => $sdk_key,
 			'mn' => (string) $meeting_number,
 			'role' => (int) $role,
 			'iat' => $iat,
@@ -474,12 +473,26 @@ class Batch extends MY_Controller
 				echo json_encode(array('status' => 'false', 'msg' => 'Teacher not found'));
 				return false;
 			}
+			// Check if teacher is assigned to batch or created it
 			$assigned = $this->db_model->select_data('id', 'batch_subjects', array('teacher_id' => $uid, 'batch_id' => $batch_id), 1);
-			if (empty($assigned)) {
-				echo json_encode(array('status' => 'false', 'msg' => 'You are not assigned to this batch'));
-				return false;
+			if (!empty($assigned)) {
+				return true;
 			}
-			return true;
+			// Check if teacher created this batch
+			$batch = $this->db_model->select_data('id,admin_id', 'batches use index (id)', array('id' => $batch_id), 1);
+			if (!empty($batch) && (int) $batch[0]['admin_id'] === $uid) {
+				return true;
+			}
+			// Check teach_batch field for assignments
+			$teacher_data = $this->db_model->select_data('teach_batch', 'users', array('id' => $uid), 1);
+			if (!empty($teacher_data[0]['teach_batch'])) {
+				$batch_ids = array_filter(array_map('intval', explode(',', trim((string) $teacher_data[0]['teach_batch']))));
+				if (in_array($batch_id, $batch_ids)) {
+					return true;
+				}
+			}
+			echo json_encode(array('status' => 'false', 'msg' => 'You are not assigned to this batch'));
+			return false;
 		}
 		echo json_encode(array('status' => 'false', 'msg' => 'This action is available for student and teacher only'));
 		return false;
@@ -502,12 +515,26 @@ class Batch extends MY_Controller
 				echo json_encode(array('status' => 'false', 'msg' => 'Teacher not found'));
 				return false;
 			}
+			// Check if teacher is assigned to batch or created it
 			$assigned = $this->db_model->select_data('id', 'batch_subjects', array('teacher_id' => $uid, 'batch_id' => $batch_id), 1);
-			if (empty($assigned)) {
-				echo json_encode(array('status' => 'false', 'msg' => 'You are not assigned to this batch'));
-				return false;
+			if (!empty($assigned)) {
+				return true;
 			}
-			return true;
+			// Check if teacher created this batch
+			$batch = $this->db_model->select_data('id,admin_id', 'batches use index (id)', array('id' => $batch_id), 1);
+			if (!empty($batch) && (int) $batch[0]['admin_id'] === $uid) {
+				return true;
+			}
+			// Check teach_batch field for assignments
+			$teacher_data = $this->db_model->select_data('teach_batch', 'users', array('id' => $uid), 1);
+			if (!empty($teacher_data[0]['teach_batch'])) {
+				$batch_ids = array_filter(array_map('intval', explode(',', trim((string) $teacher_data[0]['teach_batch']))));
+				if (in_array($batch_id, $batch_ids)) {
+					return true;
+				}
+			}
+			echo json_encode(array('status' => 'false', 'msg' => 'You are not assigned to this batch'));
+			return false;
 		}
 		if ($ut === 'institute') {
 			if ($uid < 1) {
@@ -760,8 +787,22 @@ class Batch extends MY_Controller
 				echo json_encode(array('status' => 'false', 'msg' => 'Teacher not found'));
 				return;
 			}
+			// Check if teacher created this batch or is assigned to teach it
+			$batch = $this->db_model->select_data('id, admin_id', 'batches use index (id)', array('id' => $batch_id), 1);
+			$is_creator = !empty($batch) && (int) $batch[0]['admin_id'] === $uid;
 			$assigned = $this->db_model->select_data('id', 'batch_subjects', array('teacher_id' => $uid, 'batch_id' => $batch_id), 1);
+
+			// Also check teach_batch field for assignments
+			$is_assigned_via_teach_batch = false;
 			if (empty($assigned)) {
+				$teacher_data = $this->db_model->select_data('teach_batch', 'users', array('id' => $uid), 1);
+				if (!empty($teacher_data[0]['teach_batch'])) {
+					$batch_ids = array_filter(array_map('intval', explode(',', trim((string) $teacher_data[0]['teach_batch']))));
+					$is_assigned_via_teach_batch = in_array($batch_id, $batch_ids);
+				}
+			}
+
+			if (empty($assigned) && !$is_creator && !$is_assigned_via_teach_batch) {
 				echo json_encode(array('status' => 'false', 'msg' => 'You are not assigned to this batch'));
 				return;
 			}
@@ -2921,6 +2962,40 @@ class Batch extends MY_Controller
 
 		if ($this->db->table_exists('batch_zoom_meetings')) {
 			$bz = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id, 'status' => 1), 1, array('id', 'desc'));
+
+			// If no active meeting, check if previous one ended and create new one for teacher
+			if (empty($bz[0]) && $is_teacher_or_institute) {
+				$old_meeting = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id, 'status' => 0), 1, array('id', 'desc'));
+				if (!empty($old_meeting[0])) {
+					// Previous meeting ended, create a NEW one
+					$this->load->library('zoom_rest_client');
+					if ($this->zoom_rest_client->is_configured()) {
+						$batch_info = $this->db_model->select_data('batch_name', 'batches', array('id' => $batch_id), 1);
+						$topic = !empty($batch_info[0]['batch_name']) ? (string) $batch_info[0]['batch_name'] : 'Zoom Class';
+
+						$new_meeting = $this->zoom_rest_client->create_meeting($topic);
+						if (!empty($new_meeting['ok']) && !empty($new_meeting['meeting_id'])) {
+							// Save new meeting to database
+							$meeting_rec = array(
+								'batch_id' => $batch_id,
+								'zoom_meeting_id' => (string) $new_meeting['meeting_id'],
+								'password' => !empty($new_meeting['password']) ? (string) $new_meeting['password'] : '',
+								'status' => 1,
+								'host_joined_at' => NULL,
+								'ended_at' => NULL,
+								'created_at' => date('Y-m-d H:i:s'),
+							);
+							@$this->db_model->insert_data('batch_zoom_meetings', $meeting_rec);
+
+							// Use new meeting
+							$meeting_number = (string) $new_meeting['meeting_id'];
+							$meeting_pwd = !empty($new_meeting['password']) ? (string) $new_meeting['password'] : '';
+							$bz = array(array('zoom_meeting_id' => $meeting_number, 'password' => $meeting_pwd));
+						}
+					}
+				}
+			}
+
 			if (!empty($bz[0])) {
 				$api_mid = $this->zoom_public_meeting_number_from_batch_zoom_row($bz[0]);
 				if ($api_mid !== '') {
@@ -2936,12 +3011,25 @@ class Batch extends MY_Controller
 		$sdk_key = $sdk['sdk_key'];
 		$sdk_secret = $sdk['sdk_secret'];
 		$sig_mode = isset($sdk['signature_mode']) ? (string) $sdk['signature_mode'] : 'jwt';
-		$is_teacher_or_institute = ($this->zoom_meeting_role_from_payload($payload) === 1);
-		$role = 0;
+		$role = $this->zoom_meeting_role_from_payload($payload);
+		$is_teacher_or_institute = ($role === 1);
 		$display_name = $this->zoom_display_name_from_payload($payload);
+		if ($display_name === '') {
+			$display_name = $is_teacher_or_institute ? 'Teacher' : 'Student';
+		}
 		$meeting_number = preg_replace('/\D+/', '', $meeting_number);
 		$signature = ($meeting_number !== '') ? $this->zoom_signature($sdk_key, $sdk_secret, $meeting_number, $role, $sig_mode) : '';
 		$join_ready = ($meeting_number !== '' && $sdk_key !== '' && $sdk_secret !== '' && $signature !== '');
+
+		// Check if teacher has started the class (host_joined_at is set)
+		$class_started = 0;
+		if ($this->db->table_exists('batch_zoom_meetings')) {
+			$bz = $this->db_model->select_data('host_joined_at', 'batch_zoom_meetings', array('batch_id' => $batch_id, 'status' => 1), 1, array('id', 'desc'));
+			if (!empty($bz[0]) && !empty($bz[0]['host_joined_at'])) {
+				$class_started = 1;
+			}
+		}
+
 		$row['meeting'] = array(
 			'type' => 'zoom',
 			'meetingNumber' => $meeting_number,
@@ -2953,7 +3041,18 @@ class Batch extends MY_Controller
 			'displayName' => $display_name,
 			'joinReady' => $join_ready ? 1 : 0,
 			'isHost' => $is_teacher_or_institute ? 1 : 0,
+			'classStarted' => $class_started,
+			'zak' => '',
 		);
+		if ($join_ready && $role === 1 && $this->db->table_exists('batch_zoom_meetings')) {
+			$this->load->library('zoom_rest_client');
+			if ($this->zoom_rest_client->is_configured()) {
+				$zak_res = $this->zoom_rest_client->get_user_zak();
+				if (!empty($zak_res['ok']) && !empty($zak_res['token'])) {
+					$row['meeting']['zak'] = (string) $zak_res['token'];
+				}
+			}
+		}
 		if ($join_ready && $sig_mode === 'jwt') {
 			$alt = $this->zoom_signature_legacy($sdk_key, $sdk_secret, $meeting_number, $role);
 			if ($alt !== '') {
@@ -2979,11 +3078,12 @@ class Batch extends MY_Controller
 	 */
 	public function live_class_details()
 	{
-		$data = $this->read_request_data();
-		$payload = $this->require_auth_payload(array(), $data);
-		if ($payload === false) {
-			return;
-		}
+		try {
+			$data = $this->read_request_data();
+			$payload = $this->require_auth_payload(array(), $data);
+			if ($payload === false) {
+				return;
+			}
 
 		$live_class_id = isset($data['live_class_id']) ? (int) $data['live_class_id'] : 0;
 		$batch_id_req = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
@@ -3066,6 +3166,259 @@ class Batch extends MY_Controller
 			'liveClass' => $row
 		), JSON_UNESCAPED_SLASHES);
 		die;
+		} catch (Exception $e) {
+			$this->output->set_status_header(500);
+			$this->output->set_content_type('application/json')->set_output(json_encode(array(
+				'status' => 'false',
+				'msg' => 'Server error: ' . $e->getMessage(),
+				'data' => array(),
+			), JSON_UNESCAPED_SLASHES));
+		}
+	}
+
+	/**
+	 * POST api/batch/live-meeting-end — teacher/institute ends Zoom meeting for all participants.
+	 * Params: batch_id (required), live_class_id (optional — updates live_class_history.end_time).
+	 */
+	public function live_meeting_end()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+		$live_class_id = isset($data['live_class_id']) ? (int) $data['live_class_id'] : 0;
+		$action = isset($data['action']) ? (string) $data['action'] : '';
+
+		// Handle host_joined notification to mark class as started
+		if ($action === 'host_joined') {
+			if ($batch_id < 1) {
+				$this->api_json(false, 'batch_id is required');
+				return;
+			}
+			if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+				return;
+			}
+			if (!$this->db->table_exists('batch_zoom_meetings')) {
+				$this->api_json(false, 'batch_zoom_meetings is not installed');
+				return;
+			}
+			// Find active meeting and mark teacher as joined
+			$bz = $this->db_model->select_data('id', 'batch_zoom_meetings', array('batch_id' => $batch_id, 'status' => 1), 1, array('id', 'desc'));
+			if (!empty($bz[0])) {
+				@$this->db_model->update_data_limit('batch_zoom_meetings', array(
+					'host_joined_at' => date('Y-m-d H:i:s')
+				), array('id' => (int) $bz[0]['id']), 1);
+			}
+
+			// Send notifications to all enrolled students
+			$students = $this->db_model->select_data('student_id', 'student_batchs', array('batch_id' => $batch_id), '');
+			if (!empty($students)) {
+				foreach ($students as $student) {
+					$student_id = (int) $student['student_id'];
+					if ($student_id > 0) {
+						$notification = array(
+							'student_id' => $student_id,
+							'batch_id' => $batch_id,
+							'notification_type' => 'class_started',
+							'msg' => 'Class has started! Join now.',
+							'url' => site_url('batch/live-room?batch_id=' . $batch_id),
+							'status' => 0,
+							'time' => date('Y-m-d H:i:s')
+						);
+						$this->db_model->insert_data('notifications', $notification);
+					}
+				}
+			}
+
+			$this->api_json(true, 'Class started and notifications sent');
+			return;
+		}
+
+		if ($batch_id < 1 && $live_class_id > 0) {
+			$lch = $this->db_model->select_data('batch_id', 'live_class_history', array('id' => $live_class_id), 1);
+			if (!empty($lch[0]['batch_id'])) {
+				$batch_id = (int) $lch[0]['batch_id'];
+			}
+		}
+		if ($batch_id < 1) {
+			$this->api_json(false, 'batch_id is required');
+			return;
+		}
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		if (!$this->db->table_exists('batch_zoom_meetings')) {
+			$this->api_json(false, 'batch_zoom_meetings is not installed');
+			return;
+		}
+		$bz = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id, 'status' => 1), 1, array('id', 'desc'));
+		if (empty($bz[0])) {
+			$this->api_json(false, 'No Zoom meeting linked for this batch');
+			return;
+		}
+		$zoom_meeting_id = $this->zoom_public_meeting_number_from_batch_zoom_row($bz[0]);
+		if ($zoom_meeting_id === '') {
+			$this->api_json(false, 'Zoom meeting id is missing for this batch');
+			return;
+		}
+		$this->load->library('zoom_rest_client');
+		if (!$this->zoom_rest_client->is_configured()) {
+			$this->api_json(false, 'Zoom Server-to-Server OAuth is not configured');
+			return;
+		}
+		$end = $this->zoom_rest_client->end_meeting($zoom_meeting_id);
+		if (empty($end['ok'])) {
+			$this->api_json(false, isset($end['error']) ? $end['error'] : 'Could not end meeting on Zoom');
+			return;
+		}
+
+		// Mark batch_zoom_meetings as inactive (status = 0) so students can't join anymore
+		$now = date('Y-m-d H:i:s');
+		$this->db_model->update_data_limit('batch_zoom_meetings', array(
+			'status' => 0,
+			'ended_at' => $now
+		), array('id' => (int) $bz[0]['id']), 1);
+
+		// Update live_class_history with end time
+		if ($live_class_id > 0 && $this->db->table_exists('live_class_history')) {
+			$this->db_model->update_data_limit('live_class_history', array(
+				'end_time' => date('h:i:s a'),
+				'status' => 'ended'
+			), array('id' => $live_class_id, 'batch_id' => $batch_id), 1);
+		}
+
+		// Create or update recording entry and sync from Zoom
+		if ($this->batch_zoom_recordings_table_exists() && $this->db->table_exists('batch_zoom_meetings')) {
+			// Get batch info for topic
+			$batch_info = $this->db_model->select_data('batch_name', 'batches use index (id)', array('id' => $batch_id), 1);
+			$topic = !empty($batch_info[0]['batch_name']) ? (string) $batch_info[0]['batch_name'] : 'Zoom Recording';
+
+			// Use actual start/end times from the meeting
+			$recording_start = !empty($bz[0]['host_joined_at']) ? $bz[0]['host_joined_at'] : $now;
+			$recording_end = $now; // Use the exact time when teacher ended the class
+
+			$recording_data = array(
+				'batch_id' => $batch_id,
+				'live_class_id' => $live_class_id > 0 ? $live_class_id : NULL,
+				'zoom_meeting_id' => $zoom_meeting_id,
+				'topic' => $topic,
+				'recording_start' => $recording_start,
+				'recording_end' => $recording_end,
+				'status' => 'processing',
+				'synced_at' => date('Y-m-d H:i:s'),
+				'created_at' => date('Y-m-d H:i:s'),
+			);
+
+			// Check if recording already exists for this batch+zoom_meeting
+			$existing_recording = $this->db_model->select_data('id', 'batch_zoom_recordings', array('batch_id' => $batch_id, 'zoom_meeting_id' => $zoom_meeting_id), 1);
+
+			if (!empty($existing_recording)) {
+				// Update existing recording
+				@$this->db_model->update_data_limit('batch_zoom_recordings', $recording_data, array('id' => (int) $existing_recording[0]['id']), 1);
+			} else {
+				// Try to create new recording entry, but handle duplicate key errors
+				$insert_result = @$this->db_model->insert_data('batch_zoom_recordings', $recording_data);
+
+				// If insert failed due to duplicate key, try updating instead
+				if ($insert_result === false) {
+					// Duplicate detected - try to update any existing record with same batch_id
+					@$this->db_model->update_data_limit('batch_zoom_recordings', $recording_data, array('batch_id' => $batch_id, 'zoom_meeting_id' => $zoom_meeting_id), 1);
+				}
+			}
+
+			// Now sync actual recording details from Zoom
+			sleep(2); // Wait for Zoom to process
+			$this->sync_batch_zoom_recordings($batch_id, $payload);
+		}
+
+		// Send notification to all students in this batch that the meeting has ended
+		$batch_students = $this->db_model->select_data('student_id', 'student_batchs', array('batch_id' => $batch_id), '', array('id', 'asc'));
+		if (!empty($batch_students)) {
+			$student_ids = array_column($batch_students, 'student_id');
+			if (!empty($student_ids) && $this->db->table_exists('notifications')) {
+				$batch_info = $this->db_model->select_data('batch_name', 'batches use index (id)', array('id' => $batch_id), 1);
+				$batch_name = !empty($batch_info[0]['batch_name']) ? (string) $batch_info[0]['batch_name'] : 'Zoom Class';
+
+				foreach ($student_ids as $student_id) {
+					$notification = array(
+						'student_id' => (int) $student_id,
+						'batch_id' => (int) $batch_id,
+						'notification_type' => 'Class Ended',
+						'msg' => 'The Zoom class "' . $batch_name . '" has ended. Recording will be available soon.',
+						'url' => 'batch/live-classes',
+						'status' => 0,
+						'time' => date('Y-m-d H:i:s'),
+						'seen_by' => ''
+					);
+					$this->db_model->insert_data('notifications', $notification);
+				}
+			}
+		}
+
+		$this->zoom_log($batch_id, 'meeting_end', 200, 'Meeting ended via API', array('meeting_id' => $zoom_meeting_id), '', $payload);
+		$this->api_json(true, 'Meeting ended for all participants', array(
+			'batchId' => $batch_id,
+			'liveClassId' => $live_class_id,
+			'meetingNumber' => $zoom_meeting_id,
+		));
+	}
+
+	/**
+	 * POST api/batch/class-status — Get real-time status of live class (for student polling).
+	 * Params: batch_id (required), live_class_id (optional)
+	 * Used for: Students to check if class started/ended, can join, should auto-disconnect
+	 */
+	public function class_status()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array(), $data);
+		if ($payload === false) {
+			return;
+		}
+
+		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+		$live_class_id = isset($data['live_class_id']) ? (int) $data['live_class_id'] : 0;
+
+		if ($batch_id < 1) {
+			$this->api_json(false, 'batch_id is required');
+			return;
+		}
+
+		// Get MOST RECENT meeting (regardless of status)
+		$bz = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id), 1, array('id', 'desc'));
+
+		$class_started = false;
+		$class_ended = false;
+		$host_joined_at = null;
+		$ended_at = null;
+
+		if (!empty($bz[0])) {
+			$host_joined_at = $bz[0]['host_joined_at'];
+			$ended_at = $bz[0]['ended_at'];
+			$meeting_status = (int) $bz[0]['status'];
+
+			// Class started if host joined
+			$class_started = !empty($host_joined_at);
+
+			// Class ended only if THIS meeting has status=0 AND ended_at is set
+			$class_ended = ($meeting_status === 0 && !empty($ended_at));
+		}
+
+		// Determine if student can rejoin
+		$student_can_rejoin = !$class_ended && $class_started;
+
+		$this->api_json(true, 'Class status retrieved', array(
+			'classExists' => !empty($bz[0]),
+			'classStarted' => $class_started,
+			'classEnded' => $class_ended,
+			'hostJoinedAt' => $host_joined_at,
+			'endedAt' => $ended_at,
+			'studentCanJoin' => $class_started && !$class_ended,
+			'studentCanRejoin' => $student_can_rejoin,
+			'shouldAutoDisconnect' => $class_ended,
+		));
 	}
 
 	/**
@@ -5166,6 +5519,412 @@ class Batch extends MY_Controller
 		$this->batch_zoom_details();
 	}
 
+	private function batch_zoom_recordings_table_exists()
+	{
+		return $this->db->table_exists('batch_zoom_recordings');
+	}
+
+	private function format_file_size_label($bytes)
+	{
+		$b = (int) $bytes;
+		if ($b < 1) {
+			return '';
+		}
+		if ($b >= 1048576) {
+			return round($b / 1048576, 2) . ' MB';
+		}
+		if ($b >= 1024) {
+			return round($b / 1024) . ' KB';
+		}
+		return $b . ' B';
+	}
+
+	private function format_recorded_meeting_row(array $row)
+	{
+		$start = isset($row['recording_start']) ? $row['recording_start'] : '';
+		$end = isset($row['recording_end']) ? $row['recording_end'] : '';
+		$duration_minutes = 0;
+		if ($start && $end && $start !== '0000-00-00 00:00:00' && $end !== '0000-00-00 00:00:00') {
+			$ts0 = strtotime((string) $start);
+			$ts1 = strtotime((string) $end);
+			if ($ts0 && $ts1 && $ts1 > $ts0) {
+				$duration_minutes = (int) max(1, round(($ts1 - $ts0) / 60));
+			}
+		}
+		$file_size = isset($row['file_size']) ? (int) $row['file_size'] : 0;
+		return array(
+			'id' => isset($row['id']) ? (int) $row['id'] : 0,
+			'batchId' => isset($row['batch_id']) ? (int) $row['batch_id'] : 0,
+			'liveClassId' => isset($row['live_class_id']) ? (int) $row['live_class_id'] : 0,
+			'zoomMeetingId' => isset($row['zoom_meeting_id']) ? (string) $row['zoom_meeting_id'] : '',
+			'topic' => isset($row['topic']) ? (string) $row['topic'] : '',
+			'recordingStart' => $start ? (string) $start : '',
+			'recordingEnd' => $end ? (string) $end : '',
+			'durationMinutes' => $duration_minutes,
+			'fileType' => isset($row['file_type']) ? (string) $row['file_type'] : '',
+			'fileSize' => $file_size,
+			'fileSizeLabel' => $this->format_file_size_label($file_size),
+			'playUrl' => isset($row['play_url']) ? (string) $row['play_url'] : '',
+			'downloadUrl' => isset($row['download_url']) ? (string) $row['download_url'] : '',
+			'recordingType' => isset($row['recording_type']) ? (string) $row['recording_type'] : '',
+			'status' => isset($row['status']) ? (string) $row['status'] : '',
+			'syncedAt' => isset($row['synced_at']) ? (string) $row['synced_at'] : '',
+		);
+	}
+
+	/**
+	 * Pick best playable file from Zoom recording_files (prefer completed MP4).
+	 *
+	 * @param array<int, array<string, mixed>> $files
+	 * @return array<string, mixed>|null
+	 */
+	private function zoom_pick_playable_recording_file(array $files)
+	{
+		$best = null;
+		$best_score = -1;
+		foreach ($files as $f) {
+			if (!is_array($f)) {
+				continue;
+			}
+			$status = isset($f['status']) ? strtolower((string) $f['status']) : '';
+			if ($status !== '' && $status !== 'completed') {
+				continue;
+			}
+			$type = isset($f['file_type']) ? strtoupper((string) $f['file_type']) : '';
+			$play = isset($f['play_url']) ? trim((string) $f['play_url']) : '';
+			$download = isset($f['download_url']) ? trim((string) $f['download_url']) : '';
+			if ($play === '' && $download === '') {
+				continue;
+			}
+			$score = 0;
+			if ($type === 'MP4') {
+				$score += 10;
+			}
+			if ($play !== '') {
+				$score += 5;
+			}
+			if ($score > $best_score) {
+				$best_score = $score;
+				$best = $f;
+			}
+		}
+		return $best;
+	}
+
+	/**
+	 * Upsert Zoom recording file rows for a batch.
+	 *
+	 * @param array<string, mixed> $meeting_block Zoom meeting/recording API object
+	 */
+	private function upsert_zoom_recording_files_for_batch($batch_id, $zoom_meeting_id, array $meeting_block, $live_class_id = 0)
+	{
+		if (!$this->batch_zoom_recordings_table_exists()) {
+			return 0;
+		}
+		$batch_id = (int) $batch_id;
+		$live_class_id = (int) $live_class_id;
+		$zoom_meeting_id = preg_replace('/\D+/', '', (string) $zoom_meeting_id);
+		$topic = isset($meeting_block['topic']) ? (string) $meeting_block['topic'] : '';
+		$uuid = isset($meeting_block['uuid']) ? (string) $meeting_block['uuid'] : '';
+		$files = isset($meeting_block['recording_files']) && is_array($meeting_block['recording_files'])
+			? $meeting_block['recording_files'] : array();
+		$pick = $this->zoom_pick_playable_recording_file($files);
+		if ($pick === null) {
+			return 0;
+		}
+		$file_id = isset($pick['id']) ? (string) $pick['id'] : '';
+		if ($file_id === '') {
+			$file_id = md5($uuid . '|' . (isset($pick['recording_start']) ? $pick['recording_start'] : '') . '|' . (isset($pick['file_type']) ? $pick['file_type'] : ''));
+		}
+		$now = date('Y-m-d H:i:s');
+		$row = array(
+			'batch_id' => $batch_id,
+			'live_class_id' => $live_class_id,
+			'zoom_meeting_id' => $zoom_meeting_id,
+			'zoom_recording_uuid' => $uuid,
+			'zoom_file_id' => substr($file_id, 0, 128),
+			'topic' => $topic !== '' ? substr($topic, 0, 500) : 'Recorded class',
+			'recording_start' => !empty($pick['recording_start']) ? date('Y-m-d H:i:s', strtotime((string) $pick['recording_start'])) : null,
+			'recording_end' => !empty($pick['recording_end']) ? date('Y-m-d H:i:s', strtotime((string) $pick['recording_end'])) : null,
+			'file_type' => isset($pick['file_type']) ? substr((string) $pick['file_type'], 0, 32) : '',
+			'file_size' => isset($pick['file_size']) ? (int) $pick['file_size'] : 0,
+			'play_url' => isset($pick['play_url']) ? substr((string) $pick['play_url'], 0, 2048) : '',
+			'download_url' => isset($pick['download_url']) ? substr((string) $pick['download_url'], 0, 2048) : '',
+			'recording_type' => isset($pick['recording_type']) ? substr((string) $pick['recording_type'], 0, 64) : '',
+			'status' => isset($pick['status']) ? substr((string) $pick['status'], 0, 32) : 'completed',
+			'synced_at' => $now,
+		);
+		$existing = $this->db_model->select_data('id', 'batch_zoom_recordings', array(
+			'batch_id' => $batch_id,
+			'zoom_file_id' => $row['zoom_file_id'],
+		), 1);
+		if (!empty($existing[0]['id'])) {
+			$this->db->where('id', (int) $existing[0]['id']);
+			$this->db->update('batch_zoom_recordings', $row);
+			return 1;
+		}
+		$row['created_at'] = $now;
+		$this->db->insert('batch_zoom_recordings', $row);
+		return 1;
+	}
+
+	/**
+	 * Pull Zoom cloud recordings into batch_zoom_recordings for a batch.
+	 *
+	 * @return array{ok:bool, inserted?:int, error?:string}
+	 */
+	private function sync_batch_zoom_recordings($batch_id, array $payload = array())
+	{
+		if (!$this->batch_zoom_recordings_table_exists() || !$this->db->table_exists('batch_zoom_meetings')) {
+			return array('ok' => false, 'error' => 'batch_zoom_recordings is not installed. Run installer/create_batch_zoom_recordings.sql');
+		}
+		$batch_id = (int) $batch_id;
+		// Get the most recent meeting (active or ended) — we need to sync recordings even after class ends
+		$bz = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id), 1, array('id', 'desc'));
+		if (empty($bz[0])) {
+			return array('ok' => false, 'error' => 'No Zoom meeting linked for this batch');
+		}
+		$zoom_meeting_id = $this->zoom_public_meeting_number_from_batch_zoom_row($bz[0]);
+		if ($zoom_meeting_id === '') {
+			return array('ok' => false, 'error' => 'Zoom meeting id is missing for this batch');
+		}
+		$this->load->library('zoom_rest_client');
+		if (!$this->zoom_rest_client->is_configured()) {
+			return array('ok' => false, 'error' => 'Zoom Server-to-Server OAuth is not configured');
+		}
+
+		$inserted = 0;
+		$res = $this->zoom_rest_client->get_meeting_recordings($zoom_meeting_id);
+		$direct_empty = !empty($res['not_found']) || $this->zoom_rest_client->is_recording_not_found_response($res);
+		if ($res['ok'] && !empty($res['data'])) {
+			$inserted += $this->upsert_zoom_recording_files_for_batch($batch_id, $zoom_meeting_id, $res['data'], 0);
+		}
+
+		$from = date('Y-m-d', strtotime('-180 days'));
+		$to = date('Y-m-d', strtotime('+1 day'));
+		$list = $this->zoom_rest_client->list_user_recordings($from, $to, 100);
+		$list_scope_skipped = empty($list['ok']) && !empty($list['scope_missing']);
+		if ($list['ok'] && !empty($list['meetings'])) {
+			foreach ($list['meetings'] as $m) {
+				if (!is_array($m)) {
+					continue;
+				}
+				$mid = preg_replace('/\D+/', '', (string) (isset($m['id']) ? $m['id'] : ''));
+				if ($mid === '' || $mid !== $zoom_meeting_id) {
+					continue;
+				}
+				$inserted += $this->upsert_zoom_recording_files_for_batch($batch_id, $zoom_meeting_id, $m, 0);
+			}
+		}
+
+		$direct_failed = !$res['ok'] && !$direct_empty;
+		$direct_scope_missing = $direct_failed && $this->zoom_rest_client->is_missing_scope_error($res);
+		$list_failed = empty($list['ok']) && !$list_scope_skipped;
+		if ($inserted < 1 && ($direct_failed || $list_failed)) {
+			$err = 'Could not fetch recordings from Zoom';
+			if ($list_failed && !empty($list['error'])) {
+				$err = (string) $list['error'];
+			} elseif ($direct_failed && !empty($res['error'])) {
+				$err = (string) $res['error'];
+			}
+			if ($direct_scope_missing || ($list_failed && !empty($list['scope_missing']))) {
+				$err .= $this->zoom_rest_client->cloud_recording_scopes_hint();
+			}
+			$this->zoom_log($batch_id, 'recordings_sync', isset($res['code']) ? (int) $res['code'] : 0, $err, array('meeting_id' => $zoom_meeting_id), '', $payload);
+			return array('ok' => false, 'error' => $err);
+		}
+
+		$log_msg = $inserted > 0
+			? ('Synced ' . $inserted . ' recording(s)')
+			: 'No cloud recordings found for this batch meeting yet';
+		$this->zoom_log($batch_id, 'recordings_sync', 200, $log_msg, array('meeting_id' => $zoom_meeting_id), '', $payload);
+		return array('ok' => true, 'inserted' => $inserted);
+	}
+
+	/**
+	 * POST/GET api/batch/recorded-meeting-list
+	 * Params: batch_id (required), search, sort_by, sort_dir, page, limit, sync (1 to refresh from Zoom)
+	 */
+	public function recorded_meeting_list()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array(), $data);
+		if ($payload === false) {
+			return;
+		}
+		if (empty($data['batch_id'])) {
+			echo json_encode(array('status' => 'false', 'msg' => 'batch_id is required'));
+			return;
+		}
+		$batch_id = (int) $data['batch_id'];
+		if (!$this->assert_batch_zoom_viewer($payload, $batch_id, $data)) {
+			return;
+		}
+		if (!$this->batch_zoom_recordings_table_exists()) {
+			echo json_encode(array('status' => 'false', 'msg' => 'batch_zoom_recordings is not installed. Run installer/create_batch_zoom_recordings.sql'));
+			return;
+		}
+
+		$synced_from_zoom = false;
+		$sync_error = '';
+		$do_sync = !empty($data['sync']) && ((string) $data['sync'] === '1' || $data['sync'] === 1 || $data['sync'] === true);
+
+		// Auto-sync if there are processing recordings
+		if (!$do_sync) {
+			$processing_count = $this->db_model->countAll('batch_zoom_recordings', array('batch_id' => $batch_id, 'status' => 'processing'));
+			if ($processing_count > 0) {
+				$do_sync = true;
+			}
+		}
+
+		if ($do_sync) {
+			$sync = $this->sync_batch_zoom_recordings($batch_id, $payload);
+			$synced_from_zoom = !empty($sync['ok']);
+			if (!$synced_from_zoom && isset($sync['error'])) {
+				$sync_error = (string) $sync['error'];
+			}
+		}
+
+		$search = isset($data['search']) ? trim($data['search']) : '';
+		$sort_by = isset($data['sort_by']) ? strtolower(trim($data['sort_by'])) : 'recording_start';
+		$sort_dir = isset($data['sort_dir']) ? strtolower(trim($data['sort_dir'])) : 'desc';
+		if ($sort_dir !== 'asc' && $sort_dir !== 'desc') {
+			$sort_dir = 'desc';
+		}
+		$order_map = array(
+			'recording_start' => 'recording_start',
+			'topic' => 'topic',
+			'file_size' => 'file_size',
+			'created_at' => 'created_at',
+		);
+		if (!isset($order_map[$sort_by])) {
+			$sort_by = 'recording_start';
+		}
+
+		$pg = $this->parse_api_list_pagination($data);
+		$page = $pg['page'];
+		$limit = $pg['limit'];
+		$offset = $pg['offset'];
+
+		$this->db->from('batch_zoom_recordings');
+		$this->db->where('batch_id', $batch_id);
+		// INCLUDE processing recordings so users can see they're being processed
+		if ($search !== '') {
+			$this->db->group_start();
+			$this->db->like('topic', $search);
+			$this->db->or_like('recording_type', $search);
+			$this->db->group_end();
+		}
+		$total = (int) $this->db->count_all_results();
+
+		$this->db->select('*');
+		$this->db->from('batch_zoom_recordings');
+		$this->db->where('batch_id', $batch_id);
+		// INCLUDE processing recordings so users can see they're being processed
+		if ($search !== '') {
+			$this->db->group_start();
+			$this->db->like('topic', $search);
+			$this->db->or_like('recording_type', $search);
+			$this->db->group_end();
+		}
+		$this->db->order_by($order_map[$sort_by], $sort_dir);
+		$this->db->limit($limit, $offset);
+		$rows = $this->db->get()->result_array();
+
+		$list = array();
+		if (!empty($rows)) {
+			foreach ($rows as $r) {
+				$list[] = $this->format_recorded_meeting_row($r);
+			}
+		}
+
+		echo json_encode(array(
+			'status' => 'true',
+			'message' => 'Success',
+			'data' => array(
+				'batch_id' => $batch_id,
+				'recordedMeetings' => $list,
+				'syncedFromZoom' => $synced_from_zoom ? 1 : 0,
+				'syncError' => $sync_error,
+				'pagination' => $this->build_api_list_pagination_meta($page, $limit, $total),
+			),
+		), JSON_UNESCAPED_SLASHES);
+		die;
+	}
+
+	/**
+	 * POST/GET api/batch/recorded-meeting-details
+	 * Required: recorded_meeting_id (or recording_id)
+	 */
+	public function recorded_meeting_details()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array(), $data);
+		if ($payload === false) {
+			return;
+		}
+		$rec_id = 0;
+		if (!empty($data['recorded_meeting_id'])) {
+			$rec_id = (int) $data['recorded_meeting_id'];
+		} elseif (!empty($data['recording_id'])) {
+			$rec_id = (int) $data['recording_id'];
+		}
+		if ($rec_id < 1) {
+			echo json_encode(array('status' => 'false', 'msg' => 'recorded_meeting_id is required'));
+			return;
+		}
+		if (!$this->batch_zoom_recordings_table_exists()) {
+			echo json_encode(array('status' => 'false', 'msg' => 'batch_zoom_recordings is not installed'));
+			return;
+		}
+		$row = $this->db_model->select_data('*', 'batch_zoom_recordings', array('id' => $rec_id), 1);
+		if (empty($row[0])) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Recording not found'));
+			return;
+		}
+		$batch_id = (int) $row[0]['batch_id'];
+		if (!$this->assert_batch_zoom_viewer($payload, $batch_id, $data)) {
+			return;
+		}
+		echo json_encode(array(
+			'status' => 'true',
+			'message' => 'Success',
+			'data' => array(
+				'recordedMeeting' => $this->format_recorded_meeting_row($row[0]),
+			),
+		), JSON_UNESCAPED_SLASHES);
+		die;
+	}
+
+	/**
+	 * POST api/batch/recorded-meeting-sync — teacher or institute; refresh Zoom cloud recordings for batch.
+	 */
+	public function recorded_meeting_sync()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		if (empty($data['batch_id'])) {
+			$this->api_json(false, 'batch_id is required');
+			return;
+		}
+		$batch_id = (int) $data['batch_id'];
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		$sync = $this->sync_batch_zoom_recordings($batch_id, $payload);
+		if (empty($sync['ok'])) {
+			$this->api_json(false, isset($sync['error']) ? $sync['error'] : 'Sync failed');
+			return;
+		}
+		$this->api_json(true, 'Recordings synced from Zoom', array(
+			'batchId' => $batch_id,
+			'insertedOrUpdated' => isset($sync['inserted']) ? (int) $sync['inserted'] : 0,
+		));
+	}
+
 	/**
 	 * POST api/batch/batch-notify-students — save notifications for all enrolled students.
 	 */
@@ -5188,5 +5947,578 @@ class Batch extends MY_Controller
 		$url = isset($data['url']) ? (string) $data['url'] : '';
 		$n = $this->notification_service->fan_out_batch_students($batch_id, (string) $data['notification_type'], (string) $data['msg'], $url);
 		$this->api_json(true, 'Notifications saved', array('inserted' => $n));
+	}
+
+	/**
+	 * POST api/batch/teacher-batches — list batches (assigned + created) for teacher
+	 */
+	public function teacher_batches()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher'), $data);
+		if ($payload === false) {
+			return;
+		}
+
+		$teacher_id = (int) $payload['id'];
+		$teacher_data = $this->db_model->select_data('admin_id', 'users use index (id)', array('id' => $teacher_id), 1);
+		$teacher_admin_id = !empty($teacher_data) ? (int) $teacher_data[0]['admin_id'] : 0;
+		$result = array();
+		$batch_ids = array();
+
+		// Get created batches (where admin_id = teacher_id)
+		$created_batches = $this->db_model->select_data('*', 'batches use index (id)', array('admin_id' => $teacher_id), '', array('id', 'desc'));
+		if (!empty($created_batches)) {
+			foreach ($created_batches as $batch) {
+				$batch_id = (int) $batch['id'];
+				$batch_ids[$batch_id] = true;
+				$result[] = array(
+					'id' => $batch_id,
+					'name' => (string) $batch['batch_name'],
+					'batchId' => $batch_id,
+					'batchName' => (string) $batch['batch_name'],
+					'startDate' => (string) $batch['start_date'],
+					'endDate' => (string) $batch['end_date'],
+					'startTime' => (string) $batch['start_time'],
+					'endTime' => (string) $batch['end_time'],
+					'type' => (int) $batch['batch_type'],
+					'price' => (string) $batch['batch_price'],
+					'mode' => (string) $batch['batch_mode'],
+					'status' => (int) $batch['status'],
+					'createdBy' => 'self',
+					'ownerType' => 'created',
+				);
+			}
+		}
+
+		// Get assigned batches from teach_batch field in users table
+		$teacher_info = $this->db_model->select_data('teach_batch', 'users use index (id)', array('id' => $teacher_id), 1);
+		$assigned_batches = array();
+
+		if (!empty($teacher_info[0]['teach_batch'])) {
+			$batch_ids = array_filter(array_map('intval', explode(',', trim((string) $teacher_info[0]['teach_batch']))));
+			if (!empty($batch_ids)) {
+				// Query batches by their IDs
+				$this->db->select('*');
+				$this->db->from('batches');
+				$this->db->where_in('id', $batch_ids);
+				$this->db->order_by('id', 'DESC');
+				$assigned_batches = $this->db->get()->result_array();
+			}
+		}
+
+		// Fallback: Get batches from batch_subjects if teach_batch is empty
+		if (empty($assigned_batches)) {
+			$this->db->select('DISTINCT b.*');
+			$this->db->from('batches b');
+			$this->db->join('batch_subjects bs', 'bs.batch_id = b.id', 'inner');
+			$this->db->where('bs.teacher_id', $teacher_id);
+			$this->db->order_by('b.id', 'DESC');
+			$assigned_batches = $this->db->get()->result_array();
+		}
+
+		if (!empty($assigned_batches)) {
+			foreach ($assigned_batches as $batch) {
+				$batch_id = (int) $batch['id'];
+				// Skip if already in created list
+				if (!isset($batch_ids[$batch_id])) {
+					$batch_ids[$batch_id] = true;
+					$result[] = array(
+						'id' => $batch_id,
+						'name' => (string) $batch['batch_name'],
+						'batchId' => $batch_id,
+						'batchName' => (string) $batch['batch_name'],
+						'startDate' => (string) $batch['start_date'],
+						'endDate' => (string) $batch['end_date'],
+						'startTime' => (string) $batch['start_time'],
+						'endTime' => (string) $batch['end_time'],
+						'type' => (int) $batch['batch_type'],
+						'price' => (string) $batch['batch_price'],
+						'mode' => (string) $batch['batch_mode'],
+						'status' => (int) $batch['status'],
+						'createdBy' => 'admin',
+						'ownerType' => 'assigned',
+					);
+				}
+			}
+		}
+
+		$this->api_json(true, 'Teacher batches retrieved', array('batches' => $result));
+	}
+
+	/**
+	 * POST api/batch/teacher-create-batch — create a new batch for the teacher
+	 */
+	public function teacher_create_batch()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher'), $data);
+		if ($payload === false) {
+			return;
+		}
+
+		$required = array('batchName', 'startDate', 'endDate', 'startTime', 'endTime', 'instituteId', 'batchMode');
+		foreach ($required as $field) {
+			if (empty($data[$field])) {
+				$this->api_json(false, ucfirst($field) . ' is required');
+				return;
+			}
+		}
+
+		$teacher_id = (int) $payload['id'];
+		$teacher_data = $this->db_model->select_data('admin_id', 'users use index (id)', array('id' => $teacher_id), 1);
+		if (empty($teacher_data)) {
+			$this->api_json(false, 'Teacher not found', array(), 404);
+			return;
+		}
+		$teacher_admin_id = (int) $teacher_data[0]['admin_id'];
+
+		// Validate institute belongs to teacher's admin
+		$institute = $this->db_model->select_data('id', 'users use index (id)', array(
+			'id' => (int) $data['instituteId'],
+			'admin_id' => $teacher_admin_id,
+			'status' => 1
+		), 1);
+		if (empty($institute)) {
+			$this->api_json(false, 'Invalid institute selected');
+			return;
+		}
+
+		$batch_arr = array(
+			'batch_name' => (string) $data['batchName'],
+			'start_date' => date('Y-m-d', strtotime((string) $data['startDate'])),
+			'end_date' => date('Y-m-d', strtotime((string) $data['endDate'])),
+			'start_time' => date('H:i:s', strtotime((string) $data['startTime'])),
+			'end_time' => date('H:i:s', strtotime((string) $data['endTime'])),
+			'institute_id' => (int) $data['instituteId'],
+			'batch_mode' => in_array((string) $data['batchMode'], array('Online', 'Offline')) ? (string) $data['batchMode'] : 'Online',
+			'admin_id' => $teacher_id,
+			'status' => 1,
+			'batch_type' => isset($data['batchType']) ? (int) $data['batchType'] : 1,
+			'batch_price' => isset($data['batchPrice']) ? (string) $data['batchPrice'] : '0',
+			'batch_offer_price' => isset($data['batchOfferPrice']) ? (string) $data['batchOfferPrice'] : '',
+			'description' => isset($data['description']) ? (string) $data['description'] : '',
+			'cat_id' => isset($data['categoryId']) ? (int) $data['categoryId'] : 0,
+			'sub_cat_id' => isset($data['subcategoryId']) ? (int) $data['subcategoryId'] : 0,
+			'pay_mode' => isset($data['payMode']) ? (string) $data['payMode'] : '',
+		);
+
+		$batch_id = $this->db_model->insert_data('batches', $batch_arr);
+		if ($batch_id) {
+			$this->api_json(true, 'Batch created successfully', array('batchId' => $batch_id));
+		} else {
+			$this->api_json(false, 'Failed to create batch', array(), 500);
+		}
+	}
+
+	/**
+	 * POST api/batch/teacher-update-batch — update a batch created by the teacher
+	 */
+	public function teacher_update_batch()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher'), $data);
+		if ($payload === false) {
+			return;
+		}
+
+		if (empty($data['batchId'])) {
+			$this->api_json(false, 'Batch ID is required');
+			return;
+		}
+
+		$batch_id = (int) $data['batchId'];
+		$teacher_id = (int) $payload['id'];
+
+		// Verify batch belongs to the teacher
+		$batch = $this->db_model->select_data('admin_id', 'batches use index (id)', array('id' => $batch_id), 1);
+		if (empty($batch) || (int) $batch[0]['admin_id'] !== $teacher_id) {
+			$this->api_json(false, 'You are not authorized to update this batch', array(), 403);
+			return;
+		}
+
+		$update_arr = array();
+		if (!empty($data['batchName'])) {
+			$update_arr['batch_name'] = (string) $data['batchName'];
+		}
+		if (!empty($data['startDate'])) {
+			$update_arr['start_date'] = date('Y-m-d', strtotime((string) $data['startDate']));
+		}
+		if (!empty($data['endDate'])) {
+			$update_arr['end_date'] = date('Y-m-d', strtotime((string) $data['endDate']));
+		}
+		if (!empty($data['startTime'])) {
+			$update_arr['start_time'] = date('H:i:s', strtotime((string) $data['startTime']));
+		}
+		if (!empty($data['endTime'])) {
+			$update_arr['end_time'] = date('H:i:s', strtotime((string) $data['endTime']));
+		}
+		if (!empty($data['batchMode'])) {
+			$update_arr['batch_mode'] = in_array((string) $data['batchMode'], array('Online', 'Offline')) ? (string) $data['batchMode'] : 'Online';
+		}
+		if (isset($data['batchType'])) {
+			$update_arr['batch_type'] = (int) $data['batchType'];
+		}
+		if (isset($data['batchPrice'])) {
+			$update_arr['batch_price'] = (string) $data['batchPrice'];
+		}
+		if (isset($data['batchOfferPrice'])) {
+			$update_arr['batch_offer_price'] = (string) $data['batchOfferPrice'];
+		}
+		if (isset($data['description'])) {
+			$update_arr['description'] = (string) $data['description'];
+		}
+
+		if (empty($update_arr)) {
+			$this->api_json(false, 'No fields to update');
+			return;
+		}
+
+		$result = $this->db_model->update_data_limit('batches', $update_arr, array('id' => $batch_id), 1);
+		if ($result) {
+			$this->api_json(true, 'Batch updated successfully', array('batchId' => $batch_id));
+		} else {
+			$this->api_json(false, 'Failed to update batch', array(), 500);
+		}
+	}
+
+	/**
+	 * POST api/batch/teacher-delete-batch — delete a batch created by the teacher
+	 */
+	public function teacher_delete_batch()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher'), $data);
+		if ($payload === false) {
+			return;
+		}
+
+		if (empty($data['batchId'])) {
+			$this->api_json(false, 'Batch ID is required');
+			return;
+		}
+
+		$batch_id = (int) $data['batchId'];
+		$teacher_id = (int) $payload['id'];
+
+		// Verify batch belongs to the teacher
+		$batch = $this->db_model->select_data('id', 'batches use index (id)', array('id' => $batch_id), 1);
+		if (empty($batch)) {
+			$this->api_json(false, 'Batch not found', array(), 404);
+			return;
+		}
+
+		$batch_admin = $this->db_model->select_data('admin_id', 'batches use index (id)', array('id' => $batch_id), 1);
+		if ((int) $batch_admin[0]['admin_id'] !== $teacher_id) {
+			$this->api_json(false, 'You are not authorized to delete this batch', array(), 403);
+			return;
+		}
+
+		// Delete related data
+		$this->db_model->delete_data('batch_subjects', array('batch_id' => $batch_id));
+		$this->db_model->delete_data('batch_fecherd', array('batch_id' => $batch_id));
+		$this->db_model->delete_data('student_batchs', array('batch_id' => $batch_id));
+
+		// Delete the batch
+		$result = $this->db_model->delete_data('batches', array('id' => $batch_id));
+
+		if ($result) {
+			$this->api_json(true, 'Batch deleted successfully');
+		} else {
+			$this->api_json(false, 'Failed to delete batch', array(), 500);
+		}
+	}
+
+	/**
+	 * POST api/batch/zoom-cron-sync — Auto-sync all processing recordings (run every 5 minutes)
+	 * No authentication required (internal CRON only)
+	 */
+	public function zoom_cron_sync()
+	{
+		header('Content-Type: application/json');
+
+		if (!$this->batch_zoom_recordings_table_exists()) {
+			http_response_code(200);
+			echo json_encode(array('status' => true, 'message' => 'Table not found'));
+			exit(0);
+		}
+
+		// Find all processing recordings
+		$recordings = $this->db_model->select_data('batch_id', 'batch_zoom_recordings', array('status' => 'processing'), '');
+
+		if (empty($recordings)) {
+			http_response_code(200);
+			echo json_encode(array('status' => true, 'message' => 'No processing recordings', 'synced' => 0));
+			exit(0);
+		}
+
+		// Get unique batch IDs
+		$batch_ids = array();
+		foreach ($recordings as $rec) {
+			$bid = (int) $rec['batch_id'];
+			if (!in_array($bid, $batch_ids)) {
+				$batch_ids[] = $bid;
+			}
+		}
+
+		// Sync each batch's recordings
+		$synced_count = 0;
+		$total_inserted = 0;
+		$fake_payload = array('uid' => 0, 'user_type' => 'system');
+		$sync_errors = array();
+		$sync_details = array();
+
+		foreach ($batch_ids as $batch_id) {
+			// Get the most recent meeting for debug info
+			$bz = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id), 1, array('id', 'desc'));
+			$zoom_meeting_id = '';
+			if (!empty($bz[0])) {
+				$zoom_meeting_id = $this->zoom_public_meeting_number_from_batch_zoom_row($bz[0]);
+			}
+
+			$sync_result = $this->sync_batch_zoom_recordings($batch_id, $fake_payload);
+			if (!empty($sync_result['ok'])) {
+				$synced_count++;
+				$inserted_count = isset($sync_result['inserted']) ? (int) $sync_result['inserted'] : 0;
+				$total_inserted += $inserted_count;
+				$sync_details[] = array(
+					'batch_id' => $batch_id,
+					'meeting_id' => $zoom_meeting_id,
+					'inserted' => $inserted_count,
+					'message' => isset($sync_result['message']) ? $sync_result['message'] : 'Synced'
+				);
+			} else {
+				$sync_errors[] = 'Batch ' . $batch_id . ' (meeting: ' . $zoom_meeting_id . '): ' . (!empty($sync_result['error']) ? $sync_result['error'] : 'Unknown error');
+			}
+		}
+
+		http_response_code(200);
+		$response = array(
+			'status' => true,
+			'message' => 'Sync completed',
+			'batches_synced' => $synced_count,
+			'total_batches' => count($batch_ids),
+			'total_recordings_inserted_or_updated' => $total_inserted
+		);
+		if (!empty($sync_details)) {
+			$response['details'] = $sync_details;
+		}
+		if (!empty($sync_errors)) {
+			$response['errors'] = $sync_errors;
+		}
+		echo json_encode($response);
+		exit(0);
+	}
+
+	/**
+	 * GET api/batch/zoom-debug — Debug endpoint to test Zoom API calls
+	 * Params: batch_id (required) — shows meeting ID and Zoom API response
+	 */
+	public function zoom_debug()
+	{
+		$data = $this->read_request_data();
+		if (empty($data['batch_id'])) {
+			http_response_code(400);
+			echo json_encode(array('status' => false, 'error' => 'batch_id is required'));
+			exit(0);
+		}
+
+		$batch_id = (int) $data['batch_id'];
+		if ($batch_id < 1) {
+			http_response_code(400);
+			echo json_encode(array('status' => false, 'error' => 'batch_id must be > 0'));
+			exit(0);
+		}
+
+		if (!$this->db->table_exists('batch_zoom_meetings')) {
+			http_response_code(400);
+			echo json_encode(array('status' => false, 'error' => 'batch_zoom_meetings table not found'));
+			exit(0);
+		}
+
+		// Get the most recent meeting
+		$bz = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id), 1, array('id', 'desc'));
+		if (empty($bz[0])) {
+			http_response_code(404);
+			echo json_encode(array('status' => false, 'error' => 'No Zoom meeting found for this batch'));
+			exit(0);
+		}
+
+		$zoom_meeting_id = $this->zoom_public_meeting_number_from_batch_zoom_row($bz[0]);
+		if ($zoom_meeting_id === '') {
+			http_response_code(400);
+			echo json_encode(array('status' => false, 'error' => 'Zoom meeting ID is missing'));
+			exit(0);
+		}
+
+		$this->load->library('zoom_rest_client');
+		if (!$this->zoom_rest_client->is_configured()) {
+			http_response_code(400);
+			echo json_encode(array('status' => false, 'error' => 'Zoom Server-to-Server OAuth is not configured'));
+			exit(0);
+		}
+
+		// Call Zoom API to get meeting recordings
+		$res = $this->zoom_rest_client->get_meeting_recordings($zoom_meeting_id);
+
+		// Return full debug info
+		http_response_code(200);
+		echo json_encode(array(
+			'status' => true,
+			'debug' => array(
+				'batch_id' => $batch_id,
+				'meeting_id' => $zoom_meeting_id,
+				'meeting_status' => $bz[0]['status'], // 1=active, 0=ended
+				'host_joined_at' => $bz[0]['host_joined_at'],
+				'ended_at' => $bz[0]['ended_at'],
+				'zoom_api_response' => $res
+			)
+		), JSON_UNESCAPED_SLASHES);
+		exit(0);
+	}
+
+	/**
+	 * POST api/batch/zoom-webhook — Handle Zoom recording ready notifications
+	 * No authentication required (Zoom signature verified)
+	 * Zoom sends: {event: 'recording.completed', object: {id, uuid, ...}, download_token: '...'}
+	 */
+	public function zoom_webhook()
+	{
+		// Disable CodeIgniter output buffering
+		$this->output->enable_profiler(false);
+
+		$data = $this->read_request_data();
+
+		// Log webhook request for debugging
+		@error_log('[ZOOM_WEBHOOK] Request data: ' . json_encode($data), 0);
+
+		// Handle Zoom validation request - Zoom sends: {event: "endpoint.url_validation", payload: {plainToken: "..."}}
+		if (isset($data['event']) && $data['event'] === 'endpoint.url_validation') {
+			header('Content-Type: application/json');
+			http_response_code(200);
+			$plain_token = isset($data['payload']['plainToken']) ? (string) $data['payload']['plainToken'] : '';
+			$response = array('plainToken' => $plain_token);
+			@error_log('[ZOOM_WEBHOOK] Validation response: ' . json_encode($response), 0);
+			echo json_encode($response, JSON_UNESCAPED_SLASHES);
+			exit(0);
+		}
+
+		// Verify Zoom webhook signature for event requests
+		if (!$this->verify_zoom_webhook_signature($data)) {
+			header('Content-Type: application/json');
+			http_response_code(401);
+			echo json_encode(array('status' => false, 'message' => 'Unauthorized'), JSON_UNESCAPED_SLASHES);
+			exit(0);
+		}
+
+		// Handle different event types
+		$event = isset($data['event']) ? (string) $data['event'] : '';
+
+		// Handle recording completed events (Zoom sends "recordings.completed")
+		if ($event === 'recordings.completed' || $event === 'recording.completed') {
+			@error_log('[ZOOM_WEBHOOK] Recording completed event detected', 0);
+			$this->handle_zoom_recording_completed($data);
+		}
+
+		// Always respond with 200 to acknowledge
+		header('Content-Type: application/json');
+		http_response_code(200);
+		echo json_encode(array('status' => true, 'message' => 'Webhook received'), JSON_UNESCAPED_SLASHES);
+		exit(0);
+	}
+
+	/**
+	 * Verify Zoom webhook request signature
+	 */
+	private function verify_zoom_webhook_signature($data)
+	{
+		// Get webhook secret from Zoom config
+		$webhook_secret = $this->get_zoom_webhook_secret();
+		if ($webhook_secret === '') {
+			return false; // Webhook secret not configured
+		}
+
+		// Get signature headers
+		$auth_header = $this->input->server('HTTP_AUTHORIZATION') ?: '';
+		$timestamp = $this->input->server('HTTP_X_ZOOM_REQUEST_TIMESTAMP') ?: '';
+
+		if ($timestamp === '' || $auth_header === '') {
+			return false;
+		}
+
+		// Prevent replay attacks (within 5 minutes)
+		$current_time = time();
+		$request_time = (int) $timestamp / 1000;
+		if (abs($current_time - $request_time) > 300) {
+			return false;
+		}
+
+		// Construct message
+		$message = "$timestamp:" . file_get_contents('php://input');
+		$hash = hash_hmac('sha256', $message, $webhook_secret);
+		$expected_sig = "v0=$hash";
+
+		// Compare signatures
+		return hash_equals($expected_sig, str_replace('v0=', '', $auth_header));
+	}
+
+	/**
+	 * Get Zoom webhook secret from database or config
+	 */
+	private function get_zoom_webhook_secret()
+	{
+		// First try database: zoom_api_credentials table
+		if ($this->db->table_exists('zoom_api_credentials')) {
+			$cred = $this->db_model->select_data('webhook_secret', 'zoom_api_credentials', array(), 1);
+			if (!empty($cred[0]['webhook_secret'])) {
+				return (string) $cred[0]['webhook_secret'];
+			}
+		}
+
+		// Fallback to config file
+		$this->config->load('zoom', false, true);
+		$webhook_secret = $this->config->item('webhook_secret');
+		if (!empty($webhook_secret)) {
+			return (string) $webhook_secret;
+		}
+
+		return '';
+	}
+
+	/**
+	 * Handle recording.completed event from Zoom
+	 */
+	private function handle_zoom_recording_completed($data)
+	{
+		if (!isset($data['object']) || !is_array($data['object'])) {
+			return;
+		}
+
+		$zoom_event = $data['object'];
+		$zoom_meeting_id = isset($zoom_event['id']) ? (string) $zoom_event['id'] : '';
+		$recording_uuid = isset($zoom_event['uuid']) ? (string) $zoom_event['uuid'] : '';
+
+		if ($zoom_meeting_id === '') {
+			return;
+		}
+
+		// Find batch with this meeting
+		if (!$this->db->table_exists('batch_zoom_meetings')) {
+			return;
+		}
+
+		$meetings = $this->db_model->select_data('batch_id', 'batch_zoom_meetings', array('zoom_meeting_id' => $zoom_meeting_id), 1);
+		if (empty($meetings[0])) {
+			return;
+		}
+
+		$batch_id = (int) $meetings[0]['batch_id'];
+
+		// Sync this recording immediately
+		if ($this->batch_zoom_recordings_table_exists()) {
+			// Create a fake payload for sync function
+			$fake_payload = array('uid' => 0, 'user_type' => 'system');
+			$this->sync_batch_zoom_recordings($batch_id, $fake_payload);
+		}
 	}
 }

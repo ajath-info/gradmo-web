@@ -455,9 +455,9 @@ class Ajaxcall extends CI_Controller{
                 //   $or_like = array(array('batches.admin_id',1));
                   $cond = array('admin_id'=>$this->session->userdata('uid'));
               }else if($this->session->userdata('role') == 3){
-                //   $cond = '';
+                //   Show batches created by the teacher (admin_id = their uid)
                   $or_like = "";
-                  $cond = array('admin_id'=>$this->session->userdata('admin_id'));
+                  $cond = array('admin_id'=>$this->session->userdata('uid'));
               }else if($this->session->userdata('role') == 'student'){
                   $or_like = "";
                   $cond = array('admin_id'=>$this->session->userdata('admin_id'),'status'=>1);
@@ -596,25 +596,55 @@ class Ajaxcall extends CI_Controller{
     //  die;
         if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
             if(!empty($this->input->post('batch_name',TRUE))){
-                $institute_id = (int) $this->input->post('institute_id', TRUE);
-                if ($institute_id < 1) {
-                    echo json_encode(array('status' => '0', 'msg' => 'Please select an institute.'), JSON_UNESCAPED_SLASHES);
+                $user_role = (int) $this->session->userdata('role');
+                $user_uid = (int) $this->session->userdata('uid');
+                $user_admin_id = (int) $this->session->userdata('admin_id');
+
+                // Validate user role (only admins and teachers can create/edit batches)
+                if($user_role != 1 && $user_role != 3){
+                    echo json_encode(array('status' => '0', 'msg' => 'You are not authorized to manage batches.'), JSON_UNESCAPED_SLASHES);
                     return;
                 }
-                $this->db->reset_query();
-                $this->db->select('id');
-                $this->db->from('users');
-                $this->db->where('id', $institute_id);
-                $this->db->where('admin_id', (int) $this->session->userdata('uid'));
-                $this->db->where('status', 1);
-                $this->db->group_start();
-                $this->db->where('role', 4);
-                $this->db->or_where("LOWER(TRIM(IFNULL(user_type,''))) = 'institute'", null, false);
-                $this->db->group_end();
-                $inst_ok = $this->db->get()->row_array();
-                if (empty($inst_ok)) {
-                    echo json_encode(array('status' => '0', 'msg' => 'Invalid institute selected.'), JSON_UNESCAPED_SLASHES);
-                    return;
+
+                // For edit requests, verify ownership
+                if($this->input->post('type',TRUE) == 'edit'){
+                    $batch_id = (int) $this->input->post('batch_id',TRUE);
+                    $batch_data = $this->db_model->select_data('admin_id','batches use index (id)',array('id'=>$batch_id),1);
+                    if(empty($batch_data)){
+                        echo json_encode(array('status' => '0', 'msg' => 'Batch not found.'), JSON_UNESCAPED_SLASHES);
+                        return;
+                    }
+                    // For teachers: allow edit only if they created it
+                    // For admins: allow edit if they own the batch (admin_id matches their uid)
+                    if($user_role == 3 && $batch_data[0]['admin_id'] != $user_uid){
+                        echo json_encode(array('status' => '0', 'msg' => 'You are not authorized to edit this batch.'), JSON_UNESCAPED_SLASHES);
+                        return;
+                    }
+                    if($user_role == 1 && $batch_data[0]['admin_id'] != $user_uid){
+                        echo json_encode(array('status' => '0', 'msg' => 'This batch does not belong to you.'), JSON_UNESCAPED_SLASHES);
+                        return;
+                    }
+                }
+
+                $institute_id = (int) $this->input->post('institute_id', TRUE);
+                if ($institute_id > 0) {
+                    $check_admin_id = ($user_role == 3) ? $user_admin_id : $user_uid;
+
+                    $this->db->reset_query();
+                    $this->db->select('id');
+                    $this->db->from('users');
+                    $this->db->where('id', $institute_id);
+                    $this->db->where('admin_id', $check_admin_id);
+                    $this->db->where('status', 1);
+                    $this->db->group_start();
+                    $this->db->where('role', 4);
+                    $this->db->or_where("LOWER(TRIM(IFNULL(user_type,''))) = 'institute'", null, false);
+                    $this->db->group_end();
+                    $inst_ok = $this->db->get()->row_array();
+                    if (empty($inst_ok)) {
+                        echo json_encode(array('status' => '0', 'msg' => 'Invalid institute selected.'), JSON_UNESCAPED_SLASHES);
+                        return;
+                    }
                 }
                 $bm = strtolower(trim((string) $this->input->post('batch_mode', TRUE)));
                 $batch_mode = ($bm === 'offline') ? 'Offline' : 'Online';
@@ -690,9 +720,11 @@ class Ajaxcall extends CI_Controller{
                         if($ins==true){
 
                             $batch_id = $this->input->post('batch_id');
-                            $this->db_model->delete_data('batch_subjects',array('batch_id'=>$batch_id));
                             $data = $this->input->post();
-                        
+
+                            if(!empty($data['batch_subject'])){
+                                $this->db_model->delete_data('batch_subjects',array('batch_id'=>$batch_id));
+
                             for($i=0; $i < count($data['batch_subject']); $i++){      
                                 $teacher_id = $data['batch_teacher'][$i];                        
                                 $subjectData = array(
@@ -721,7 +753,8 @@ class Ajaxcall extends CI_Controller{
                                    
                                 }
                             }
-							
+                            }
+
 							// batch fecherd add
 							if(!empty($data['batch_speci_heading'])){
 								for($i=0; $i < count($data['batch_speci_heading']); $i++){     
@@ -815,32 +848,34 @@ class Ajaxcall extends CI_Controller{
                         if($ins){
                             $batch_id = $this->db->insert_id();
                             $data = $this->input->post();
-                            for($i=0; $i < count($data['batch_subject']); $i++){      
-                                $teacher_id = $data['batch_teacher'][$i];
-                                $teacherData = $this->db_model->select_data('id,teach_batch','users use index (id)',array('id'=>$teacher_id),1);
-                               
-                                if(!empty($teacherData)){
-                                    if(!empty($teacherData[0]['teach_batch'])){
-                                        $newBatch = array_unique(array_merge(explode(',',$teacherData[0]['teach_batch']), array($batch_id)));
-                                    }else{
-                                        $newBatch = array($batch_id);
+                            if(!empty($data['batch_subject'])){
+                                for($i=0; $i < count($data['batch_subject']); $i++){
+                                    $teacher_id = $data['batch_teacher'][$i];
+                                    $teacherData = $this->db_model->select_data('id,teach_batch','users use index (id)',array('id'=>$teacher_id),1);
+
+                                    if(!empty($teacherData)){
+                                        if(!empty($teacherData[0]['teach_batch'])){
+                                            $newBatch = array_unique(array_merge(explode(',',$teacherData[0]['teach_batch']), array($batch_id)));
+                                        }else{
+                                            $newBatch = array($batch_id);
+                                        }
+
+                                        $this->db_model->update_data_limit('users',array('teach_batch'=>implode(',',$newBatch)),array('id'=>$teacherData[0]['id']),1);
                                     }
-                                   
-                                    $this->db_model->update_data_limit('users',array('teach_batch'=>implode(',',$newBatch)),array('id'=>$teacherData[0]['id']),1);
+
+                                    $subjectData = array(
+                                        'batch_id'	=> $batch_id,
+                                        'teacher_id' => $teacher_id,
+                                        'subject_id' => $data['batch_subject'][$i],
+                                        'chapter' => json_encode(json_decode($data['batch_chapter'],true)[$i]),
+                                        'sub_start_date' => date('Y-m-d',strtotime($data['sub_start_date'][$i])),
+                                        'sub_end_date'	=> date('Y-m-d',strtotime($data['sub_end_date'][$i])),
+                                        'sub_start_time'	=> date('H:i:s',strtotime($data['sub_start_time'][$i])),
+                                        'sub_end_time'	=> date('H:i:s',strtotime($data['sub_end_time'][$i])),
+                                    );
+
+                                    $this->db_model->insert_data('batch_subjects',$subjectData);
                                 }
-
-                                $subjectData = array(
-                                    'batch_id'	=> $batch_id,
-                                    'teacher_id' => $teacher_id,
-                                    'subject_id' => $data['batch_subject'][$i],
-                                    'chapter' => json_encode(json_decode($data['batch_chapter'],true)[$i]),
-                                    'sub_start_date' => date('Y-m-d',strtotime($data['sub_start_date'][$i])),
-                                    'sub_end_date'	=> date('Y-m-d',strtotime($data['sub_end_date'][$i])),
-                                    'sub_start_time'	=> date('H:i:s',strtotime($data['sub_start_time'][$i])),
-                                    'sub_end_time'	=> date('H:i:s',strtotime($data['sub_end_time'][$i])),
-                                ); 
-
-                                $this->db_model->insert_data('batch_subjects',$subjectData);
                             }
 							// batch fecherd add
 							if(!empty($data['batch_speci_heading'])){
@@ -863,11 +898,61 @@ class Ajaxcall extends CI_Controller{
                     }
                 }
                 
-            } 
-            echo json_encode($resp,JSON_UNESCAPED_SLASHES);  
+            }
+            echo json_encode($resp,JSON_UNESCAPED_SLASHES);
         }else{
             echo $this->lang->line('ltr_not_allowed_msg');
-        }  
+        }
+    }
+
+    function deletebatch(){
+        if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
+            $batch_id = (int) $this->input->post('batch_id', TRUE);
+            if($batch_id < 1){
+                echo json_encode(array('status' => '0', 'msg' => 'Invalid batch ID.'), JSON_UNESCAPED_SLASHES);
+                return;
+            }
+
+            $user_role = (int) $this->session->userdata('role');
+            $user_uid = (int) $this->session->userdata('uid');
+
+            // Validate user role (only admins and teachers can delete batches)
+            if($user_role != 1 && $user_role != 3){
+                echo json_encode(array('status' => '0', 'msg' => 'You are not authorized to delete batches.'), JSON_UNESCAPED_SLASHES);
+                return;
+            }
+
+            // Get batch data
+            $batch_data = $this->db_model->select_data('id,admin_id','batches use index (id)',array('id'=>$batch_id),1);
+            if(empty($batch_data)){
+                echo json_encode(array('status' => '0', 'msg' => 'Batch not found.'), JSON_UNESCAPED_SLASHES);
+                return;
+            }
+
+            // Check ownership
+            // For teachers: allow delete only if they created it (admin_id = their uid)
+            // For admins: allow delete if they created it (admin_id = their uid)
+            if($batch_data[0]['admin_id'] != $user_uid){
+                echo json_encode(array('status' => '0', 'msg' => 'You are not authorized to delete this batch.'), JSON_UNESCAPED_SLASHES);
+                return;
+            }
+
+            // Delete related data
+            $this->db_model->delete_data('batch_subjects', array('batch_id'=>$batch_id));
+            $this->db_model->delete_data('batch_fecherd', array('batch_id'=>$batch_id));
+            $this->db_model->delete_data('student_batchs', array('batch_id'=>$batch_id));
+
+            // Delete the batch
+            $result = $this->db_model->delete_data('batches', array('id'=>$batch_id));
+
+            if($result){
+                echo json_encode(array('status' => '1', 'msg' => 'Batch deleted successfully.'), JSON_UNESCAPED_SLASHES);
+            } else {
+                echo json_encode(array('status' => '0', 'msg' => 'Failed to delete batch.'), JSON_UNESCAPED_SLASHES);
+            }
+        } else {
+            echo $this->lang->line('ltr_not_allowed_msg');
+        }
     }
 
     function batchdetails_table($uid){

@@ -524,4 +524,4 @@ $config['proxy_ips'] = '';
 | Avoids using time() on every request (which disables caching and slows loads).
 |
 */
-$config['frontend_asset_version'] = '1';
+$config['frontend_asset_version'] = '2';

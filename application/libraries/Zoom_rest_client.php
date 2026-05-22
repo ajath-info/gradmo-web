@@ -408,4 +408,142 @@ class Zoom_rest_client
 		}
 		return array('ok' => true);
 	}
+
+	/**
+	 * End an in-progress meeting for all participants (host / S2S with meeting:update).
+	 *
+	 * @return array{ok:bool, error?:string, code?:int}
+	 */
+	public function end_meeting($zoom_meeting_id)
+	{
+		$mid = preg_replace('/\D+/', '', trim((string) $zoom_meeting_id));
+		if ($mid === '') {
+			return array('ok' => false, 'error' => 'Invalid meeting id');
+		}
+		$res = $this->api_request('PUT', 'meetings/' . rawurlencode($mid) . '/status', array('action' => 'end'));
+		if (!$res['ok']) {
+			$http = isset($res['code']) ? (int) $res['code'] : 0;
+			if ($http === 404) {
+				return array('ok' => true);
+			}
+			return array('ok' => false, 'error' => $res['error'], 'code' => $http);
+		}
+		return array('ok' => true);
+	}
+
+	/**
+	 * True when the S2S token lacks a required Zoom scope (HTTP 400 / code 4711).
+	 *
+	 * @param array{ok?:bool, code?:int, error?:string, json?:array} $api_result
+	 */
+	public function is_missing_scope_error(array $api_result)
+	{
+		if (!empty($api_result['ok'])) {
+			return false;
+		}
+		$j = isset($api_result['json']) && is_array($api_result['json']) ? $api_result['json'] : array();
+		if (isset($j['code']) && (int) $j['code'] === 4711) {
+			return true;
+		}
+		$err = isset($api_result['error']) ? strtolower((string) $api_result['error']) : '';
+		return (strpos($err, 'does not contain scopes') !== false || strpos($err, '4711') !== false);
+	}
+
+	/**
+	 * Setup hint after adding Cloud Recording scopes on the Zoom Marketplace app.
+	 */
+	public function cloud_recording_scopes_hint()
+	{
+		return ' In Zoom Marketplace → your Server-to-Server OAuth app → Scopes → Cloud Recording, add: '
+			. 'cloud_recording:read:recording:admin (view meeting recordings), '
+			. 'cloud_recording:read:list_user_recordings:admin (optional list fallback). '
+			. 'Click Continue → Activation → Activate, delete application/cache/zoom_s2s_token.json, then refresh recordings.';
+	}
+
+	/**
+	 * True when Zoom reports no cloud recording for the meeting (HTTP 404 / code 3301).
+	 *
+	 * @param array{ok?:bool, code?:int, error?:string, json?:array} $api_result
+	 */
+	public function is_recording_not_found_response(array $api_result)
+	{
+		if (!empty($api_result['ok'])) {
+			return false;
+		}
+		$http = isset($api_result['code']) ? (int) $api_result['code'] : 0;
+		if ($http === 404) {
+			return true;
+		}
+		$j = isset($api_result['json']) && is_array($api_result['json']) ? $api_result['json'] : array();
+		if (isset($j['code']) && (int) $j['code'] === 3301) {
+			return true;
+		}
+		$err = isset($api_result['error']) ? strtolower((string) $api_result['error']) : '';
+		return (strpos($err, 'does not exist') !== false || strpos($err, '3301') !== false);
+	}
+
+	/**
+	 * Cloud recordings for one meeting id (numeric).
+	 *
+	 * @return array{ok:bool, data?:array, error?:string, code?:int, json?:array, not_found?:bool}
+	 */
+	public function get_meeting_recordings($zoom_meeting_id)
+	{
+		$mid = preg_replace('/\D+/', '', trim((string) $zoom_meeting_id));
+		if ($mid === '') {
+			return array('ok' => false, 'error' => 'Invalid meeting id');
+		}
+		$res = $this->api_request('GET', 'meetings/' . rawurlencode($mid) . '/recordings');
+		if (!$res['ok']) {
+			$out = array(
+				'ok' => false,
+				'error' => $res['error'],
+				'code' => isset($res['code']) ? (int) $res['code'] : 0,
+				'json' => isset($res['json']) && is_array($res['json']) ? $res['json'] : array(),
+			);
+			if ($this->is_recording_not_found_response($res)) {
+				$out['not_found'] = true;
+			}
+			return $out;
+		}
+		return array('ok' => true, 'data' => is_array($res['json']) ? $res['json'] : array());
+	}
+
+	/**
+	 * List host user cloud recordings (filter by meeting id in caller).
+	 * Optional fallback; requires cloud_recording:read:list_user_recordings:admin.
+	 *
+	 * @return array{ok:bool, meetings?:array, error?:string, scope_missing?:bool, code?:int}
+	 */
+	public function list_user_recordings($from_date = null, $to_date = null, $page_size = 100)
+	{
+		$host = $this->resolve_host_user_id();
+		if (!$host['ok']) {
+			return array('ok' => false, 'error' => $host['error']);
+		}
+		$q = array('page_size' => max(1, min(300, (int) $page_size)));
+		if ($from_date !== null && $from_date !== '') {
+			$q['from'] = (string) $from_date;
+		}
+		if ($to_date !== null && $to_date !== '') {
+			$q['to'] = (string) $to_date;
+		}
+		$res = $this->api_request('GET', 'users/' . rawurlencode($host['id']) . '/recordings?' . http_build_query($q));
+		if (!$res['ok']) {
+			$out = array(
+				'ok' => false,
+				'error' => $res['error'],
+				'code' => isset($res['code']) ? (int) $res['code'] : 0,
+			);
+			if ($this->is_missing_scope_error($res)) {
+				$out['scope_missing'] = true;
+			}
+			return $out;
+		}
+		$meetings = array();
+		if (!empty($res['json']['meetings']) && is_array($res['json']['meetings'])) {
+			$meetings = $res['json']['meetings'];
+		}
+		return array('ok' => true, 'meetings' => $meetings);
+	}
 }

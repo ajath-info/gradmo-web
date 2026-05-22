@@ -1,0 +1,7 @@
+[20-May-2026 10:41:19 Asia/Irkutsk] [ZOOM_WEBHOOK] Request data: {"payload":{"plainToken":"2lb6gVdaRyqvgaBAyGlWgQ"},"event_ts":1779244878866,"event":"endpoint.url_validation"}
+[20-May-2026 10:41:19 Asia/Irkutsk] [ZOOM_WEBHOOK] Validation response: {"plainToken":"2lb6gVdaRyqvgaBAyGlWgQ"}
+[20-May-2026 10:42:23 Asia/Irkutsk] [ZOOM_WEBHOOK] Request data: {"payload":{"plainToken":"RGbXO6fQS2S1R3RC5lcRDA"},"event_ts":1779244942829,"event":"endpoint.url_validation"}
+[20-May-2026 10:42:23 Asia/Irkutsk] [ZOOM_WEBHOOK] Validation response: {"plainToken":"RGbXO6fQS2S1R3RC5lcRDA"}
+[20-May-2026 10:42:25 Asia/Irkutsk] [ZOOM_WEBHOOK] Request data: {"payload":{"plainToken":"19pA8I_NSASpqoaB3oS5ow"},"event_ts":1779244945195,"event":"endpoint.url_validation"}
+[20-May-2026 10:42:25 Asia/Irkutsk] [ZOOM_WEBHOOK] Validation response: {"plainToken":"19pA8I_NSASpqoaB3oS5ow"}
+[20-May-2026 10:42:46 Asia/Irkutsk] [ZOOM_WEBHOOK] Request data: []

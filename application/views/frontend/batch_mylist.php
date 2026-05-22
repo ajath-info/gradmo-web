@@ -8,10 +8,10 @@
 	<div class="inst-detail-container inst-list-page-container">
 		<div class="inst-detail-panel inst-list-directory-panel">
 			<div class="inst-panel-head">
-				<h3>My batches</h3>
+				<h3 id="batch_title">My batches</h3>
 				<a class="inst-see-all" href="<?php echo base_url('batch/list'); ?>">All batches</a>
 			</div>
-			<p class="inst-list-intro">Batches you are enrolled in (students) or assigned to teach (teachers). Sign in required.</p>
+			<p class="inst-list-intro" id="batch_intro">Batches you are enrolled in (students) or created (teachers). Sign in required.</p>
 			<div class="inst-list-filter-bar" role="search">
 				<div class="inst-list-filter-fields">
 					<div class="inst-list-filter-item inst-list-filter-grow">
@@ -37,12 +37,13 @@
 (function () {
 	var dataUrl = <?php echo json_encode(isset($batch_mylist_data_url) ? $batch_mylist_data_url : ''); ?>;
 	var detailsBase = <?php echo json_encode(isset($batch_details_base) ? rtrim($batch_details_base, '/') : ''); ?>;
+	var isTeacher = <?php echo isset($is_teacher) && $is_teacher ? 'true' : 'false'; ?>;
 	var page = 1;
 	var limit = 10;
 	var totalPages = 1;
 	function ok(s) { return s === true || s === 'true' || s === 1 || s === '1'; }
-	function postJson(body) {
-		return fetch(dataUrl, {
+	function postJson(url, body) {
+		return fetch(url, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
 			body: JSON.stringify(body)
@@ -53,6 +54,24 @@
 		d.textContent = s == null ? '' : String(s);
 		return d.innerHTML;
 	}
+	function deleteBatch(batchId) {
+		if (!confirm('Are you sure you want to delete this batch?')) {
+			return;
+		}
+		postJson('<?php echo site_url('batch/delete-batch'); ?>', { batch_id: batchId })
+			.then(function (j) {
+				if (ok(j.status)) {
+					alert('Batch deleted successfully!');
+					page = 1;
+					load();
+				} else {
+					alert('Error: ' + (j.msg || 'Failed to delete batch'));
+				}
+			})
+			.catch(function (e) {
+				alert('Error deleting batch: ' + e.message);
+			});
+	}
 	function render(list) {
 		var stack = document.getElementById('batch_my_card_stack');
 		stack.innerHTML = '';
@@ -60,34 +79,97 @@
 			stack.innerHTML = '<p class="inst-muted mb-0 px-2">No batches found.</p>';
 			return;
 		}
+
+		// Separate batches by type
+		var createdBatches = [];
+		var assignedBatches = [];
 		list.forEach(function (it) {
-			var id = it.batch_id || it.batchId || 0;
+			if (it.ownerType === 'created') {
+				createdBatches.push(it);
+			} else {
+				assignedBatches.push(it);
+			}
+		});
+
+		// Helper function to render batch cards
+		function renderBatchCard(batch, isCreated) {
+			var id = batch.batch_id || batch.batchId || batch.id || 0;
 			var href = detailsBase + '?batch_id=' + encodeURIComponent(id);
-			var name = it.batchName || it.title || it.batch_name || '';
-			var imgUrl = (it.batchImage || it.logo || '').trim();
+			var name = batch.batchName || batch.title || batch.batch_name || batch.name || '';
+			var imgUrl = (batch.batchImage || batch.logo || batch.batch_image || '').trim();
 			var thumb = imgUrl
-				? '<div class="inst-mini-logo"><img src="' + esc(imgUrl) + '" alt=""></div>'
-				: '<div class="inst-mini-logo"><i class="fas fa-chalkboard-teacher" style="padding:12px;color:#f5a623;"></i></div>';
-			var instructor = it.instructor || '';
-			var schedule = it.schedule || '';
-			var sd = it.start_date || '';
-			var ed = it.end_date || '';
+				? '<div class="batch-card-image"><img src="' + esc(imgUrl) + '" alt="' + esc(name) + '"></div>'
+				: '<div class="batch-card-image batch-card-image-default"><i class="fas fa-book"></i></div>';
+			var instructor = batch.instructor || '';
+			var schedule = batch.schedule || '';
+			var sd = batch.startDate || batch.start_date || '';
+			var ed = batch.endDate || batch.end_date || '';
 			var dates = '';
 			if (sd || ed) {
 				dates = esc(sd && ed ? (sd + ' – ' + ed) : (sd || ed));
 			}
-			var a = document.createElement('a');
-			a.className = 'inst-batch-card';
-			a.href = href;
-			a.innerHTML = thumb +
-				'<div class="inst-card-body">' +
-				'<p class="inst-card-title-sm">' + esc(name) + '</p>' +
-				(instructor ? '<p class="batch-list-meta"><strong>Instructor:</strong> ' + esc(instructor) + '</p>' : '') +
-				(schedule ? '<p class="batch-list-meta"><strong>Schedule:</strong> ' + esc(schedule) + '</p>' : '') +
-				(dates ? '<p class="batch-list-dates">' + dates + '</p>' : '') +
-				'</div><span class="inst-card-chevron"><i class="fas fa-chevron-right"></i></span>';
-			stack.appendChild(a);
-		});
+
+			var div = document.createElement('div');
+			div.className = 'batch-card';
+
+			var actions = '';
+			var ownerLabel = '';
+			if (isTeacher && isCreated) {
+				ownerLabel = '<span class="batch-badge batch-badge-created">Created by you</span>';
+				actions = '<div class="batch-card-actions">' +
+					'<a href="<?php echo base_url('batch/create/'); ?>' + id + '" class="batch-btn batch-btn-primary">Edit</a>' +
+					'<button type="button" class="batch-btn batch-btn-danger" onclick="deleteBatch(' + id + ')">Delete</button>' +
+					'</div>';
+			} else if (isTeacher && !isCreated) {
+				ownerLabel = '<span class="batch-badge batch-badge-assigned">Assigned</span>';
+			}
+
+			div.innerHTML = thumb +
+				'<div class="batch-card-content">' +
+				'<div class="batch-card-header">' +
+				'<h3 class="batch-card-title">' + esc(name) + '</h3>' +
+				ownerLabel +
+				'</div>' +
+				(dates ? '<p class="batch-card-dates"><i class="far fa-calendar"></i> ' + dates + '</p>' : '') +
+				(instructor ? '<p class="batch-card-meta"><strong>Instructor:</strong> ' + esc(instructor) + '</p>' : '') +
+				(schedule ? '<p class="batch-card-meta"><strong>Schedule:</strong> ' + esc(schedule) + '</p>' : '') +
+				'</div>' +
+				(isCreated ? '' : '<span class="batch-card-chevron"><i class="fas fa-chevron-right"></i></span>') +
+				actions;
+
+			div.style.cursor = 'pointer';
+			div.addEventListener('click', function (e) {
+				if (!e.target.closest('.batch-btn')) {
+					window.location.href = href;
+				}
+			});
+
+			stack.appendChild(div);
+		}
+
+		// Render created batches first (with a section header if both types exist)
+		if (isTeacher && createdBatches.length > 0) {
+			if (assignedBatches.length > 0) {
+				var header1 = document.createElement('h4');
+				header1.style.marginTop = '20px';
+				header1.style.marginBottom = '10px';
+				header1.textContent = 'Created by You';
+				stack.appendChild(header1);
+			}
+			createdBatches.forEach(function (it) { renderBatchCard(it, true); });
+		}
+
+		// Render assigned batches
+		if (assignedBatches.length > 0) {
+			if (isTeacher && createdBatches.length > 0) {
+				var header2 = document.createElement('h4');
+				header2.style.marginTop = '20px';
+				header2.style.marginBottom = '10px';
+				header2.textContent = 'Assigned by Admin';
+				stack.appendChild(header2);
+			}
+			assignedBatches.forEach(function (it) { renderBatchCard(it, false); });
+		}
 	}
 	function load() {
 		var body = {
@@ -96,7 +178,7 @@
 			search: (document.getElementById('batch_my_search').value || '').trim()
 		};
 		document.getElementById('batch_my_list_msg').textContent = 'Loading…';
-		postJson(body).then(function (j) {
+		postJson(dataUrl, body).then(function (j) {
 			var batches = (j.data && j.data.enrolled_batches) ? j.data.enrolled_batches : [];
 			var pag = (j.data && j.data.pagination) ? j.data.pagination : {};
 			if (!ok(j.status)) {
@@ -119,6 +201,18 @@
 		});
 	}
 	document.addEventListener('DOMContentLoaded', function () {
+		// Add create batch button for teachers
+		if (isTeacher) {
+			var panelHead = document.querySelector('.inst-panel-head');
+			if (panelHead) {
+				var createBtn = document.createElement('a');
+				createBtn.href = '<?php echo base_url('batch/create'); ?>';
+				createBtn.className = 'inst-see-all';
+				createBtn.textContent = 'Create Batch';
+				panelHead.appendChild(createBtn);
+			}
+		}
+
 		document.getElementById('batch_my_apply').addEventListener('click', function () { page = 1; load(); });
 		document.getElementById('batch_my_search').addEventListener('keydown', function (e) {
 			if (e.key === 'Enter') {
@@ -133,3 +227,168 @@
 	});
 })();
 </script>
+
+<style>
+.batch-card {
+	display: flex;
+	flex-direction: column;
+	background: #fff;
+	border-radius: 8px;
+	overflow: hidden;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+	transition: all 0.3s ease;
+	position: relative;
+	height: 100%;
+}
+
+.batch-card:hover {
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+	transform: translateY(-2px);
+}
+
+.batch-card-image {
+	width: 100%;
+	height: 200px;
+	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	overflow: hidden;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.batch-card-image img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.batch-card-image-default {
+	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	color: white;
+	font-size: 48px;
+}
+
+.batch-card-content {
+	flex: 1;
+	padding: 16px;
+	display: flex;
+	flex-direction: column;
+}
+
+.batch-card-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 8px;
+	margin-bottom: 12px;
+}
+
+.batch-card-title {
+	margin: 0;
+	font-size: 16px;
+	font-weight: 600;
+	color: #333;
+	flex: 1;
+	line-height: 1.4;
+}
+
+.batch-badge {
+	display: inline-block;
+	padding: 4px 8px;
+	border-radius: 4px;
+	font-size: 12px;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.batch-badge-created {
+	background: #e3f2fd;
+	color: #1976d2;
+}
+
+.batch-badge-assigned {
+	background: #f5f5f5;
+	color: #666;
+}
+
+.batch-card-dates {
+	margin: 8px 0;
+	font-size: 13px;
+	color: #666;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.batch-card-meta {
+	margin: 6px 0;
+	font-size: 13px;
+	color: #777;
+}
+
+.batch-card-actions {
+	display: flex;
+	gap: 8px;
+	margin-top: auto;
+	padding-top: 12px;
+	border-top: 1px solid #eee;
+}
+
+.batch-btn {
+	flex: 1;
+	padding: 8px 12px;
+	border: none;
+	border-radius: 4px;
+	font-size: 13px;
+	font-weight: 600;
+	cursor: pointer;
+	text-decoration: none;
+	text-align: center;
+	transition: all 0.2s ease;
+	display: inline-block;
+}
+
+.batch-btn-primary {
+	background: #667eea;
+	color: white;
+}
+
+.batch-btn-primary:hover {
+	background: #5568d3;
+}
+
+.batch-btn-danger {
+	background: #f44336;
+	color: white;
+}
+
+.batch-btn-danger:hover {
+	background: #da190b;
+}
+
+.batch-card-chevron {
+	position: absolute;
+	top: 50%;
+	right: 16px;
+	transform: translateY(-50%);
+	color: #ccc;
+	font-size: 20px;
+}
+
+.inst-card-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+	gap: 20px;
+	margin-bottom: 20px;
+}
+
+@media (max-width: 768px) {
+	.inst-card-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.batch-card-image {
+		height: 150px;
+	}
+}
+</style>

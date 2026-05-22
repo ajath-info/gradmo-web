@@ -218,7 +218,12 @@ Optional later: `application/controllers/api/zoom/Zoom.php` if Zoom surface grow
 ## 10. Operational checklist
 
 1. Run **`installer/create_batch_zoom_meetings_and_zoom_s2s.sql`** on production DB.
-2. In Zoom Marketplace: create **Server-to-Server OAuth** app; copy Account ID, Client ID, Secret; scopes: `meeting:write:admin`, `meeting:read:admin`, `user:read:admin` (adjust to least privilege).
+2. In Zoom Marketplace: create **Server-to-Server OAuth** app; copy Account ID, Client ID, Secret; scopes (adjust to least privilege):
+   - Meetings: `meeting:write:admin`, `meeting:read:admin`
+   - Host: `user:read:admin` (or set `zoom_host_user_id` in DB and skip email lookup)
+   - **Recorded meetings page:** `cloud_recording:read:recording:admin` (required); `cloud_recording:read:list_user_recordings:admin` (optional fallback)
+   - Host join ZAK (live room): `user:read:token:admin`
+   After scope changes: **Activate** the app and delete `application/cache/zoom_s2s_token.json`.
 3. Fill **`zoom_api_credentials`** row: `s2s_*` + **`zoom_host_email`** (licensed user).
 4. Call **`api/batch/batch-zoom-create`** for each batch (or build admin UI).
 5. Test **live-class-details** join links on web; mobile uses same APIs.

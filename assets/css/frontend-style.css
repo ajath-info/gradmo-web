@@ -464,7 +464,6 @@ header.edu-header-gradmo .edu_header_top {
 header.edu-header-gradmo .edu_logo img.front_logo {
     max-height: 34px;
     width: auto;
-    filter: brightness(0) invert(1);
 }
 header.edu-header-gradmo .edu_header_info {
     padding: 8px 4px;
@@ -1893,7 +1892,7 @@ footer.edu_footer_wrapper.edu-footer-gradmo {
     color: #ffffff;
     border-radius: 0;
     overflow: hidden;
-    background: linear-gradient(90deg, #4d6fec 0%, #4871ee 48%, #4a6de1 100%);
+    background: linear-gradient(90deg, #3787ff 0%, #4871ee 48%, #4a6de1 100%);
 }
 footer.edu_footer_wrapper.edu-footer-gradmo .edu-footer-gradmo__fluid {
     padding: 0;
@@ -1914,8 +1913,8 @@ footer.edu_footer_wrapper.edu-footer-gradmo .edu-footer-gradmo__fluid {
     text-align: center;
 }
 .edu-footer-gradmo__logo-icon {
-    width: 58px;
-    height: 58px;
+    width: 125px;
+    height: 125px;
     margin: 0 auto 14px;
     border-radius: 16px;
     background: rgba(255, 255, 255, 0.15);
@@ -5704,6 +5703,178 @@ body .inst-detail-page .inst-list-directory-panel {
 }
 body .inst-detail-page .inst-list-pagination {
 	flex-wrap: wrap;
+}
+
+/* Mobile top bar — back control (views use .inst-detail-mobile-back; legacy .inst-back) */
+body .inst-detail-page .inst-detail-mobile-bar .inst-detail-mobile-back,
+body .inst-detail-page .inst-detail-mobile-bar .inst-back {
+	position: absolute;
+	left: 12px;
+	top: 50%;
+	transform: translateY(-50%);
+	width: 40px;
+	height: 40px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--Primary-Color, #4d4a81);
+	font-size: 1.1rem;
+	border-radius: 10px;
+	text-decoration: none;
+}
+body .inst-detail-page .inst-detail-mobile-bar .inst-detail-mobile-back:hover,
+body .inst-detail-page .inst-detail-mobile-bar .inst-back:hover {
+	background: rgba(77, 74, 129, 0.08);
+	color: var(--Primary-Color, #4d4a81);
+	text-decoration: none;
+}
+
+@media (min-width: 768px) {
+	body .inst-detail-page .inst-detail-mobile-bar {
+		display: none;
+	}
+}
+
+@media (max-width: 767.98px) {
+	body .inst-detail-page {
+		overflow-x: hidden;
+	}
+	body .inst-detail-page:has(.inst-detail-mobile-bar) .inst-panel-head h3 {
+		display: none;
+	}
+	body .inst-detail-page:has(.inst-detail-mobile-bar) .inst-panel-head {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 6px;
+	}
+	body .inst-detail-page .inst-see-all {
+		white-space: normal;
+		line-height: 1.35;
+	}
+	body .inst-detail-page .inst-detail-panel {
+		margin-top: 8px;
+		padding: 12px 10px 14px;
+		border-radius: 14px;
+	}
+	body .inst-detail-page .inst-panel-intro {
+		font-size: 0.84rem;
+		margin-bottom: 12px;
+	}
+	body .inst-detail-page .inst-teacher-card-actions .btn {
+		flex: 1 1 auto;
+		min-width: calc(50% - 6px);
+	}
+}
+
+/* Exam builder (teacher/exams) */
+body .exb-page {
+	overflow-x: hidden;
+}
+body .exb-page .exb-field .edu_form_field,
+body .exb-page .exb-field textarea.edu_form_field,
+body .exb-page .exb-field input.edu_form_field,
+body .exb-page .exb-field select.edu_form_field {
+	width: 100%;
+	max-width: 100%;
+	box-sizing: border-box;
+	display: block;
+	min-height: 44px;
+	height: auto;
+	margin-top: 0;
+	border-radius: 10px;
+	padding: 10px 12px;
+	border: 1px solid rgba(15, 23, 42, 0.12);
+	font-size: 0.92rem;
+}
+body .exb-page .exb-field textarea.edu_form_field {
+	min-height: 96px;
+	resize: vertical;
+	line-height: 1.45;
+	padding: 10px 12px;
+}
+body .exb-page .exb-field input[type="file"].edu_form_field {
+	padding: 8px 10px;
+	font-size: 0.82rem;
+	background: #fafbfc;
+}
+body .exb-page .exb-field .edu-auth-select {
+	width: 100%;
+	min-width: 0;
+}
+body .exb-page .exb-field .edu-auth-select-menu {
+	z-index: 120;
+}
+body .exb-page .exb-card {
+	overflow: visible;
+}
+@media (max-width: 767.98px) {
+	body .exb-page .inst-detail-container {
+		padding-left: 10px;
+		padding-right: 10px;
+	}
+	body .exb-page .exb-card {
+		padding: 14px 12px;
+		border-radius: 14px;
+	}
+	body .exb-page .exb-field-grid,
+	body .exb-page .exb-question-grid {
+		grid-template-columns: 1fr;
+		gap: 12px;
+	}
+	body .exb-page .exb-actions {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 10px;
+	}
+	body .exb-page .exb-actions .btn {
+		width: 100%;
+		min-height: 44px;
+		margin: 0;
+	}
+	body .exb-page .exb-answer-wrap {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 10px;
+	}
+	body .exb-page .exb-answer-buttons {
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: 8px;
+		width: 100%;
+	}
+	body .exb-page .exb-answer-btn {
+		width: 100%;
+		min-width: 0;
+		height: 44px;
+	}
+	body .exb-page .exb-local-item {
+		flex-direction: column;
+		align-items: stretch;
+	}
+	body .exb-page .exb-local-actions {
+		width: 100%;
+		padding-top: 4px;
+	}
+	body .exb-page .exb-local-edit,
+	body .exb-page .exb-local-remove {
+		min-height: 36px;
+		padding: 6px 0;
+	}
+	body .exb-page .inst-card-grid {
+		grid-template-columns: 1fr;
+		gap: 12px;
+	}
+	body .exb-page .inst-card-grid .inst-batch-card .inst-card-body {
+		padding: 12px;
+	}
+	body .exb-page .inst-teacher-card-actions {
+		flex-direction: column;
+		align-items: stretch;
+	}
+	body .exb-page .inst-teacher-card-actions .btn {
+		width: 100%;
+		min-width: 0;
+	}
 }
 
 
