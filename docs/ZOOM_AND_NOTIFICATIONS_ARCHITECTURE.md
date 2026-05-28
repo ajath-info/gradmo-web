@@ -34,7 +34,7 @@ flowchart TB
 
 - **Single API layer** for website and mobile: Bearer `access_token` from `api/user/login` (same as today).
 - **Zoom**: backend holds **S2S credentials** and creates meetings; clients receive **`join_url`** / passcode (never store raw client secret in apps).
-- **Embedded web meeting** (optional): uses **Meeting SDK** + short-lived **signature** (existing `zoom_signature` + SDK key/secret from `live_class_setting`); **in-browser join** for everyone is usually **`join_url`** (Zoom client or browser).
+- **Embedded web meeting** (optional): uses **Meeting SDK** + short-lived **signature** (SDK key/secret from `zoom_api_credentials`); **in-browser join** for everyone is usually **`join_url`** (Zoom client or browser).
 
 ---
 
@@ -158,7 +158,7 @@ Response:
 
 1. Student opens **Live classes**: `batch/live-classes?batch_id=…` → `api/batch/live-class-list`.
 2. Clicks **Join** → `batch/live-room?live_class_id=…` → `api/batch/live-class-details`.
-3. **`live_class_details`** now, if `batch_zoom_meetings` has an active row, overrides **`join_url` / password / meeting id** for Zoom links and refreshes the embedded SDK signature when SDK keys exist in `live_class_setting`.
+3. **`live_class_details`** now, if `batch_zoom_meetings` has an active row, overrides **`join_url` / password / meeting id** for Zoom links and refreshes the embedded SDK signature when SDK keys exist in **`zoom_api_credentials`** (global).
 
 Admin UI for “link Zoom to batch” can call **`batch-zoom-create`** from the admin/institute panel in a follow-up.
 

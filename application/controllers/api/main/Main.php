@@ -421,62 +421,59 @@ class Main extends MY_Controller
 
 	/**
 	 * GET/POST api/main/pages
-	 * Optional param: page_type (about_us | privacy_policy | terms_condition)
+	 * Optional param: page_type — must match `pages`.`key` (e.g. about_us, privacy_policy).
+	 * Response data keys are built dynamically from the `key` column.
 	 */
 	public function pages()
 	{
 		$data = $_REQUEST;
-		$page_type = isset($data['page_type']) ? strtolower(trim($data['page_type'])) : '';
+		$page_type = isset($data['page_type']) ? trim((string) $data['page_type']) : '';
 
 		$rows = $this->db_model->select_data(
-			'id,subject,content,status,updated_at,created_at',
+			'id,`key`,subject,content,status,updated_at,created_at',
 			'pages',
 			array('status' => 1),
 			'',
 			array('id', 'desc')
 		);
 
-		$mapped = array(
-			'about_us' => array(),
-			'privacy_policy' => array(),
-			'terms_condition' => array()
-		);
+		$mapped = array();
 
 		if (!empty($rows)) {
 			foreach ($rows as $r) {
-				$subject = strtolower(trim((string) $r['subject']));
-				$item = array(
+				$page_key = trim((string) (isset($r['key']) ? $r['key'] : ''));
+				if ($page_key === '') {
+					continue;
+				}
+				if (isset($mapped[$page_key])) {
+					continue;
+				}
+				$mapped[$page_key] = array(
 					'id' => (int) $r['id'],
+					'key' => $page_key,
 					'subject' => isset($r['subject']) ? $r['subject'] : '',
 					'content' => isset($r['content']) ? $r['content'] : '',
 					'updatedAt' => isset($r['updated_at']) ? $r['updated_at'] : '',
-					'createdAt' => isset($r['created_at']) ? $r['created_at'] : ''
+					'createdAt' => isset($r['created_at']) ? $r['created_at'] : '',
 				);
-
-				if (strpos($subject, 'about') !== false) {
-					$mapped['about_us'] = $item;
-				} elseif (strpos($subject, 'privacy') !== false || strpos($subject, 'policy') !== false) {
-					$mapped['privacy_policy'] = $item;
-				} elseif (strpos($subject, 'term') !== false || strpos($subject, 'condition') !== false) {
-					$mapped['terms_condition'] = $item;
-				}
 			}
 		}
 
 		if ($page_type !== '') {
-			if (!array_key_exists($page_type, $mapped)) {
+			if (!isset($mapped[$page_type])) {
+				$available = !empty($mapped) ? implode(', ', array_keys($mapped)) : 'none';
 				echo json_encode(array(
 					'status' => 'false',
-					'msg' => 'Invalid page_type. Use about_us, privacy_policy, or terms_condition'
+					'msg' => 'Invalid page_type. Available keys: ' . $available,
 				));
 				return;
 			}
 
 			echo json_encode(array(
-				'status' => !empty($mapped[$page_type]) ? 'true' : 'false',
+				'status' => 'true',
 				'pageType' => $page_type,
-				'data' => !empty($mapped[$page_type]) ? $mapped[$page_type] : array(),
-				'msg' => !empty($mapped[$page_type]) ? $this->lang->line('ltr_fetch_successfully') : $this->lang->line('ltr_no_record_msg')
+				'data' => $mapped[$page_type],
+				'msg' => $this->lang->line('ltr_fetch_successfully'),
 			));
 			return;
 		}
@@ -484,7 +481,7 @@ class Main extends MY_Controller
 		echo json_encode(array(
 			'status' => 'true',
 			'data' => $mapped,
-			'msg' => $this->lang->line('ltr_fetch_successfully')
+			'msg' => $this->lang->line('ltr_fetch_successfully'),
 		));
 	}
 

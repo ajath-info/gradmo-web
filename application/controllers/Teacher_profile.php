@@ -526,7 +526,9 @@ class Teacher_profile extends CI_Controller {
 		$batch_ids =$this->session->userdata('batch_id');
 		if(!empty($batch_ids)){
         $batCon = "batches.admin_id = $admin_id AND batches.id in ($batch_ids)";
-        $data['live_data']  = $this->db_model->select_data('live_class_setting.*,batches.batch_name','live_class_setting',$batCon,1,array('id','desc'),'',array('batches','batches.id=live_class_setting.batch'));
+		$this->load->library('zoom_live_lib');
+		$data['zoom_sdk_ready'] = $this->zoom_live_lib->meeting_sdk_configured() ? 1 : 0;
+        $data['live_data'] = ($data['zoom_sdk_ready'] && $this->db_model->countAll('batches', $batCon) > 0) ? 1 : 0;
         $data['jetsilive_data']  = $this->db_model->select_data('jetsi_setting.*,batches.batch_name','jetsi_setting',$batCon,1,array('id','desc'),'',array('batches','batches.id=jetsi_setting.batch'));
 		}
 		$this->load->view("common/teacher_header",$header);
@@ -656,10 +658,21 @@ class Teacher_profile extends CI_Controller {
    
     }
     function start_class(){
-		$livedata =$this->db_model->select_data('*','live_class_setting',array('id' =>$_POST['live_class_id']));
+		$batch_id = !empty($_POST['batch_id']) ? (int) $_POST['batch_id'] : (int) $_POST['live_class_id'];
+		if ($batch_id < 1) {
+			redirect('teacher/live-class');
+			return;
+		}
+		$this->load->library('zoom_live_lib');
+		$zoom = $this->zoom_live_lib->prepare_legacy_embed_view_data($batch_id, 1);
+		if (empty($zoom['ok'])) {
+			$this->session->set_flashdata('error', $zoom['msg']);
+			redirect('teacher/live-class');
+			return;
+		}
 		$data=array(
 			'uid'=>$this->session->userdata('uid'),
-			'batch_id'=>$livedata[0]['batch'],
+			'batch_id'=>$batch_id,
 			'subject_id'=>$_POST['subject_id'],
 			'chapter_id'=>$_POST['chapter_id'],
 			'start_time'=>date('h:i:s a'),
@@ -667,12 +680,12 @@ class Teacher_profile extends CI_Controller {
 			);
         $ins = $this->db_model->insert_data('live_class_history',$data);
     	$data['inser_id']=$ins;
-	    $data['signature'] = $this->generate_signature($livedata[0]['zoom_api_key'], $livedata[0]['zoom_api_secret'],$livedata[0]['meeting_number'],1);
-		$data['sdk_key']=$livedata[0]['zoom_api_key'];
-		$data['sdk_secret']=$livedata[0]['zoom_api_secret'];
+	    $data['signature'] = $zoom['signature'];
+		$data['sdk_key']=$zoom['sdk_key'];
+		$data['sdk_secret']=$zoom['sdk_secret'];
 		$data['display_name']=$this->session->userdata('name');
-		$data['meeting_number']=$livedata[0]['meeting_number'];
-		$data['password']=$livedata[0]['password'];
+		$data['meeting_number']=$zoom['meeting_number'];
+		$data['password']=$zoom['password'];
 		
 		$this->load->view("teacher/start_live_class",$data);
 	}

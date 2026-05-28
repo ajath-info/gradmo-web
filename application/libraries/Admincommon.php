@@ -40,6 +40,30 @@ class Admincommon{
 	        $condimp =array('admin_id'=>$uid,'category'=>1);
 	        $where_in="`student_batchs`.`admin_id`=$uid";
 	        $stotal = array('status'=>'1','batch_id !='=>0);
+	    }else if($role==4){
+	        $conds = array('admin_id'=>$uid,'student_id !='=>0);
+	        $condt = array('admin_id'=>$uid,'teacher_id !='=>0);
+	        $cond = array('admin_id'=>$uid,'status'=>'1');
+	        $cond1 = array('admin_id'=>$uid,'status'=>'0');
+	        $condvimp =array('admin_id'=>$uid,'category'=>2);
+	        $condimp =array('admin_id'=>$uid,'category'=>1);
+	        $condbt = array('admin_id'=>$uid);
+	        $stotal = array('admin_id'=>$uid,'status'=>'1','batch_id !='=>0);
+	        $where_in="`student_batchs`.`admin_id`=$uid";
+	    } else {
+	        $conds = array('admin_id'=>$uid,'student_id !='=>0);
+	        $condt = array('admin_id'=>$uid,'teacher_id !='=>0);
+	        $cond = array('admin_id'=>$uid,'status'=>'1');
+	        $cond1 = array('admin_id'=>$uid,'status'=>'0');
+	        $condvimp =array('admin_id'=>$uid,'category'=>2);
+	        $condimp =array('admin_id'=>$uid,'category'=>1);
+	        $condbt = array('admin_id'=>$uid);
+	        $stotal = array('admin_id'=>$uid,'status'=>'1','batch_id !='=>0);
+	        $where_in = '1=0';
+	    }
+	    $where_in = isset($where_in) ? trim((string) $where_in) : '1=0';
+	    if ($where_in === '') {
+	        $where_in = '1=0';
 	    }
 	    $total_student = $this->CI->db_model->custom_slect_query("COUNT(id) AS `numrows`
                     FROM (SELECT `student_batchs`.`id` FROM student_batchs LEFT JOIN `students` ON `students`.`id`=`student_batchs`.`student_id` WHERE $where_in  ".($like1 != ''?"AND name LIKE '%".$like1."%' ESCAPE '!'":'')." GROUP BY `students`.`id`) sada")[0]['numrows'];

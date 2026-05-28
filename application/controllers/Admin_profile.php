@@ -94,6 +94,8 @@ class Admin_profile extends CI_Controller {
 			redirect(base_url().'admin/dashboard');
 		  }elseif($role==3){
 			redirect(base_url().'teacher/dashboard');
+		  }elseif($role==4){
+			redirect(base_url().'admin/dashboard');
 		  }else if($role=='student'){
 			redirect(base_url().'student/my_course');
 		  }
@@ -251,8 +253,10 @@ class Admin_profile extends CI_Controller {
         }
         // $data['batch'] = $this->db_model->select_data('id,batch_name','batches  use index (id)',array('admin_id'=>$this->session->userdata('uid'),'status'=>1),'',array('id','desc'));
         $data['batch'] = $this->db_model->select_data('id,batch_name','batches  use index (id)',$cond,'',array('id','desc'),'','');
-        $data['android_key'] = $this->db_model->select_data('*','zoom_api_credentials');
-		$data['live_data'] = $this->db_model->countAll('live_class_setting',$cond);
+        $data['zoom_credentials'] = $this->db_model->select_data('*','zoom_api_credentials', '', 1, array('id', 'desc'));
+		$this->load->library('zoom_live_lib');
+		$data['zoom_sdk_ready'] = $this->zoom_live_lib->meeting_sdk_configured() ? 1 : 0;
+		$data['live_data'] = $data['zoom_sdk_ready'];
 		$data['all_user'] = $this->db_model->select_data('id,name,role,super_admin','users use index (id)',array('admin_id'=>1 , 'role'=>1));
 		$this->load->view("common/admin_header",$header); 
 		$this->load->view("admin/live_class",$data);
@@ -1072,10 +1076,21 @@ class Admin_profile extends CI_Controller {
 	
 	
 	function start_class(){
-		$livedata =$this->db_model->select_data('*','live_class_setting',array('id' =>$_POST['live_class_id']));
+		$batch_id = !empty($_POST['batch_id']) ? (int) $_POST['batch_id'] : (int) $_POST['live_class_id'];
+		if ($batch_id < 1) {
+			redirect('admin/live-class');
+			return;
+		}
+		$this->load->library('zoom_live_lib');
+		$zoom = $this->zoom_live_lib->prepare_legacy_embed_view_data($batch_id, 1);
+		if (empty($zoom['ok'])) {
+			$this->session->set_flashdata('error', $zoom['msg']);
+			redirect('admin/live-class');
+			return;
+		}
 		$data=array(
 			'uid'=>$this->session->userdata('uid'),
-			'batch_id'=>$livedata[0]['batch'],
+			'batch_id'=>$batch_id,
 			'subject_id'=>$_POST['subject_id'],
 			'chapter_id'=>$_POST['chapter_id'],
 			'start_time'=>date('h:i:s a'),
@@ -1083,7 +1098,6 @@ class Admin_profile extends CI_Controller {
 			'date'=>date('Y-m-d'),
 			'type_class'=>1,
 			);
-		$batch_id = $livedata[0]['batch'];
 		$student_data = $this->db_model->select_data('id','students', array('batch_id'=> $batch_id,'status'=>'1'));
 			$title = 'Live Class';
 			$where = 'live';
@@ -1094,12 +1108,12 @@ class Admin_profile extends CI_Controller {
 		$this->push_notification_android($batch_id,$title,$where,$student_id);
         $ins = $this->db_model->insert_data('live_class_history',$data);
     	$data['inser_id']=$ins;
-		$data['signature'] = $this->generate_signature($livedata[0]['zoom_api_key'], $livedata[0]['zoom_api_secret'],$livedata[0]['meeting_number'],1);
-		$data['sdk_key']=$livedata[0]['zoom_api_key'];
-		$data['sdk_secret']=$livedata[0]['zoom_api_secret'];
+		$data['signature'] = $zoom['signature'];
+		$data['sdk_key']=$zoom['sdk_key'];
+		$data['sdk_secret']=$zoom['sdk_secret'];
 		$data['display_name']=$this->session->userdata('name');
-		$data['meeting_number']=$livedata[0]['meeting_number'];
-		$data['password']=$livedata[0]['password'];
+		$data['meeting_number']=$zoom['meeting_number'];
+		$data['password']=$zoom['password'];
 		$this->load->view("admin/start_live_class",$data);
 	}
 	
@@ -1140,6 +1154,20 @@ class Admin_profile extends CI_Controller {
 		}
 		$this->load->view("common/admin_header",$header);
 		$this->load->view("admin/certificate",$data); 
+		$this->load->view("common/admin_footer");
+	}
+
+	function cms_pages(){
+		$header['title'] = $this->lang->line('ltr_cms_pages');
+		$this->load->view("common/admin_header", $header);
+		$this->load->view("admin/cms_pages");
+		$this->load->view("common/admin_footer");
+	}
+
+	function templates(){
+		$header['title'] = $this->lang->line('ltr_templates');
+		$this->load->view("common/admin_header", $header);
+		$this->load->view("admin/templates");
 		$this->load->view("common/admin_footer");
 	}
 	

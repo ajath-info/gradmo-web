@@ -132,7 +132,7 @@
 		</div>
 	</div>
 </div>
-
+<script src="<?php echo base_url('assets/js/exam-omr-download.js?v=2'); ?>"></script>
 <style>
 .exb-page .inst-detail-container { max-width: 1180px; }
 .exb-layout { display: grid; gap: 18px; }
@@ -320,6 +320,8 @@
 	var addUrl = <?php echo json_encode(isset($exam_add_api_url) ? $exam_add_api_url : ''); ?>;
 	var editUrl = <?php echo json_encode(isset($exam_edit_api_url) ? $exam_edit_api_url : ''); ?>;
 	var deleteUrl = <?php echo json_encode(isset($exam_delete_api_url) ? $exam_delete_api_url : ''); ?>;
+	var submissionsPageUrl = <?php echo json_encode(isset($exam_submissions_page_url) ? $exam_submissions_page_url : ''); ?>;
+	var omrApiUrl = <?php echo json_encode(isset($exam_omr_sheet_api_url) ? $exam_omr_sheet_api_url : ''); ?>;
 
 	var state = {
 		selectedAnswer: '',
@@ -740,6 +742,8 @@
 						'<p class="inst-card-sub">' + esc([(row.scheduledDate || ''), (row.scheduledTime || '')].filter(Boolean).join(' | ')) + '</p>' +
 						'<p class="inst-teacher-card-text">Questions: ' + esc(row.totalQuestion || row.questionCount || 0) + ' | Marks: ' + esc(row.totalMarks || 0) + ' | Duration: ' + esc(row.timeDuration || '-') + ' min</p>' +
 						'<div class="inst-teacher-card-actions">' +
+							'<a class="btn btn-sm btn-success" href="' + esc(submissionsPageUrl + '?exam_id=' + encodeURIComponent(row.id) + '&batch_id=' + encodeURIComponent(currentBatchId())) + '"><i class="fas fa-users"></i> Submissions</a>' +
+							'<button type="button" class="btn btn-sm btn-outline-secondary exb-omr-dl" data-exam-id="' + esc(row.id) + '"><i class="fas fa-download"></i> Download ORM Sheet</button>' +
 							'<button type="button" class="btn btn-sm btn-outline-primary exb-edit" data-id="' + esc(row.id) + '"><i class="fas fa-pen"></i>Edit</button>' +
 							'<button type="button" class="btn btn-sm btn-outline-danger exb-del" data-id="' + esc(row.id) + '"><i class="fas fa-trash-alt"></i>Delete</button>' +
 						'</div>' +
@@ -763,6 +767,22 @@
 				if (examId > 0) {
 					deleteExam(examId);
 				}
+			});
+		});
+		var omrButtons = refs.savedList.querySelectorAll('.exb-omr-dl');
+		Array.prototype.forEach.call(omrButtons, function (btn) {
+			btn.addEventListener('click', function () {
+				var eid = parseInt(btn.getAttribute('data-exam-id') || 0, 10);
+				if (eid < 1 || typeof downloadExamOmrSheet !== 'function') { return; }
+				var old = btn.textContent;
+				btn.disabled = true;
+				btn.textContent = 'Preparing…';
+				downloadExamOmrSheet({ apiUrl: omrApiUrl, token: token, examId: eid, mode: 'blank' }).catch(function (err) {
+					showMessage(err && err.message ? err.message : 'Could not download ORM sheet.', true);
+				}).then(function () {
+					btn.disabled = false;
+					btn.innerHTML = '<i class="fas fa-download"></i> Download ORM Sheet';
+				});
 			});
 		});
 	}

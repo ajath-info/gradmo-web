@@ -44,7 +44,7 @@
 											<label class="edu-auth-label" for="password_show"><?php echo html_escape($this->common->languageTranslator('ltr_password')); ?></label>
 											<div class="edu_field_holder edu-auth-password-wrap">
 												<input type="password" id="password_show" name="password" class="require edu_form_field edu-auth-input" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_password')); ?>" value="<?php echo (isset($_COOKIE['SSD'])) ? html_escape(base64_decode(urldecode(base64_decode($_COOKIE['SSD'])))) : ''; ?>" autocomplete="current-password">
-												<button type="button" class="edu-auth-toggle-pw" onclick="myFunction()" aria-label="Toggle password visibility">
+												<button type="button" class="edu-auth-toggle-pw" aria-label="Toggle password visibility">
 													<i class="fas fa-eye-slash hide_show"></i>
 												</button>
 											</div>

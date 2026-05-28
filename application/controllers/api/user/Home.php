@@ -538,6 +538,7 @@ class Home extends MY_Controller {
 
 	    $isNewUser = false;
 	    $insert_id = 0;
+	    $enrolid = '';
 		
 		// Generate OTP
 	    $otp = rand(1000, 9999);
@@ -651,6 +652,25 @@ class Home extends MY_Controller {
 	    }
 
 	    $this->db->trans_complete();
+
+	    $register_vars = array(
+	        'name' => $name,
+	        'email' => $email,
+	        'mobile' => $mobile,
+	        'password' => $password,
+	        'link' => base_url('login'),
+	        'otp' => (string) $otp,
+	    );
+	    if ($user_type === 'student' && $enrolid !== '') {
+	        $register_vars['enrollment_id'] = $enrolid;
+	    }
+	    $this->common->send_email(array(
+	        'purpose' => 'register',
+	        'user_id' => (int) $insert_id,
+	        'user_type' => $user_type,
+	        'to_email' => $email,
+	        'dynamic_var' => $register_vars,
+	    ));
 
 	    echo json_encode([
 	        'status' => "true",
@@ -2281,11 +2301,23 @@ public function otherBatchData($data){
         $data = $_REQUEST;
         if(isset($data['batch_id'])){
            
-            $setting = $this->db_model->select_data('meeting_number as meetingNumber,password','live_class_setting',array('batch'=>$data['batch_id'],'status'=>1),'',array('id','desc'));
-            $datasdk = $this->db_model->select_data('zoom_api_key,zoom_api_secret','live_class_setting',array('batch'=>$data['batch_id']))[0];
-            $setting[0]['sdkKey']=$datasdk['zoom_api_key'];
-            $setting[0]['sdkSecret']=$datasdk['zoom_api_secret'];
-            if (!empty($setting)){
+            $this->load->library('zoom_live_lib');
+            $batch_id = (int) $data['batch_id'];
+            $sdk = $this->zoom_live_lib->resolve_meeting_sdk_credentials();
+            $bz = $this->zoom_live_lib->get_batch_zoom_meeting_row($batch_id);
+            $meetingNumber = '';
+            $password = '';
+            if (!empty($bz)) {
+                $meetingNumber = $this->zoom_live_lib->public_meeting_number_from_batch_zoom_row($bz);
+                $password = trim((string) (isset($bz['password']) ? $bz['password'] : ''));
+            }
+            $setting = array(array(
+                'meetingNumber' => $meetingNumber,
+                'password' => $password,
+                'sdkKey' => $sdk['sdk_key'],
+                'sdkSecret' => $sdk['sdk_secret'],
+            ));
+            if (!empty($setting[0]['sdkKey']) && !empty($setting[0]['sdkSecret']) && !empty($setting[0]['meetingNumber'])){
                 $arr = array(
                     'data' => $setting,
                     'status' => 'true',
@@ -3818,41 +3850,52 @@ public function otherBatchData($data){
         }
          function reset_password(){
             $data = $_REQUEST;
-            if(!empty($data['email'])){
-                $check_email = $this->db_model->select_data('*','students',array('email'=>trim($_POST['email'])));
-                if(!empty($check_email)){
-                     $a=str_shuffle('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789');
-                    $pwd = substr($a, 0, 5);
-                    
-                    $subj = 'Recover your account password '.$this->common->siteTitle;
-                    $em_msg = 'Hi '.ucwords($userDetails[0]['name']).',<br/><br/>We have received your request to reset your account password.<br/><br/>Here is your new password : '.$pwd.'<br/><br/> This is an auto-generated email. Please do not reply to this email.';
-                    $response = $this->SendMail($_POST['email'],$subj, $em_msg);
-                   
-                    if($response==true){
-                        $data = array( 
-                            'password'=>md5($pwd)
-                        );
-                        $data = $this->security->xss_clean($data);
-                        $this->db_model->update_data('students',$data, array('email'=>$_POST['email']));
-    
-                        $resp = array(
-                            'status'=>'true',
-                            'msg'=>'We\'ve sent an email to '.$_POST['email'].'.' 
-                        );
-                    }
-                    else{
-                        $resp = array(
-                            'status'=>'false',
-                            'msg'=>$this->lang->line('ltr_something_msg')
-                        );
-                    }
-                }else{
-                    $resp = array('status'=>'false','msg'=>$this->lang->line('ltr_email_not_exists_msg'));
-                }
-            }else{
-                $resp = array('status'=>'false','msg'=>$this->lang->line('ltr_missing_parameters_msg')); 
-            } 
-            echo json_encode($resp,JSON_UNESCAPED_SLASHES);
+            $email = isset($data['email']) ? trim((string) $data['email']) : trim((string) $this->input->post('email', TRUE));
+            if ($email === '') {
+                echo json_encode(array('status' => 'false', 'msg' => $this->lang->line('ltr_missing_parameters_msg')), JSON_UNESCAPED_SLASHES);
+                return;
+            }
+
+            $student = $this->db_model->select_data('id,name,email', 'students use index (id)', array('email' => $email), 1);
+            $user = $this->db_model->select_data('id,name,email,password', 'users use index (id)', array('email' => $email), 1);
+
+            if (empty($student) && empty($user)) {
+                echo json_encode(array('status' => 'false', 'msg' => $this->lang->line('ltr_email_not_exists_msg')), JSON_UNESCAPED_SLASHES);
+                return;
+            }
+
+            $pwd = substr(str_shuffle('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'), 0, 8);
+            $name = !empty($student[0]['name']) ? $student[0]['name'] : $user[0]['name'];
+            $user_id = !empty($student[0]['id']) ? (int) $student[0]['id'] : (int) $user[0]['id'];
+            $user_type = !empty($student[0]) ? 'student' : (isset($user[0]['user_type']) ? $user[0]['user_type'] : 'teacher');
+
+            $mail = $this->common->send_email(array(
+                'purpose' => 'forgot_password',
+                'user_id' => $user_id,
+                'user_type' => $user_type,
+                'to_email' => $email,
+                'dynamic_var' => array(
+                    'name' => $name,
+                    'password' => $pwd,
+                    'link' => base_url('login'),
+                ),
+            ));
+
+            if (empty($mail['status'])) {
+                echo json_encode(array('status' => 'false', 'msg' => $this->lang->line('ltr_something_msg')), JSON_UNESCAPED_SLASHES);
+                return;
+            }
+
+            if (!empty($student[0])) {
+                $this->db_model->update_data('students', array('password' => md5($pwd)), array('email' => $email));
+            } else {
+                $this->db_model->update_data('users', array('password' => password_hash($pwd, PASSWORD_DEFAULT)), array('email' => $email));
+            }
+
+            echo json_encode(array(
+                'status' => 'true',
+                'msg' => 'We\'ve sent an email to ' . $email . '.',
+            ), JSON_UNESCAPED_SLASHES);
         }
         
         //new update
@@ -4005,11 +4048,18 @@ public function otherBatchData($data){
     			                 'admin_id'=>$admin_ids
     					                 );
     		 	   $this->db_model->insert_data('student_batchs',$data_batch);
-    			    // send email 
-    			   $title = $this->db_model->select_data('site_title','site_details','',1,array('id','desc'))[0]['site_title'];
-                    $subj = $title.'- '.$this->lang->line('ltr_credentials');
-                    $em_msg = $this->lang->line('ltr_hey').' '.ucwords($data['name']).', '.$this->lang->line('ltr_congratulation').' <br/><br/>'.$this->lang->line('ltr_successfully_enrolled').'<br/><br/>'.$this->lang->line('ltr_login_details').'<br/><br/> '.$this->lang->line('ltr_enrolment_id').' : '.$enrolid.'<br/><br/>'.$this->lang->line('ltr_password').' : '.$password.'';
-                    $this->SendMail($data['email'], $subj, $em_msg);
+    			    $this->common->send_email(array(
+    			        'purpose' => 'enrolled_batch',
+    			        'user_id' => (int) $data['student_id'],
+    			        'user_type' => 'student',
+    			        'to_email' => isset($studentData[0]['userEmail']) ? $studentData[0]['userEmail'] : '',
+    			        'dynamic_var' => array(
+    			            'name' => isset($studentData[0]['fullName']) ? $studentData[0]['fullName'] : '',
+    			            'batch_name' => isset($studentData[0]['batchName']) ? $studentData[0]['batchName'] : '',
+    			            'enrollment_id' => isset($studentData[0]['enrollmentId']) ? $studentData[0]['enrollmentId'] : '',
+    			            'link' => base_url('login'),
+    			        ),
+    			    ));
         		}
                 
             }else{
@@ -4934,8 +4984,21 @@ public function otherBatchData($data){
             if ($this->authorize_student_request($student_id, is_array($data) ? $data : null) === false) {
                 return;
             }
+            $student_row = $this->db_model->select_data('name,email', 'students use index (id)', array('id' => $student_id), 1);
             $check = $this->db_model->update_data_limit('students use index (id)',array('status'=>0,),array('id'=>$student_id),1);
             if($check){
+                if (!empty($student_row[0])) {
+                    $this->common->send_email(array(
+                        'purpose' => 'account_delete',
+                        'user_id' => $student_id,
+                        'user_type' => 'student',
+                        'to_email' => $student_row[0]['email'],
+                        'dynamic_var' => array(
+                            'name' => $student_row[0]['name'],
+                            'link' => base_url('login'),
+                        ),
+                    ));
+                }
                $arr = array(
                    'status'=>true,
                    'message'=>$this->lang->line('ltr_accountDelete')

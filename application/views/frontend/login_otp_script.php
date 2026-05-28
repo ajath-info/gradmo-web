@@ -77,6 +77,27 @@
 	}
 
 	document.addEventListener('DOMContentLoaded', function () {
+		var pwInput = document.getElementById('password_show');
+		var pwBtn = document.querySelector('.edu-auth-toggle-pw');
+		if (pwBtn && pwInput) {
+			pwBtn.addEventListener('click', function () {
+				var icon = pwBtn.querySelector('.hide_show, i');
+				if (pwInput.type === 'password') {
+					pwInput.type = 'text';
+					if (icon) {
+						icon.classList.remove('fa-eye-slash');
+						icon.classList.add('fa-eye');
+					}
+				} else {
+					pwInput.type = 'password';
+					if (icon) {
+						icon.classList.remove('fa-eye');
+						icon.classList.add('fa-eye-slash');
+					}
+				}
+			});
+		}
+
 		var sendBtn = document.getElementById('otp_send_btn');
 		var verifyBtn = document.getElementById('otp_verify_login_btn');
 		if (!sendBtn || !verifyBtn) {

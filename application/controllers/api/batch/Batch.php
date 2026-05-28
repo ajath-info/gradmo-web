@@ -194,179 +194,36 @@ class Batch extends MY_Controller
 		return false;
 	}
 
+	/** @var Zoom_live_lib|null */
+	private $zoom_live_lib;
+
+	private function zoom_live()
+	{
+		if ($this->zoom_live_lib === null) {
+			$this->load->library('zoom_live_lib');
+			$this->zoom_live_lib = $this->zoom_live_lib;
+		}
+		return $this->zoom_live_lib;
+	}
+
 	/**
-	 * Meeting SDK signature (JWT for General app, legacy for old SDK Key in live_class_setting).
+	 * Meeting SDK signature via zoom_api_credentials (see Zoom_live_lib).
 	 *
 	 * @param string $mode 'jwt'|'legacy'|'auto'
 	 */
 	private function zoom_signature($sdk_key, $sdk_secret, $meeting_number, $role, $mode = 'auto')
 	{
-		$sdk_key = $this->normalize_zoom_credential($sdk_key);
-		$sdk_secret = $this->normalize_zoom_credential($sdk_secret);
-		$meeting_number = preg_replace('/\D+/', '', trim((string) $meeting_number));
-		$role = (int) $role;
-		if ($sdk_key === '' || $sdk_secret === '' || $meeting_number === '') {
-			return '';
-		}
-		if ($mode === 'auto') {
-			$mode = $this->zoom_signature_mode_for_credentials($sdk_key, $sdk_secret);
-		}
-		if ($mode === 'legacy') {
-			return $this->zoom_signature_legacy($sdk_key, $sdk_secret, $meeting_number, $role);
-		}
-		return $this->zoom_signature_jwt($sdk_key, $sdk_secret, $meeting_number, $role);
-	}
-
-	/** @see https://developers.zoom.us/docs/meeting-sdk/auth/ */
-	private function zoom_signature_jwt($sdk_key, $sdk_secret, $meeting_number, $role)
-	{
-		$iat = time() - 30;
-		$exp = $iat + 60 * 60 * 2;
-		$header = array('alg' => 'HS256', 'typ' => 'JWT');
-		$payload = array(
-			'appKey' => $sdk_key,
-			'mn' => (string) $meeting_number,
-			'role' => (int) $role,
-			'iat' => $iat,
-			'exp' => $exp,
-			'tokenExp' => $exp,
-		);
-		$segments = array(
-			$this->zoom_jwt_base64url(json_encode($header)),
-			$this->zoom_jwt_base64url(json_encode($payload)),
-		);
-		$signing_input = $segments[0] . '.' . $segments[1];
-		$signature = hash_hmac('sha256', $signing_input, $sdk_secret, true);
-		$segments[] = $this->zoom_jwt_base64url($signature);
-		return implode('.', $segments);
-	}
-
-	/** Legacy Meeting SDK signature (same as Student_profile::generate_signature). */
-	private function zoom_signature_legacy($sdk_key, $sdk_secret, $meeting_number, $role)
-	{
-		$time = (time() - 5 * 60) * 1000;
-		$data = base64_encode($sdk_key . $meeting_number . $time . $role);
-		$hash = hash_hmac('sha256', $data, $sdk_secret, true);
-		$_sig = $sdk_key . '.' . $meeting_number . '.' . $time . '.' . $role . '.' . base64_encode($hash);
-		return rtrim(strtr(base64_encode($_sig), '+/', '-_'), '=');
-	}
-
-	private function zoom_signature_mode_for_credentials($sdk_key, $sdk_secret)
-	{
-		// General app Client ID/Secret (Meeting SDK Embed) → JWT. Old SDK Key in live_class_setting → legacy.
-		if (strlen($sdk_secret) >= 36 || strlen($sdk_key) >= 22) {
-			return 'jwt';
-		}
-		if (strlen($sdk_key) >= 18 && strlen($sdk_key) <= 24 && strlen($sdk_secret) >= 22 && strlen($sdk_secret) <= 40) {
-			return 'legacy';
-		}
-		return 'jwt';
-	}
-
-	private function normalize_zoom_credential($value)
-	{
-		$s = trim((string) $value);
-		if ($s !== '' && strlen($s) >= 3 && substr($s, 0, 3) === "\xEF\xBB\xBF") {
-			$s = trim(substr($s, 3));
-		}
-		return $s;
-	}
-
-	private function zoom_jwt_base64url($data)
-	{
-		return rtrim(strtr(base64_encode((string) $data), '+/', '-_'), '=');
+		return $this->zoom_live()->build_signature($sdk_key, $sdk_secret, $meeting_number, $role, $mode);
 	}
 
 	/**
-	 * Zoom Meeting SDK (Web) credentials — NOT Server-to-Server OAuth.
-	 * Order: meeting_sdk_* → config → live_class_setting (batch) → android_*.
+	 * Zoom Meeting SDK credentials from zoom_api_credentials only (global).
 	 *
 	 * @return array{sdk_key:string, sdk_secret:string, signature_mode:string, source:string}
 	 */
-	private function resolve_zoom_meeting_sdk_credentials($batch_id)
+	private function resolve_zoom_meeting_sdk_credentials($batch_id = 0)
 	{
-		$batch_id = (int) $batch_id;
-		$key = '';
-		$secret = '';
-		$source = '';
-		if (is_file(APPPATH . 'config/zoom.php')) {
-			$this->config->load('zoom', true);
-			$cfg_k = $this->normalize_zoom_credential((string) $this->config->item('meeting_sdk_key', 'zoom'));
-			$cfg_s = $this->normalize_zoom_credential((string) $this->config->item('meeting_sdk_secret', 'zoom'));
-			if ($cfg_k !== '' && $cfg_s !== '') {
-				return array(
-					'sdk_key' => $cfg_k,
-					'sdk_secret' => $cfg_s,
-					'signature_mode' => 'jwt',
-					'source' => 'config',
-				);
-			}
-		}
-		$cols = 'android_api_key,android_api_secret';
-		if ($this->db->field_exists('meeting_sdk_key', 'zoom_api_credentials')) {
-			$cols = 'meeting_sdk_key,meeting_sdk_secret,android_api_key,android_api_secret';
-		}
-		$cred = $this->db_model->select_data($cols, 'zoom_api_credentials', '', 1, array('id', 'desc'));
-		if (!empty($cred[0])) {
-			if (isset($cred[0]['meeting_sdk_key']) && trim((string) $cred[0]['meeting_sdk_key']) !== '') {
-				$key = $this->normalize_zoom_credential($cred[0]['meeting_sdk_key']);
-				$source = 'meeting_sdk';
-			}
-			if (isset($cred[0]['meeting_sdk_secret']) && trim((string) $cred[0]['meeting_sdk_secret']) !== '') {
-				$secret = $this->normalize_zoom_credential($cred[0]['meeting_sdk_secret']);
-			}
-			if ($secret === '' && trim((string) $cred[0]['android_api_secret']) !== '') {
-				$secret = $this->normalize_zoom_credential($cred[0]['android_api_secret']);
-			}
-			if ($key === '' && trim((string) $cred[0]['android_api_key']) !== '') {
-				$key = $this->normalize_zoom_credential($cred[0]['android_api_key']);
-				$source = 'android_api';
-			}
-		}
-		if ($key === '' || $secret === '') {
-			if (is_file(APPPATH . 'config/zoom.php')) {
-				$this->config->load('zoom', true);
-				if ($key === '') {
-					$v = $this->config->item('meeting_sdk_key', 'zoom');
-					$key = $this->normalize_zoom_credential(is_string($v) ? $v : '');
-					if ($key !== '') {
-						$source = 'config';
-					}
-				}
-				if ($secret === '') {
-					$v = $this->config->item('meeting_sdk_secret', 'zoom');
-					$secret = $this->normalize_zoom_credential(is_string($v) ? $v : '');
-				}
-			}
-		}
-		if ($batch_id > 0 && ($key === '' || $secret === '')) {
-			$row = $this->db_model->select_data(
-				'zoom_api_key,zoom_api_secret',
-				'live_class_setting',
-				array('batch' => $batch_id, 'status' => 1),
-				1,
-				array('id', 'desc')
-			);
-			if (!empty($row[0])) {
-				if ($key === '') {
-					$key = $this->normalize_zoom_credential($row[0]['zoom_api_key']);
-					$source = 'live_class_setting';
-				}
-				if ($secret === '') {
-					$secret = $this->normalize_zoom_credential($row[0]['zoom_api_secret']);
-				}
-			}
-		}
-		$mode = 'jwt';
-		if ($source === 'live_class_setting' || $source === 'android_api') {
-			$mode = 'legacy';
-		}
-		return array(
-			'sdk_key' => $key,
-			'sdk_secret' => $secret,
-			'signature_mode' => $mode,
-			'source' => $source,
-		);
+		return $this->zoom_live()->resolve_meeting_sdk_credentials();
 	}
 
 	/**
@@ -374,7 +231,6 @@ class Batch extends MY_Controller
 	 */
 	private function zoom_sdk_credential_diagnostic($batch_id)
 	{
-		$batch_id = (int) $batch_id;
 		$cols = 'meeting_sdk_key,meeting_sdk_secret,android_api_key,android_api_secret,s2s_client_id';
 		if (!$this->db->field_exists('meeting_sdk_key', 'zoom_api_credentials')) {
 			return '';
@@ -383,11 +239,12 @@ class Batch extends MY_Controller
 		if (empty($cred[0])) {
 			return 'Add meeting_sdk_key and meeting_sdk_secret in zoom_api_credentials (Zoom General app → Development → Client ID + Client Secret).';
 		}
-		$msk = $this->normalize_zoom_credential($cred[0]['meeting_sdk_key']);
-		$mss = $this->normalize_zoom_credential($cred[0]['meeting_sdk_secret']);
-		$ak = $this->normalize_zoom_credential($cred[0]['android_api_key']);
-		$as = $this->normalize_zoom_credential($cred[0]['android_api_secret']);
-		$s2id = $this->normalize_zoom_credential($cred[0]['s2s_client_id']);
+		$zl = $this->zoom_live();
+		$msk = $zl->normalize_zoom_credential($cred[0]['meeting_sdk_key']);
+		$mss = $zl->normalize_zoom_credential($cred[0]['meeting_sdk_secret']);
+		$ak = $zl->normalize_zoom_credential($cred[0]['android_api_key']);
+		$as = $zl->normalize_zoom_credential($cred[0]['android_api_secret']);
+		$s2id = $zl->normalize_zoom_credential($cred[0]['s2s_client_id']);
 		if ($msk === '' || $mss === '') {
 			return 'Set meeting_sdk_key and meeting_sdk_secret in zoom_api_credentials from your Zoom General app (Meeting SDK) Development credentials.';
 		}
@@ -396,12 +253,6 @@ class Batch extends MY_Controller
 		}
 		if ($s2id !== '' && $msk === $s2id) {
 			return 'Wrong credentials: meeting_sdk_key must not be the Gradmo Server-to-Server Client ID. Use the General app (Meeting SDK) Development Client ID and Client Secret instead.';
-		}
-		if ($batch_id > 0) {
-			$batch = $this->db_model->select_data('zoom_api_key,zoom_api_secret', 'live_class_setting', array('batch' => $batch_id, 'status' => 1), 1, array('id', 'desc'));
-			if (!empty($batch[0]['zoom_api_key']) && !empty($batch[0]['zoom_api_secret']) && ($msk !== $this->normalize_zoom_credential($batch[0]['zoom_api_key']))) {
-				return 'This batch has different Zoom keys in Live class settings than in zoom_api_credentials. Use one General app Client ID + Secret pair everywhere, or clear the old batch keys in Live class settings.';
-			}
 		}
 		if ($as !== '' && $mss !== $as) {
 			return 'Tip: meeting_sdk_secret does not match android_api_secret. Use the same General app Client Secret in meeting_sdk_secret (and remove or update the old Android SDK keys).';
@@ -412,15 +263,7 @@ class Batch extends MY_Controller
 	/** Public meeting number for Meeting SDK (stored id first; join URL as fallback). */
 	private function zoom_public_meeting_number_from_batch_zoom_row(array $row)
 	{
-		$id = preg_replace('/\D+/', '', trim((string) (isset($row['zoom_meeting_id']) ? $row['zoom_meeting_id'] : '')));
-		if (strlen($id) >= 9 && strlen($id) <= 12) {
-			return $id;
-		}
-		$join = isset($row['join_url']) ? trim((string) $row['join_url']) : '';
-		if ($join !== '' && preg_match('#(?:/j/|/wc/join/|/join/)(\d{9,12})#i', $join, $m)) {
-			return preg_replace('/\D+/', '', $m[1]);
-		}
-		return $id;
+		return $this->zoom_live()->public_meeting_number_from_batch_zoom_row($row);
 	}
 
 	/** Zoom SDK role: 1 host (teacher/institute), 0 participant (student). */
@@ -1669,14 +1512,36 @@ class Batch extends MY_Controller
 			return;
 		}
 		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+		$teacher_id = (int) (isset($payload['uid']) ? $payload['uid'] : 0);
+
+		// Create-batch form: no batch_id yet — return all subjects for teacher's institute admin.
 		if ($batch_id < 1) {
-			$this->api_json(false, 'batch_id is required');
+			if (strtolower(trim((string) $payload['ut'])) !== 'teacher' && (string) $payload['ut'] !== '3') {
+				$this->api_json(false, 'batch_id is required');
+				return;
+			}
+			$admin_id = $this->teacher_admin_id($teacher_id);
+			if ($admin_id < 1) {
+				$this->api_json(false, 'Teacher not found', array(), 404);
+				return;
+			}
+			$rows = $this->teacher_batch_list_subjects($admin_id);
+			$list = array();
+			if (!empty($rows)) {
+				foreach ($rows as $r) {
+					$list[] = array(
+						'subjectId' => (int) $r['id'],
+						'subjectName' => (string) $r['subject_name'],
+					);
+				}
+			}
+			$this->api_json(true, 'Success', array('batch_id' => 0, 'subjects' => $list));
 			return;
 		}
+
 		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
 			return;
 		}
-		$teacher_id = (int) $payload['uid'];
 		$this->db->distinct();
 		$this->db->select('bs.subject_id as subjectId,s.subject_name as subjectName');
 		$this->db->from('batch_subjects bs');
@@ -2948,17 +2813,6 @@ class Batch extends MY_Controller
 
 		$meeting_number = '';
 		$meeting_pwd = '';
-		$meeting = $this->db_model->select_data(
-			'meeting_number as meetingNumber,password',
-			'live_class_setting',
-			array('batch' => $batch_id, 'status' => 1),
-			1,
-			array('id', 'desc')
-		);
-		if (!empty($meeting[0])) {
-			$meeting_number = trim((string) $meeting[0]['meetingNumber']);
-			$meeting_pwd = trim((string) (isset($meeting[0]['password']) ? $meeting[0]['password'] : ''));
-		}
 
 		if ($this->db->table_exists('batch_zoom_meetings')) {
 			$bz = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id, 'status' => 1), 1, array('id', 'desc'));
@@ -4352,6 +4206,734 @@ class Batch extends MY_Controller
 	}
 
 	/**
+	 * Load exam row for teacher/institute submission views.
+	 *
+	 * @param int $exam_id
+	 * @return array|false
+	 */
+	private function teacher_exam_row_by_id($exam_id)
+	{
+		$exam_id = (int) $exam_id;
+		if ($exam_id < 1) {
+			return false;
+		}
+		$rows = $this->db_model->select_data(
+			'id,admin_id as adminId,name,type,format,batch_id as batchId,total_question as totalQuestion,time_duration as timeDuration,question_ids as questionIds,mock_sheduled_date as scheduledDate,mock_sheduled_time as scheduledTime,total_marks as totalMarks,marking_parcent as markingPercent,status,added_by as addedBy,added_at as addedAt',
+			'exams',
+			array('id' => $exam_id, 'status' => 1),
+			1
+		);
+		return !empty($rows[0]) ? $rows[0] : false;
+	}
+
+	/**
+	 * @param array $result_row
+	 * @param array $exam_row
+	 * @return array
+	 */
+	private function teacher_exam_format_submission_list_item(array $result_row, array $exam_row)
+	{
+		$student_id = isset($result_row['student_id']) ? (int) $result_row['student_id'] : 0;
+		$student_name = '';
+		$student_image_url = '';
+		if ($student_id > 0) {
+			$st = $this->db_model->select_data('name,image', 'students', array('id' => $student_id), 1);
+			if (!empty($st[0])) {
+				$student_name = isset($st[0]['name']) ? (string) $st[0]['name'] : '';
+				$img = isset($st[0]['image']) ? trim((string) $st[0]['image']) : '';
+				$student_image_url = $img !== '' ? profile_image_url($img, 2, 'student') : '';
+			}
+		}
+		$summary = $this->student_exam_format_result_payload($exam_row, $result_row);
+		$submit_date = isset($result_row['date']) ? (string) $result_row['date'] : '';
+		$submit_time = isset($result_row['submit_time']) ? (string) $result_row['submit_time'] : '';
+		$submitted_at = trim($submit_date . ' ' . $submit_time);
+		return array(
+			'submissionId' => isset($result_row['id']) ? (int) $result_row['id'] : 0,
+			'studentId' => $student_id,
+			'studentName' => $student_name !== '' ? $student_name : ('Student #' . $student_id),
+			'studentImageUrl' => $student_image_url,
+			'examId' => isset($exam_row['id']) ? (int) $exam_row['id'] : 0,
+			'examName' => isset($exam_row['name']) ? (string) $exam_row['name'] : '',
+			'submitDate' => $submit_date,
+			'submitTime' => $submit_time,
+			'submittedAt' => $submitted_at,
+			'startTime' => isset($summary['startTime']) ? $summary['startTime'] : '',
+			'timeTaken' => isset($summary['timeTaken']) ? $summary['timeTaken'] : '',
+			'totalQuestion' => isset($summary['totalQuestion']) ? (int) $summary['totalQuestion'] : 0,
+			'attemptedQuestion' => isset($summary['attemptedQuestion']) ? (int) $summary['attemptedQuestion'] : 0,
+			'correctAnswers' => isset($summary['correctAnswers']) ? (int) $summary['correctAnswers'] : 0,
+			'wrongAnswers' => isset($summary['wrongAnswers']) ? (int) $summary['wrongAnswers'] : 0,
+			'percentage' => isset($summary['percentage']) ? $summary['percentage'] : 0,
+			'score' => isset($summary['score']) ? $summary['score'] : 0,
+			'scoreLabel' => isset($summary['scoreLabel']) ? $summary['scoreLabel'] : '',
+			'remarks' => isset($summary['remarks']) ? $summary['remarks'] : '',
+			'statusLabel' => 'Submitted',
+		);
+	}
+
+	/**
+	 * @param array $exam_row
+	 * @param array $result_row
+	 * @return array
+	 */
+	private function teacher_exam_build_answer_review(array $exam_row, array $result_row)
+	{
+		$answer_map = $this->student_exam_normalize_answer_map(isset($result_row['question_answer']) ? $result_row['question_answer'] : '');
+		$question_ids = $this->student_exam_decode_question_ids(isset($exam_row['questionIds']) ? $exam_row['questionIds'] : '');
+		$questions = $this->student_exam_fetch_questions($question_ids, true);
+		$review = array();
+		$index = 0;
+		foreach ($questions as $question) {
+			$index++;
+			$qid = isset($question['id']) ? (int) $question['id'] : 0;
+			$correct = isset($question['answer']) ? strtoupper(trim((string) $question['answer'])) : '';
+			$selected = ($qid > 0 && isset($answer_map[$qid])) ? $answer_map[$qid] : '';
+			$attempted = $selected !== '';
+			$is_correct = $attempted && $selected === $correct;
+			$review[] = array(
+				'questionId' => $qid,
+				'displayIndex' => $index,
+				'question' => isset($question['question']) ? (string) $question['question'] : '',
+				'options' => isset($question['options']) ? $question['options'] : array(),
+				'questionImageUrl' => isset($question['questionImageUrl']) ? (string) $question['questionImageUrl'] : '',
+				'studentAnswer' => $selected,
+				'correctAnswer' => $correct,
+				'attempted' => $attempted ? 1 : 0,
+				'isCorrect' => $is_correct ? 1 : 0,
+			);
+		}
+		return $review;
+	}
+
+	/**
+	 * POST/GET api/batch/exam-submission-list
+	 * Auth: teacher | institute. Required: exam_id. Optional: search, sort, page, limit
+	 */
+	public function exam_submission_list()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$exam_id = isset($data['exam_id']) ? (int) $data['exam_id'] : 0;
+		if ($exam_id < 1) {
+			$this->api_json(false, 'exam_id is required');
+			return;
+		}
+		$exam_row = $this->teacher_exam_row_by_id($exam_id);
+		if ($exam_row === false) {
+			$this->api_json(false, 'Exam not found');
+			return;
+		}
+		$batch_id = (int) $exam_row['batchId'];
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+
+		$search = isset($data['search']) ? trim((string) $data['search']) : '';
+		$sort = isset($data['sort']) ? strtolower(trim((string) $data['sort'])) : 'date_desc';
+		$pg = $this->parse_api_list_pagination($data);
+		$table = $this->student_exam_result_table((int) $exam_row['type']);
+
+		$this->db->from($table . ' r');
+		$this->db->where('r.paper_id', $exam_id);
+		if ($search !== '') {
+			$this->db->join('students s', 's.id = r.student_id', 'inner');
+			$this->db->like('s.name', $search);
+		}
+		$total = (int) $this->db->count_all_results();
+
+		$this->db->select('r.*');
+		$this->db->from($table . ' r');
+		$this->db->where('r.paper_id', $exam_id);
+		$joined_students = false;
+		if ($search !== '') {
+			$this->db->join('students s', 's.id = r.student_id', 'inner');
+			$this->db->like('s.name', $search);
+			$joined_students = true;
+		}
+		if ($sort === 'name_asc' || $sort === 'name_desc') {
+			if (!$joined_students) {
+				$this->db->join('students s', 's.id = r.student_id', 'left');
+			}
+			$this->db->order_by('s.name', ($sort === 'name_desc') ? 'desc' : 'asc');
+		} elseif ($sort === 'percentage_asc') {
+			$this->db->order_by('r.percentage', 'asc');
+		} elseif ($sort === 'percentage_desc') {
+			$this->db->order_by('r.percentage', 'desc');
+		} elseif ($sort === 'date_asc') {
+			$this->db->order_by('r.date', 'asc');
+			$this->db->order_by('r.submit_time', 'asc');
+		} else {
+			$this->db->order_by('r.date', 'desc');
+			$this->db->order_by('r.submit_time', 'desc');
+		}
+		$this->db->order_by('r.id', 'desc');
+		$this->db->limit($pg['limit'], $pg['offset']);
+		$rows = $this->db->get()->result_array();
+
+		$list = array();
+		if (!empty($rows)) {
+			foreach ($rows as $row) {
+				$list[] = $this->teacher_exam_format_submission_list_item($row, $exam_row);
+			}
+		}
+
+		$exam_payload = $this->student_exam_format_exam_payload($exam_row, $this->student_exam_batch_card($batch_id));
+		$this->api_json(true, 'Success', array(
+			'exam_id' => $exam_id,
+			'exam' => $exam_payload,
+			'submissions' => $list,
+			'stats' => array(
+				'submittedCount' => $total,
+			),
+			'pagination' => $this->build_api_list_pagination_meta($pg['page'], $pg['limit'], $total),
+		));
+	}
+
+	/**
+	 * POST/GET api/batch/exam-submission-details
+	 * Auth: teacher | institute. Required: submission_id (or exam_id + student_id)
+	 */
+	public function exam_submission_details()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+
+		$submission_id = isset($data['submission_id']) ? (int) $data['submission_id'] : 0;
+		$exam_id = isset($data['exam_id']) ? (int) $data['exam_id'] : 0;
+		$student_id = isset($data['student_id']) ? (int) $data['student_id'] : 0;
+
+		$result_row = array();
+		$exam_row = false;
+
+		if ($submission_id > 0) {
+			foreach (array('mock_result', 'practice_result') as $table) {
+				$rows = $this->db_model->select_data('*', $table, array('id' => $submission_id), 1);
+				if (!empty($rows[0])) {
+					$result_row = $rows[0];
+					$exam_id = (int) $result_row['paper_id'];
+					break;
+				}
+			}
+		} elseif ($exam_id > 0 && $student_id > 0) {
+			$exam_row = $this->teacher_exam_row_by_id($exam_id);
+			if ($exam_row === false) {
+				$this->api_json(false, 'Exam not found');
+				return;
+			}
+			$result_row = $this->student_exam_find_result_row($student_id, $exam_id, (int) $exam_row['type']);
+		} else {
+			$this->api_json(false, 'submission_id or (exam_id and student_id) is required');
+			return;
+		}
+
+		if (empty($result_row)) {
+			$this->api_json(false, 'Submission not found');
+			return;
+		}
+
+		if ($exam_row === false) {
+			$exam_row = $this->teacher_exam_row_by_id($exam_id > 0 ? $exam_id : (int) $result_row['paper_id']);
+		}
+		if ($exam_row === false) {
+			$this->api_json(false, 'Exam not found');
+			return;
+		}
+		if ((int) $result_row['paper_id'] !== (int) $exam_row['id']) {
+			$this->api_json(false, 'Submission does not belong to this exam');
+			return;
+		}
+		if (!$this->assert_batch_access_teacher_or_institute($payload, (int) $exam_row['batchId'])) {
+			return;
+		}
+
+		$student_id = isset($result_row['student_id']) ? (int) $result_row['student_id'] : 0;
+		$student_name = '';
+		$student_image_url = '';
+		if ($student_id > 0) {
+			$st = $this->db_model->select_data('name,image,email', 'students', array('id' => $student_id), 1);
+			if (!empty($st[0])) {
+				$student_name = isset($st[0]['name']) ? (string) $st[0]['name'] : '';
+				$img = isset($st[0]['image']) ? trim((string) $st[0]['image']) : '';
+				$student_image_url = $img !== '' ? profile_image_url($img, 2, 'student') : '';
+			}
+		}
+
+		$result_payload = $this->student_exam_format_result_payload($exam_row, $result_row);
+		$this->api_json(true, 'Success', array(
+			'exam' => $this->student_exam_format_exam_payload($exam_row, $this->student_exam_batch_card((int) $exam_row['batchId'])),
+			'student' => array(
+				'studentId' => $student_id,
+				'studentName' => $student_name !== '' ? $student_name : ('Student #' . $student_id),
+				'studentImageUrl' => $student_image_url,
+			),
+			'submission' => array_merge(
+				$this->teacher_exam_format_submission_list_item($result_row, $exam_row),
+				array(
+					'result' => $result_payload,
+					'statusLabel' => 'Submitted',
+				)
+			),
+			'answers' => $this->teacher_exam_build_answer_review($exam_row, $result_row),
+		));
+	}
+
+	/**
+	 * Standard OMR bubble cell (no question text).
+	 *
+	 * @param string $letter
+	 * @param string $selected
+	 * @return string
+	 */
+	private function exam_omr_bubble_cell($letter, $selected)
+	{
+		$filled = ($selected !== '' && strtoupper((string) $selected) === strtoupper((string) $letter));
+		$inner = $filled ? '&#9679;' : '&#9675;';
+		return '<td class="omr-b" style="text-align:center;width:28px;"><div style="font-size:14px;line-height:1;">' . $inner . '</div></td>';
+	}
+
+	/**
+	 * One OMR grid row: Q.no + A B C D bubbles only.
+	 *
+	 * @param int    $qnum
+	 * @param string $selected A|B|C|D
+	 * @return string
+	 */
+	private function exam_omr_grid_row_html($qnum, $selected)
+	{
+		$selected = strtoupper(trim((string) $selected));
+		$q = str_pad((string) (int) $qnum, 2, '0', STR_PAD_LEFT);
+		return '<tr>' .
+			'<td class="omr-q" style="width:32px;font-weight:bold;text-align:center;border:1px solid #000;padding:4px 2px;">' . $q . '</td>' .
+			$this->exam_omr_bubble_cell('A', $selected) .
+			$this->exam_omr_bubble_cell('B', $selected) .
+			$this->exam_omr_bubble_cell('C', $selected) .
+			$this->exam_omr_bubble_cell('D', $selected) .
+		'</tr>';
+	}
+
+	/**
+	 * Build classic OMR answer sheet HTML (bubbles only, no questions).
+	 *
+	 * @param array $exam_row
+	 * @param array $question_ids Ordered question ids
+	 * @param array $answer_map   question_id => A|B|C|D
+	 * @param array $meta
+	 * @return string
+	 */
+	private function exam_omr_sheet_html(array $exam_row, array $question_ids, array $answer_map, array $meta = array())
+	{
+		$exam_name = isset($exam_row['name']) ? (string) $exam_row['name'] : 'Exam';
+		$batch_card = $this->student_exam_batch_card((int) (isset($exam_row['batchId']) ? $exam_row['batchId'] : 0));
+		$student_name = isset($meta['studentName']) ? (string) $meta['studentName'] : '';
+		$submitted_at = isset($meta['submittedAt']) ? (string) $meta['submittedAt'] : '';
+		$sheet_type = isset($meta['sheetType']) ? (string) $meta['sheetType'] : 'blank';
+
+		$esc = function ($v) {
+			return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+		};
+
+		$total = count($question_ids);
+		if ($total < 1) {
+			$total = (int) (isset($exam_row['totalQuestion']) ? $exam_row['totalQuestion'] : 0);
+			for ($i = 1; $i <= $total; $i++) {
+				$question_ids[] = $i;
+			}
+		}
+
+		$rows = array();
+		foreach ($question_ids as $idx => $qid) {
+			$qnum = $idx + 1;
+			$selected = ($qid > 0 && isset($answer_map[$qid])) ? (string) $answer_map[$qid] : '';
+			$rows[] = $this->exam_omr_grid_row_html($qnum, $selected);
+		}
+
+		$col_header = '<tr style="background:#e8eef9;">' .
+			'<th style="border:1px solid #000;padding:5px 2px;font-size:11px;">Q</th>' .
+			'<th style="border:1px solid #000;padding:5px;width:28px;">A</th>' .
+			'<th style="border:1px solid #000;padding:5px;width:28px;">B</th>' .
+			'<th style="border:1px solid #000;padding:5px;width:28px;">C</th>' .
+			'<th style="border:1px solid #000;padding:5px;width:28px;">D</th>' .
+		'</tr>';
+
+		$half = (int) ceil($total / 2);
+		$left_body = implode('', array_slice($rows, 0, $half));
+		$right_body = implode('', array_slice($rows, $half));
+		$left_table = '<table style="border-collapse:collapse;width:100%;">' . $col_header . $left_body . '</table>';
+		$right_table = '<table style="border-collapse:collapse;width:100%;">' . $col_header . $right_body . '</table>';
+		$grid_body = '<tr>' .
+			'<td style="vertical-align:top;width:50%;padding-right:10px;border:0;">' . $left_table . '</td>' .
+			'<td style="vertical-align:top;width:50%;padding-left:10px;border:0;">' . $right_table . '</td>' .
+		'</tr>';
+
+		$student_val = $student_name !== '' ? $esc($student_name) : '________________________';
+		$date_val = $submitted_at !== '' ? $esc($submitted_at) : '____ / ____ / ________';
+		$tag = ($sheet_type === 'filled') ? 'ANSWER SHEET (FILLED)' : 'ANSWER SHEET (BLANK)';
+
+		return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' . $esc('OMR - ' . $exam_name) . '</title></head>' .
+			'<body style="font-family:Arial,Helvetica,sans-serif;color:#000;margin:0;padding:10mm 8mm;font-size:11px;">' .
+			'<table style="width:100%;border-collapse:collapse;margin-bottom:10px;"><tr>' .
+			'<td style="text-align:center;border:2px solid #000;padding:8px;">' .
+			'<div style="font-size:10px;font-weight:bold;letter-spacing:1px;">' . $esc($tag) . '</div>' .
+			'<div style="font-size:16px;font-weight:bold;margin:4px 0;">' . $esc($exam_name) . '</div>' .
+			'<div style="font-size:11px;">Batch: ' . $esc(isset($batch_card['batchName']) ? $batch_card['batchName'] : '') .
+			' &nbsp;|&nbsp; Questions: ' . $esc($total) .
+			' &nbsp;|&nbsp; Duration: ' . $esc(isset($exam_row['timeDuration']) ? $exam_row['timeDuration'] : '') . ' min</div>' .
+			'</td></tr></table>' .
+			'<table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:11px;">' .
+			'<tr><td style="width:50%;padding:6px 8px 6px 0;"><strong>Student Name:</strong> ' . $student_val . '</td>' .
+			'<td style="width:50%;padding:6px 0 6px 8px;"><strong>Roll No:</strong> ________________________</td></tr>' .
+			'<tr><td style="padding:4px 8px 6px 0;"><strong>Date:</strong> ' . $date_val . '</td>' .
+			'<td style="padding:4px 0 6px 8px;"><strong>Exam ID:</strong> ' . $esc(isset($exam_row['id']) ? $exam_row['id'] : '') . '</td></tr>' .
+			'</table>' .
+			'<table style="width:100%;border-collapse:collapse;"><tbody>' . $grid_body . '</tbody></table>' .
+			'<p style="margin-top:12px;font-size:9px;text-align:center;">' .
+			'Fill the circle completely for your answer. Do not write question text on this sheet. ' .
+			'Use HB pencil only. Do not fold or damage the sheet.' .
+			'</p></body></html>';
+	}
+
+	/**
+	 * Draw one OMR bubble (hollow or filled).
+	 *
+	 * @param FPDF   $pdf
+	 * @param float  $x
+	 * @param float  $y
+	 * @param float  $size mm
+	 * @param bool   $filled
+	 */
+	private function exam_omr_pdf_draw_bubble($pdf, $x, $y, $size, $filled)
+	{
+		$pdf->SetDrawColor(0, 0, 0);
+		$pdf->SetLineWidth(0.25);
+		$pdf->Rect($x, $y, $size, $size, 'D');
+		if ($filled) {
+			$pdf->SetFillColor(0, 0, 0);
+			$pad = $size * 0.22;
+			$pdf->Rect($x + $pad, $y + $pad, $size - (2 * $pad), $size - (2 * $pad), 'F');
+		}
+	}
+
+	/**
+	 * Render one OMR column table (Q + A/B/C/D bubbles).
+	 *
+	 * @param FPDF  $pdf
+	 * @param float $start_x
+	 * @param float $start_y
+	 * @param array $rows array of array(qnum, selected)
+	 * @return float Y after last row
+	 */
+	private function exam_omr_pdf_draw_column($pdf, $start_x, $start_y, array $rows)
+	{
+		$q_w = 10;
+		$bubble = 5;
+		$gap = 1.5;
+		$col_w = $bubble + $gap;
+		$row_h = 7;
+		$headers = array('Q', 'A', 'B', 'C', 'D');
+
+		$pdf->SetFont('Helvetica', 'B', 8);
+		$pdf->SetFillColor(232, 238, 249);
+		$x = $start_x;
+		foreach ($headers as $i => $label) {
+			$w = ($i === 0) ? $q_w : $col_w;
+			$pdf->SetXY($x, $start_y);
+			$pdf->Cell($w, 6, $label, 1, 0, 'C', true);
+			$x += $w;
+		}
+
+		$y = $start_y + 6;
+		$pdf->SetFont('Helvetica', '', 9);
+		foreach ($rows as $row) {
+			$qnum = (int) $row['qnum'];
+			$selected = strtoupper(trim((string) $row['selected']));
+			$q_label = str_pad((string) $qnum, 2, '0', STR_PAD_LEFT);
+
+			$pdf->SetXY($start_x, $y);
+			$pdf->Cell($q_w, $row_h, $q_label, 1, 0, 'C');
+
+			$bx = $start_x + $q_w + ($gap / 2);
+			$by = $y + (($row_h - $bubble) / 2);
+			foreach (array('A', 'B', 'C', 'D') as $letter) {
+				$this->exam_omr_pdf_draw_bubble($pdf, $bx, $by, $bubble, ($selected !== '' && $selected === $letter));
+				$bx += $col_w;
+			}
+
+			$pdf->Rect($start_x + $q_w, $y, ($col_w * 4), $row_h, 'D');
+			$y += $row_h;
+		}
+
+		return $y;
+	}
+
+	/**
+	 * Build classic OMR answer sheet PDF (bubbles only, no question text).
+	 *
+	 * @param array $exam_row
+	 * @param array $question_ids
+	 * @param array $answer_map
+	 * @param array $meta
+	 * @return string|false
+	 */
+	private function exam_omr_sheet_pdf(array $exam_row, array $question_ids, array $answer_map, array $meta = array())
+	{
+		$fpdf_main = APPPATH . 'third_party/fpdf/fpdf.php';
+		$fpdf_omr = APPPATH . 'third_party/fpdf/omr_fpdf.php';
+		if (!is_file($fpdf_main)) {
+			return false;
+		}
+		try {
+			if (is_file($fpdf_omr)) {
+				require_once $fpdf_omr;
+			} else {
+				require_once $fpdf_main;
+			}
+
+		$exam_name = isset($exam_row['name']) ? (string) $exam_row['name'] : 'Exam';
+		$batch_card = $this->student_exam_batch_card((int) (isset($exam_row['batchId']) ? $exam_row['batchId'] : 0));
+		$batch_name = isset($batch_card['batchName']) ? (string) $batch_card['batchName'] : '';
+		$student_name = isset($meta['studentName']) ? trim((string) $meta['studentName']) : '';
+		$submitted_at = isset($meta['submittedAt']) ? trim((string) $meta['submittedAt']) : '';
+		$sheet_type = isset($meta['sheetType']) ? (string) $meta['sheetType'] : 'blank';
+		$tag = ($sheet_type === 'filled') ? 'ANSWER SHEET (FILLED)' : 'ANSWER SHEET (BLANK)';
+
+		$total = count($question_ids);
+		if ($total < 1) {
+			$total = (int) (isset($exam_row['totalQuestion']) ? $exam_row['totalQuestion'] : 0);
+			$question_ids = array();
+			for ($i = 1; $i <= $total; $i++) {
+				$question_ids[] = $i;
+			}
+		}
+
+		$grid_rows = array();
+		foreach ($question_ids as $idx => $qid) {
+			$qnum = $idx + 1;
+			$selected = ($qid > 0 && isset($answer_map[$qid])) ? (string) $answer_map[$qid] : '';
+			$grid_rows[] = array('qnum' => $qnum, 'selected' => $selected);
+		}
+
+		$half = (int) ceil($total / 2);
+		$left_rows = array_slice($grid_rows, 0, $half);
+		$right_rows = array_slice($grid_rows, $half);
+
+		$pdfClass = class_exists('Omr_FPDF', false) ? 'Omr_FPDF' : 'FPDF';
+		$pdf = new $pdfClass('P', 'mm', 'A4');
+		$pdf->SetMargins(10, 10, 10);
+		$pdf->SetAutoPageBreak(true, 12);
+		$pdf->AddPage();
+
+		$pdf->SetFont('Helvetica', 'B', 9);
+		$pdf->Cell(0, 5, $tag, 0, 1, 'C');
+		$pdf->SetFont('Helvetica', 'B', 14);
+		$pdf->Cell(0, 8, $this->exam_omr_pdf_latin($exam_name), 0, 1, 'C');
+		$pdf->SetFont('Helvetica', '', 9);
+		$pdf->Cell(0, 5, 'Batch: ' . $this->exam_omr_pdf_latin($batch_name) . '  |  Questions: ' . $total . '  |  Duration: ' .
+			(isset($exam_row['timeDuration']) ? $exam_row['timeDuration'] : '') . ' min', 0, 1, 'C');
+		$pdf->Ln(3);
+
+		$pdf->SetFont('Helvetica', '', 9);
+		$pdf->Cell(95, 6, 'Student Name: ' . ($student_name !== '' ? $this->exam_omr_pdf_latin($student_name) : '________________________'), 0, 0, 'L');
+		$pdf->Cell(95, 6, 'Roll No: ________________________', 0, 1, 'L');
+		$pdf->Cell(95, 6, 'Date: ' . ($submitted_at !== '' ? $this->exam_omr_pdf_latin($submitted_at) : '____ / ____ / ________'), 0, 0, 'L');
+		$pdf->Cell(95, 6, 'Exam ID: ' . (isset($exam_row['id']) ? $exam_row['id'] : ''), 0, 1, 'L');
+		$pdf->Ln(4);
+
+		$grid_y = $pdf->GetY();
+		$left_end = $this->exam_omr_pdf_draw_column($pdf, 12, $grid_y, $left_rows);
+		$right_end = $this->exam_omr_pdf_draw_column($pdf, 108, $grid_y, $right_rows);
+		$pdf->SetY(max($left_end, $right_end) + 4);
+
+		$pdf->SetFont('Helvetica', 'I', 7);
+		$pdf->MultiCell(0, 4, 'Fill the circle completely for your answer. Do not write question text on this sheet. Use HB pencil only. Do not fold or damage the sheet.', 0, 'C');
+
+		$out = $pdf->Output('S');
+		return ($out !== false && $out !== '') ? $out : false;
+		} catch (Throwable $e) {
+			log_message('error', 'exam_omr_sheet_pdf: ' . $e->getMessage());
+			return false;
+		} catch (Exception $e) {
+			log_message('error', 'exam_omr_sheet_pdf: ' . $e->getMessage());
+			return false;
+		}
+	}
+
+	/**
+	 * FPDF core fonts are Latin-1; strip/replace unsupported characters.
+	 *
+	 * @param string $text
+	 * @return string
+	 */
+	private function exam_omr_pdf_latin($text)
+	{
+		$text = (string) $text;
+		if ($text === '') {
+			return '';
+		}
+		if (function_exists('iconv')) {
+			$converted = @iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $text);
+			if ($converted !== false) {
+				return $converted;
+			}
+		}
+		return preg_replace('/[^\x20-\x7E]/', '?', $text);
+	}
+
+	/**
+	 * @param string $html
+	 * @return string|false PDF binary
+	 */
+	private function exam_omr_sheet_pdf_from_html($html)
+	{
+		if (is_file(APPPATH . 'third_party/dompdf/autoload.inc.php')) {
+			require_once APPPATH . 'third_party/dompdf/autoload.inc.php';
+			try {
+				$dompdf = new Dompdf\Dompdf(array('isRemoteEnabled' => false));
+				$dompdf->loadHtml($html);
+				$dompdf->setPaper('A4', 'portrait');
+				$dompdf->render();
+				$out = $dompdf->output();
+				if ($out !== false && $out !== '') {
+					return $out;
+				}
+			} catch (Throwable $e) {
+				// fall through
+			} catch (Exception $e) {
+				// fall through
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * POST/GET api/batch/exam-omr-sheet
+	 * Auth: student | teacher | institute
+	 * Required: exam_id
+	 * Optional: submission_id (filled sheet), mode=blank|filled, show_correct=1 (teacher review)
+	 */
+	public function exam_omr_sheet()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('student', 'teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+
+		$exam_id = isset($data['exam_id']) ? (int) $data['exam_id'] : 0;
+		if ($exam_id < 1) {
+			$this->api_json(false, 'exam_id is required');
+			return;
+		}
+
+		$exam_row = $this->teacher_exam_row_by_id($exam_id);
+		if ($exam_row === false) {
+			$this->api_json(false, 'Exam not found');
+			return;
+		}
+
+		$batch_id = (int) $exam_row['batchId'];
+		$ut = strtolower(trim((string) $payload['ut']));
+		if ($ut === 'student') {
+			if (!$this->assert_batch_access_student_or_teacher($payload, $batch_id, $data)) {
+				return;
+			}
+		} elseif (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+
+		$submission_id = isset($data['submission_id']) ? (int) $data['submission_id'] : 0;
+		$mode = isset($data['mode']) ? strtolower(trim((string) $data['mode'])) : '';
+		if ($mode === '' && $submission_id > 0) {
+			$mode = 'filled';
+		}
+		if ($mode === '') {
+			$mode = 'blank';
+		}
+
+		$answer_map = array();
+		$meta = array('sheetType' => $mode);
+		$student_name = '';
+
+		if ($mode === 'filled') {
+			$result_row = array();
+			if ($submission_id > 0) {
+				foreach (array('mock_result', 'practice_result') as $table) {
+					$rows = $this->db_model->select_data('*', $table, array('id' => $submission_id), 1);
+					if (!empty($rows[0])) {
+						$result_row = $rows[0];
+						break;
+					}
+				}
+			} elseif ($ut === 'student') {
+				$result_row = $this->student_exam_find_result_row((int) $payload['uid'], $exam_id, (int) $exam_row['type']);
+			} elseif (!empty($data['student_id'])) {
+				$result_row = $this->student_exam_find_result_row((int) $data['student_id'], $exam_id, (int) $exam_row['type']);
+			}
+
+			if (empty($result_row) || (int) $result_row['paper_id'] !== $exam_id) {
+				$this->api_json(false, 'Submission not found for this exam');
+				return;
+			}
+
+			$student_id = (int) $result_row['student_id'];
+			if ($ut === 'student' && $student_id !== (int) $payload['uid']) {
+				$this->api_json(false, 'You are not allowed to download this ORM sheet');
+				return;
+			}
+
+			$answer_map = $this->student_exam_normalize_answer_map(isset($result_row['question_answer']) ? $result_row['question_answer'] : '');
+			$summary_payload = $this->student_exam_format_result_payload($exam_row, $result_row);
+			$meta['summary'] = $summary_payload;
+			$meta['submittedAt'] = trim((isset($result_row['date']) ? $result_row['date'] : '') . ' ' . (isset($result_row['submit_time']) ? $result_row['submit_time'] : ''));
+			$meta['showCorrect'] = ($ut !== 'student') && !empty($data['show_correct']);
+
+			if ($student_id > 0) {
+				$st = $this->db_model->select_data('name', 'students', array('id' => $student_id), 1);
+				$student_name = !empty($st[0]['name']) ? (string) $st[0]['name'] : ('Student #' . $student_id);
+			}
+		} elseif ($ut === 'student' && !empty($data['student_name'])) {
+			$student_name = trim((string) $data['student_name']);
+		}
+
+		if ($student_name === '' && $ut === 'student') {
+			$st = $this->db_model->select_data('name', 'students', array('id' => (int) $payload['uid']), 1);
+			if (!empty($st[0]['name'])) {
+				$student_name = (string) $st[0]['name'];
+			}
+		}
+		$meta['studentName'] = $student_name;
+
+		$question_ids = $this->student_exam_decode_question_ids(isset($exam_row['questionIds']) ? $exam_row['questionIds'] : '');
+		$pdf_binary = $this->exam_omr_sheet_pdf($exam_row, $question_ids, $answer_map, $meta);
+		if ($pdf_binary === false || $pdf_binary === '') {
+			$sheet_html = $this->exam_omr_sheet_html($exam_row, $question_ids, $answer_map, $meta);
+			$pdf_binary = $this->exam_omr_sheet_pdf_from_html($sheet_html);
+		}
+		if ($pdf_binary === false || $pdf_binary === '') {
+			$this->api_json(false, 'Could not generate OMR PDF.');
+			return;
+		}
+
+		$file_slug = preg_replace('/[^a-zA-Z0-9_-]+/', '_', isset($exam_row['name']) ? $exam_row['name'] : 'exam');
+		$student_slug = $student_name !== '' ? preg_replace('/[^a-zA-Z0-9_-]+/', '_', $student_name) : 'sheet';
+		$file_name = 'OMR_Sheet_' . $file_slug . '_' . $student_slug . '_' . date('Ymd') . '.pdf';
+
+		$this->api_json(true, 'Success', array(
+			'fileName' => $file_name,
+			'contentType' => 'application/pdf',
+			'pdfBase64' => base64_encode($pdf_binary),
+			'mode' => $mode,
+			'exam_id' => $exam_id,
+		));
+	}
+
+	/**
 	 * Teacher must be assigned to this batch for this subject (batch_subjects).
 	 */
 	private function assert_teacher_batch_subject($teacher_id, $batch_id, $subject_id)
@@ -4514,8 +5096,16 @@ class Batch extends MY_Controller
 		}
 	}
 
+	/** @var bool */
+	private $homework_submissions_table_checked = false;
+
 	private function ensure_homework_submissions_table()
 	{
+		if ($this->homework_submissions_table_checked) {
+			return;
+		}
+		$this->homework_submissions_table_checked = true;
+
 		$sql = "CREATE TABLE IF NOT EXISTS `homework_submissions` (
 			`id` int(11) NOT NULL AUTO_INCREMENT,
 			`homework_id` int(11) NOT NULL,
@@ -4538,6 +5128,33 @@ class Batch extends MY_Controller
 			KEY `idx_eval_status` (`eval_status`)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
 		$this->db->query($sql);
+
+		if (!$this->db->table_exists('homework_submissions')) {
+			return;
+		}
+		$columns = array(
+			'homework_id' => 'ADD COLUMN `homework_id` int(11) NOT NULL DEFAULT 0 AFTER `id`',
+			'admin_id' => 'ADD COLUMN `admin_id` int(11) NOT NULL DEFAULT 0 AFTER `homework_id`',
+			'teacher_id' => 'ADD COLUMN `teacher_id` int(11) NOT NULL DEFAULT 0 AFTER `admin_id`',
+			'student_id' => 'ADD COLUMN `student_id` int(11) NOT NULL DEFAULT 0 AFTER `teacher_id`',
+			'batch_id' => 'ADD COLUMN `batch_id` int(11) NOT NULL DEFAULT 0 AFTER `student_id`',
+			'subject_id' => 'ADD COLUMN `subject_id` int(11) NOT NULL DEFAULT 0 AFTER `batch_id`',
+			'submission_text' => 'ADD COLUMN `submission_text` text AFTER `subject_id`',
+			'attachment' => 'ADD COLUMN `attachment` varchar(255) NOT NULL DEFAULT \'\' AFTER `submission_text`',
+			'marks' => 'ADD COLUMN `marks` decimal(10,2) DEFAULT NULL AFTER `attachment`',
+			'remark' => 'ADD COLUMN `remark` text AFTER `marks`',
+			'eval_status' => 'ADD COLUMN `eval_status` tinyint(1) NOT NULL DEFAULT 0 AFTER `remark`',
+			'submitted_at' => 'ADD COLUMN `submitted_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER `eval_status`',
+			'evaluated_at' => 'ADD COLUMN `evaluated_at` datetime DEFAULT NULL AFTER `submitted_at`',
+		);
+		foreach ($columns as $col => $alter) {
+			if (!$this->db->field_exists($col, 'homework_submissions')) {
+				@$this->db->query('ALTER TABLE `homework_submissions` ' . $alter);
+			}
+		}
+		if (!$this->db->field_exists('id', 'homework_submissions')) {
+			@$this->db->query('ALTER TABLE `homework_submissions` ADD COLUMN `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY FIRST');
+		}
 	}
 
 	/** @var bool */
@@ -4928,7 +5545,7 @@ class Batch extends MY_Controller
 		$this->ensure_homework_submissions_table();
 		$existing = $this->db_model->select_data(
 			'id,attachment',
-			'homework_submissions use index (id)',
+			'homework_submissions',
 			array('homework_id' => $homework_id, 'student_id' => $student_id),
 			1
 		);
@@ -5960,7 +6577,7 @@ class Batch extends MY_Controller
 			return;
 		}
 
-		$teacher_id = (int) $payload['id'];
+		$teacher_id = $this->payload_teacher_user_id($payload);
 		$teacher_data = $this->db_model->select_data('admin_id', 'users use index (id)', array('id' => $teacher_id), 1);
 		$teacher_admin_id = !empty($teacher_data) ? (int) $teacher_data[0]['admin_id'] : 0;
 		$result = array();
@@ -5985,6 +6602,7 @@ class Batch extends MY_Controller
 					'price' => (string) $batch['batch_price'],
 					'mode' => (string) $batch['batch_mode'],
 					'status' => (int) $batch['status'],
+					'batchImage' => !empty($batch['batch_image']) ? batch_image_url($batch['batch_image']) : '',
 					'createdBy' => 'self',
 					'ownerType' => 'created',
 				);
@@ -6036,6 +6654,7 @@ class Batch extends MY_Controller
 						'price' => (string) $batch['batch_price'],
 						'mode' => (string) $batch['batch_mode'],
 						'status' => (int) $batch['status'],
+						'batchImage' => !empty($batch['batch_image']) ? batch_image_url($batch['batch_image']) : '',
 						'createdBy' => 'admin',
 						'ownerType' => 'assigned',
 					);
@@ -6047,7 +6666,690 @@ class Batch extends MY_Controller
 	}
 
 	/**
-	 * POST api/batch/teacher-create-batch — create a new batch for the teacher
+	 * Resolve teacher's institute admin_id from users row.
+	 */
+	private function teacher_admin_id($teacher_id)
+	{
+		$teacher_id = (int) $teacher_id;
+		if ($teacher_id < 1) {
+			return 0;
+		}
+		$row = $this->db_model->select_data('admin_id', 'users use index (id)', array('id' => $teacher_id), 1);
+		return !empty($row[0]['admin_id']) ? (int) $row[0]['admin_id'] : 0;
+	}
+
+	private function teacher_owns_batch($teacher_id, $batch_id)
+	{
+		$row = $this->db_model->select_data('admin_id', 'batches use index (id)', array('id' => (int) $batch_id), 1);
+		return !empty($row) && (int) $row[0]['admin_id'] === (int) $teacher_id;
+	}
+
+	private function payload_teacher_user_id(array $payload)
+	{
+		return (int) (isset($payload['uid']) ? $payload['uid'] : (isset($payload['id']) ? $payload['id'] : 0));
+	}
+
+	private function validate_teacher_institute($institute_id, $teacher_admin_id)
+	{
+		$institute_id = (int) $institute_id;
+		$teacher_admin_id = (int) $teacher_admin_id;
+		if ($institute_id < 1) {
+			return true;
+		}
+		if ($teacher_admin_id < 1) {
+			return false;
+		}
+		$this->db->reset_query();
+		$this->db->select('id');
+		$this->db->from('users');
+		$this->db->where('id', $institute_id);
+		$this->db->where('admin_id', $teacher_admin_id);
+		$this->db->where('status', 1);
+		$this->db->group_start();
+		$this->db->where('role', 4);
+		$this->db->or_where("LOWER(TRIM(IFNULL(user_type,''))) = 'institute'", null, false);
+		$this->db->group_end();
+		return !empty($this->db->get()->row_array());
+	}
+
+	private function api_parse_batch_date($value)
+	{
+		$value = trim((string) $value);
+		if ($value === '') {
+			return '';
+		}
+		$ts = strtotime($value);
+		return $ts ? date('Y-m-d', $ts) : '';
+	}
+
+	private function api_parse_batch_time($value)
+	{
+		$value = trim((string) $value);
+		if ($value === '') {
+			return '';
+		}
+		$ts = strtotime($value);
+		return $ts ? date('H:i:s', $ts) : '';
+	}
+
+	private function batch_name_exists($name, $exclude_batch_id = 0)
+	{
+		$name = trim((string) $name);
+		if ($name === '') {
+			return false;
+		}
+		$row = $this->db_model->select_data('id', 'batches use index (id)', array('batch_name' => $name), 1);
+		if (empty($row)) {
+			return false;
+		}
+		return (int) $exclude_batch_id < 1 || (int) $row[0]['id'] !== (int) $exclude_batch_id;
+	}
+
+	private function api_batch_image_upload(array $data, $existing_image = '')
+	{
+		if (isset($_FILES['batch_image']) && !empty($_FILES['batch_image']['name'])) {
+			$config = array(
+				'upload_path' => './uploads/batch_image/',
+				'allowed_types' => 'jpeg|jpg|png|gif|webp',
+				'max_size' => 0,
+			);
+			$this->load->library('upload', $config);
+			if (!$this->upload->do_upload('batch_image')) {
+				return array('error' => $this->upload->display_errors('', ''));
+			}
+			$uploaddata = $this->upload->data();
+			$pic = $uploaddata['raw_name'];
+			$pic_ext = $uploaddata['file_ext'];
+			$image_name = $pic . '_' . date('ymdHis') . $pic_ext;
+			rename('./uploads/batch_image/' . $pic . $pic_ext, './uploads/batch_image/' . $image_name);
+			return array('filename' => $image_name);
+		}
+
+		$b64 = isset($data['batchImageBase64']) ? trim((string) $data['batchImageBase64']) : '';
+		if ($b64 === '' && isset($data['batch_image_base64'])) {
+			$b64 = trim((string) $data['batch_image_base64']);
+		}
+		if ($b64 !== '') {
+			if (strpos($b64, ',') !== false) {
+				$b64 = substr($b64, strrpos($b64, ',') + 1);
+			}
+			$raw = base64_decode($b64, true);
+			if ($raw === false || $raw === '') {
+				return array('error' => 'Invalid batch image data.');
+			}
+			$ext = '.jpg';
+			if (!empty($data['batchImageExt'])) {
+				$ext = '.' . ltrim((string) $data['batchImageExt'], '.');
+			} elseif (!empty($data['batchImageName'])) {
+				$ext = '.' . strtolower(pathinfo((string) $data['batchImageName'], PATHINFO_EXTENSION));
+			}
+			if (!in_array(strtolower($ext), array('.jpg', '.jpeg', '.png', '.gif', '.webp'), true)) {
+				$ext = '.jpg';
+			}
+			$image_name = 'batch_' . date('ymdHis') . '_' . mt_rand(1000, 9999) . $ext;
+			$path = './uploads/batch_image/' . $image_name;
+			if (@file_put_contents($path, $raw) === false) {
+				return array('error' => 'Could not save batch image.');
+			}
+			return array('filename' => $image_name);
+		}
+
+		return array('filename' => $existing_image);
+	}
+
+	private function api_normalize_subjects_list(array $data)
+	{
+		if (!empty($data['subjects']) && is_array($data['subjects'])) {
+			return $data['subjects'];
+		}
+		if (!empty($data['batchSubjects']) && is_array($data['batchSubjects'])) {
+			return $data['batchSubjects'];
+		}
+		return array();
+	}
+
+	private function api_normalize_benefits_list(array $data)
+	{
+		if (!empty($data['benefits']) && is_array($data['benefits'])) {
+			return $data['benefits'];
+		}
+		if (!empty($data['batchBenefits']) && is_array($data['batchBenefits'])) {
+			return $data['batchBenefits'];
+		}
+		if (!empty($data['batchFecherd']) && is_array($data['batchFecherd'])) {
+			return $data['batchFecherd'];
+		}
+		return array();
+	}
+
+	private function api_sync_batch_subjects($batch_id, array $subjects, $creator_teacher_id)
+	{
+		$batch_id = (int) $batch_id;
+		$this->db_model->delete_data('batch_subjects', array('batch_id' => $batch_id));
+
+		foreach ($subjects as $row) {
+			if (!is_array($row)) {
+				continue;
+			}
+			$subject_id = isset($row['subjectId']) ? (int) $row['subjectId'] : (isset($row['subject_id']) ? (int) $row['subject_id'] : 0);
+			if ($subject_id < 1) {
+				continue;
+			}
+			$teacher_id = isset($row['teacherId']) ? (int) $row['teacherId'] : (isset($row['teacher_id']) ? (int) $row['teacher_id'] : (int) $creator_teacher_id);
+			if ($teacher_id < 1) {
+				$teacher_id = (int) $creator_teacher_id;
+			}
+
+			$chapter_ids = array();
+			if (isset($row['chapterIds']) && is_array($row['chapterIds'])) {
+				$chapter_ids = $row['chapterIds'];
+			} elseif (isset($row['chapter_ids']) && is_array($row['chapter_ids'])) {
+				$chapter_ids = $row['chapter_ids'];
+			} elseif (isset($row['chapters']) && is_array($row['chapters'])) {
+				$chapter_ids = $row['chapters'];
+			}
+			$chapter_ids = array_values(array_filter(array_map('intval', $chapter_ids)));
+
+			$sub_start = isset($row['startDate']) ? $row['startDate'] : (isset($row['sub_start_date']) ? $row['sub_start_date'] : '');
+			$sub_end = isset($row['endDate']) ? $row['endDate'] : (isset($row['sub_end_date']) ? $row['sub_end_date'] : '');
+			$sub_st = isset($row['startTime']) ? $row['startTime'] : (isset($row['sub_start_time']) ? $row['sub_start_time'] : '');
+			$sub_et = isset($row['endTime']) ? $row['endTime'] : (isset($row['sub_end_time']) ? $row['sub_end_time'] : '');
+
+			$this->db_model->insert_data('batch_subjects', array(
+				'batch_id' => $batch_id,
+				'teacher_id' => $teacher_id,
+				'subject_id' => $subject_id,
+				'chapter' => json_encode($chapter_ids),
+				'sub_start_date' => $this->api_parse_batch_date($sub_start),
+				'sub_end_date' => $this->api_parse_batch_date($sub_end),
+				'sub_start_time' => $this->api_parse_batch_time($sub_st),
+				'sub_end_time' => $this->api_parse_batch_time($sub_et),
+			));
+
+			$teacherData = $this->db_model->select_data('id,teach_batch', 'users use index (id)', array('id' => $teacher_id), 1);
+			if (!empty($teacherData)) {
+				if (!empty($teacherData[0]['teach_batch'])) {
+					$newBatch = array_unique(array_merge(explode(',', $teacherData[0]['teach_batch']), array($batch_id)));
+				} else {
+					$newBatch = array($batch_id);
+				}
+				$this->db_model->update_data_limit('users', array('teach_batch' => implode(',', $newBatch)), array('id' => $teacherData[0]['id']), 1);
+			}
+		}
+	}
+
+	private function api_sync_batch_benefits($batch_id, array $benefits)
+	{
+		$batch_id = (int) $batch_id;
+		$keep_ids = array();
+
+		foreach ($benefits as $row) {
+			if (!is_array($row)) {
+				continue;
+			}
+			$heading = isset($row['heading']) ? trim((string) $row['heading']) : '';
+			if ($heading === '' && isset($row['batchSpecification'])) {
+				$heading = trim((string) $row['batchSpecification']);
+			}
+			if ($heading === '' && isset($row['batch_specification_heading'])) {
+				$heading = trim((string) $row['batch_specification_heading']);
+			}
+
+			$features = array();
+			if (isset($row['features']) && is_array($row['features'])) {
+				$features = $row['features'];
+			} elseif (isset($row['fecherd']) && is_array($row['fecherd'])) {
+				$features = $row['fecherd'];
+			} elseif (isset($row['batch_fecherd']) && is_array($row['batch_fecherd'])) {
+				$features = $row['batch_fecherd'];
+			}
+			$features_clean = array();
+			foreach ($features as $f) {
+				$f = trim((string) $f);
+				if ($f !== '') {
+					$features_clean[] = $f;
+				}
+			}
+
+			$benefit_id = isset($row['id']) ? (int) $row['id'] : (isset($row['benefitId']) ? (int) $row['benefitId'] : 0);
+			$payload = array(
+				'batch_id' => $batch_id,
+				'batch_specification_heading' => $heading,
+				'batch_fecherd' => json_encode($features_clean),
+			);
+
+			if ($benefit_id > 0) {
+				$this->db_model->update_data_limit('batch_fecherd', $payload, array('id' => $benefit_id, 'batch_id' => $batch_id), 1);
+				$keep_ids[] = $benefit_id;
+			} else {
+				$new_id = (int) $this->db_model->insert_data('batch_fecherd', $payload);
+				if ($new_id > 0) {
+					$keep_ids[] = $new_id;
+				}
+			}
+		}
+
+		$existing = $this->db_model->select_data('id', 'batch_fecherd', array('batch_id' => $batch_id), '');
+		if (!empty($existing)) {
+			foreach ($existing as $ex) {
+				$eid = (int) $ex['id'];
+				if ($eid > 0 && !in_array($eid, $keep_ids, true)) {
+					$this->db_model->delete_data('batch_fecherd', array('id' => $eid));
+				}
+			}
+		}
+	}
+
+	private function api_build_batch_row_from_request(array $data, $teacher_id)
+	{
+		$bm = strtolower(trim((string) (isset($data['batchMode']) ? $data['batchMode'] : 'online')));
+		$row = array(
+			'batch_name' => trim((string) $data['batchName']),
+			'start_date' => $this->api_parse_batch_date(isset($data['startDate']) ? $data['startDate'] : ''),
+			'end_date' => $this->api_parse_batch_date(isset($data['endDate']) ? $data['endDate'] : ''),
+			'start_time' => $this->api_parse_batch_time(isset($data['startTime']) ? $data['startTime'] : ''),
+			'end_time' => $this->api_parse_batch_time(isset($data['endTime']) ? $data['endTime'] : ''),
+			'institute_id' => (int) (isset($data['instituteId']) ? $data['instituteId'] : 0),
+			'batch_mode' => ($bm === 'offline') ? 'Offline' : 'Online',
+			'admin_id' => (int) $teacher_id,
+			'status' => 1,
+			'batch_type' => isset($data['batchType']) ? (int) $data['batchType'] : 1,
+			'batch_price' => isset($data['batchPrice']) ? (string) $data['batchPrice'] : '0',
+			'batch_offer_price' => isset($data['batchOfferPrice']) ? (string) $data['batchOfferPrice'] : '',
+			'description' => isset($data['description']) ? (string) $data['description'] : '',
+			'cat_id' => isset($data['categoryId']) ? (int) $data['categoryId'] : 0,
+			'sub_cat_id' => isset($data['subcategoryId']) ? (int) $data['subcategoryId'] : 0,
+			'pay_mode' => isset($data['payMode']) ? (string) $data['payMode'] : 'Online',
+		);
+		return $row;
+	}
+
+	private function api_get_batch_subjects_for_edit($batch_id)
+	{
+		$rows = $this->db_model->select_data(
+			'batch_subjects.*, subjects.subject_name',
+			'batch_subjects use index (batch_id)',
+			array('batch_subjects.batch_id' => (int) $batch_id),
+			'',
+			'',
+			'',
+			array('subjects', 'subjects.id = batch_subjects.subject_id')
+		);
+		$out = array();
+		if (empty($rows)) {
+			return $out;
+		}
+		foreach ($rows as $r) {
+			$chapters = json_decode(isset($r['chapter']) ? $r['chapter'] : '[]', true);
+			if (!is_array($chapters)) {
+				$chapters = array();
+			}
+			$out[] = array(
+				'id' => (int) $r['id'],
+				'subjectId' => (int) $r['subject_id'],
+				'subjectName' => isset($r['subject_name']) ? (string) $r['subject_name'] : '',
+				'teacherId' => (int) $r['teacher_id'],
+				'chapterIds' => array_values(array_map('intval', $chapters)),
+				'startDate' => (string) $r['sub_start_date'],
+				'endDate' => (string) $r['sub_end_date'],
+				'startTime' => (string) $r['sub_start_time'],
+				'endTime' => (string) $r['sub_end_time'],
+			);
+		}
+		return $out;
+	}
+
+	private function api_get_batch_benefits_for_edit($batch_id)
+	{
+		$rows = $this->db_model->select_data('*', 'batch_fecherd', array('batch_id' => (int) $batch_id), '');
+		$out = array();
+		if (empty($rows)) {
+			return $out;
+		}
+		foreach ($rows as $r) {
+			$features = json_decode(isset($r['batch_fecherd']) ? $r['batch_fecherd'] : '[]', true);
+			if (!is_array($features)) {
+				$features = array();
+			}
+			$out[] = array(
+				'id' => (int) $r['id'],
+				'benefitId' => (int) $r['id'],
+				'heading' => (string) $r['batch_specification_heading'],
+				'batchSpecification' => (string) $r['batch_specification_heading'],
+				'features' => array_values(array_map('strval', $features)),
+				'fecherd' => array_values(array_map('strval', $features)),
+			);
+		}
+		return $out;
+	}
+
+	private function teacher_batch_list_categories($admin_id)
+	{
+		return $this->db_model->select_data('id, name', 'batch_category use index (id)', array('admin_id' => (int) $admin_id, 'status' => '1'), '', array('name', 'asc'));
+	}
+
+	private function teacher_batch_list_subcategories($admin_id, $category_id = 0)
+	{
+		$cond = array('admin_id' => (int) $admin_id, 'status' => 1);
+		if ($category_id > 0) {
+			$cond['cat_id'] = (int) $category_id;
+		}
+		return $this->db_model->select_data('id, name, cat_id', 'batch_subcategory use index (id)', $cond, '', array('name', 'asc'));
+	}
+
+	private function teacher_batch_list_subjects($admin_id)
+	{
+		return $this->db_model->select_data('id, subject_name', 'subjects use index (id)', array('admin_id' => (int) $admin_id, 'status' => '1'), '', array('subject_name', 'asc'));
+	}
+
+	/**
+	 * POST api/batch/categories — list batch categories (teacher / institute)
+	 */
+	public function categories()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$admin_id = $this->teacher_admin_id($this->payload_teacher_user_id($payload));
+		if ($admin_id < 1 && strtolower(trim((string) $payload['ut'])) === 'institute') {
+			$admin_id = $this->payload_teacher_user_id($payload);
+		}
+		if ($admin_id < 1) {
+			$this->api_json(false, 'User not found', array(), 404);
+			return;
+		}
+		$rows = $this->teacher_batch_list_categories($admin_id);
+		$list = array();
+		if (!empty($rows)) {
+			foreach ($rows as $r) {
+				$list[] = array(
+					'id' => (int) $r['id'],
+					'categoryId' => (int) $r['id'],
+					'name' => (string) $r['name'],
+					'categoryName' => (string) $r['name'],
+				);
+			}
+		}
+		$this->api_json(true, 'Categories loaded', array('categories' => $list));
+	}
+
+	/**
+	 * POST api/batch/subcategories — list subcategories by categoryId
+	 */
+	public function subcategories()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$category_id = isset($data['categoryId']) ? (int) $data['categoryId'] : (isset($data['category_id']) ? (int) $data['category_id'] : (isset($data['cat_id']) ? (int) $data['cat_id'] : 0));
+		if ($category_id < 1) {
+			$this->api_json(false, 'categoryId is required');
+			return;
+		}
+		$admin_id = $this->teacher_admin_id($this->payload_teacher_user_id($payload));
+		if ($admin_id < 1 && strtolower(trim((string) $payload['ut'])) === 'institute') {
+			$admin_id = $this->payload_teacher_user_id($payload);
+		}
+		if ($admin_id < 1) {
+			$this->api_json(false, 'User not found', array(), 404);
+			return;
+		}
+		$rows = $this->teacher_batch_list_subcategories($admin_id, $category_id);
+		$list = array();
+		if (!empty($rows)) {
+			foreach ($rows as $r) {
+				$list[] = array(
+					'id' => (int) $r['id'],
+					'subcategoryId' => (int) $r['id'],
+					'categoryId' => (int) $r['cat_id'],
+					'name' => (string) $r['name'],
+					'subcategoryName' => (string) $r['name'],
+				);
+			}
+		}
+		$this->api_json(true, 'Subcategories loaded', array('subcategories' => $list));
+	}
+
+	/**
+	 * POST api/batch/teacher-batch-categories — alias of categories
+	 */
+	public function teacher_batch_categories()
+	{
+		$this->categories();
+	}
+
+	/**
+	 * POST api/batch/teacher-batch-subcategories — alias of subcategories
+	 */
+	public function teacher_batch_subcategories()
+	{
+		$this->subcategories();
+	}
+
+	/**
+	 * POST api/batch/teacher-batch-subjects — list subjects for batch subject rows
+	 */
+	public function teacher_batch_subjects()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$admin_id = $this->teacher_admin_id($this->payload_teacher_user_id($payload));
+		if ($admin_id < 1) {
+			$this->api_json(false, 'Teacher not found', array(), 404);
+			return;
+		}
+		$rows = $this->teacher_batch_list_subjects($admin_id);
+		$list = array();
+		if (!empty($rows)) {
+			foreach ($rows as $r) {
+				$list[] = array(
+					'id' => (int) $r['id'],
+					'subjectId' => (int) $r['id'],
+					'subject_name' => (string) $r['subject_name'],
+					'name' => (string) $r['subject_name'],
+					'subjectName' => (string) $r['subject_name'],
+				);
+			}
+		}
+		$this->api_json(true, 'Subjects loaded', array('subjects' => $list));
+	}
+
+	/**
+	 * POST api/batch/teacher-batch-subject-chapters — chapters (+ teachers) for a subject
+	 */
+	public function teacher_batch_subject_chapters()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher'), $data);
+		if ($payload === false) {
+			return;
+		}
+		$subject_id = isset($data['subjectId']) ? (int) $data['subjectId'] : (isset($data['subject_id']) ? (int) $data['subject_id'] : 0);
+		if ($subject_id < 1) {
+			$this->api_json(false, 'subjectId is required');
+			return;
+		}
+		$admin_id = $this->teacher_admin_id($this->payload_teacher_user_id($payload));
+		if ($admin_id < 1) {
+			$this->api_json(false, 'Teacher not found', array(), 404);
+			return;
+		}
+
+		$subject_row = $this->db_model->select_data('id', 'subjects use index (id)', array('id' => $subject_id, 'admin_id' => $admin_id, 'status' => '1'), 1);
+		if (empty($subject_row)) {
+			$this->api_json(false, 'Subject not found', array(), 404);
+			return;
+		}
+
+		$chapters = $this->db_model->select_data('id, chapter_name, no_of_questions', 'chapters use index (id)', array('subject_id' => $subject_id, 'status' => 1), '', array('id', 'asc'));
+		$chapter_list = array();
+		if (!empty($chapters)) {
+			foreach ($chapters as $c) {
+				$chapter_list[] = array(
+					'id' => (int) $c['id'],
+					'chapterId' => (int) $c['id'],
+					'name' => (string) $c['chapter_name'],
+					'chapterName' => (string) $c['chapter_name'],
+					'noOfQuestions' => (int) $c['no_of_questions'],
+				);
+			}
+		}
+
+		$like = array('teach_subject', '"' . $subject_id . '"');
+		$teachers = $this->db_model->select_data('id, name', 'users use index (id)', array('status' => 1), '', array('name', 'asc'), $like);
+		$teacher_list = array();
+		if (!empty($teachers)) {
+			foreach ($teachers as $t) {
+				$teacher_list[] = array(
+					'id' => (int) $t['id'],
+					'teacherId' => (int) $t['id'],
+					'name' => (string) $t['name'],
+					'teacherName' => (string) $t['name'],
+				);
+			}
+		}
+
+		$this->api_json(true, 'Chapters loaded', array(
+			'chapters' => $chapter_list,
+			'teachers' => $teacher_list,
+		));
+	}
+
+	/**
+	 * POST api/batch/teacher-batch-form-options — dropdown data for create/edit batch (mobile)
+	 */
+	public function teacher_batch_form_options()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher'), $data);
+		if ($payload === false) {
+			return;
+		}
+
+		$teacher_id = $this->payload_teacher_user_id($payload);
+		$admin_id = $this->teacher_admin_id($teacher_id);
+		if ($admin_id < 1) {
+			$this->api_json(false, 'Teacher not found', array(), 404);
+			return;
+		}
+
+		$cond = array('admin_id' => $admin_id, 'status' => '1');
+
+		$this->db->reset_query();
+		$this->db->select('id, name');
+		$this->db->from('users');
+		$this->db->where('admin_id', $admin_id);
+		$this->db->where('status', 1);
+		$this->db->group_start();
+		$this->db->where('role', 4);
+		$this->db->or_where("LOWER(TRIM(IFNULL(user_type,''))) = 'institute'", null, false);
+		$this->db->group_end();
+		$this->db->order_by('name', 'ASC');
+		$institutes = $this->db->get()->result_array();
+
+		$categories = $this->teacher_batch_list_categories($admin_id);
+		$subcategories = $this->teacher_batch_list_subcategories($admin_id);
+		$subjects = $this->teacher_batch_list_subjects($admin_id);
+
+		$subject_list = array();
+		if (!empty($subjects)) {
+			foreach ($subjects as $s) {
+				$sid = (int) $s['id'];
+				$chapters = $this->db_model->select_data('id, chapter_name', 'chapters use index (id)', array('subject_id' => $sid, 'status' => 1), '', array('id', 'asc'));
+				$chapter_list = array();
+				if (!empty($chapters)) {
+					foreach ($chapters as $c) {
+						$chapter_list[] = array(
+							'id' => (int) $c['id'],
+							'chapterId' => (int) $c['id'],
+							'name' => (string) $c['chapter_name'],
+							'chapterName' => (string) $c['chapter_name'],
+						);
+					}
+				}
+				$subject_list[] = array(
+					'id' => $sid,
+					'subjectId' => $sid,
+					'name' => (string) $s['subject_name'],
+					'subjectName' => (string) $s['subject_name'],
+					'subject_name' => (string) $s['subject_name'],
+					'chapters' => $chapter_list,
+				);
+			}
+		}
+
+		$this->api_json(true, 'Batch form options', array(
+			'institutes' => $institutes,
+			'categories' => $categories,
+			'subcategories' => $subcategories,
+			'subjects' => $subject_list,
+			'defaultTeacherId' => $teacher_id,
+		));
+	}
+
+	/**
+	 * POST api/batch/teacher-batch-edit — full batch for edit screen (subjects + benefits)
+	 */
+	public function teacher_batch_edit()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher'), $data);
+		if ($payload === false) {
+			return;
+		}
+
+		$batch_id = isset($data['batchId']) ? (int) $data['batchId'] : (isset($data['batch_id']) ? (int) $data['batch_id'] : 0);
+		if ($batch_id < 1) {
+			$this->api_json(false, 'batchId is required');
+			return;
+		}
+
+		$teacher_id = $this->payload_teacher_user_id($payload);
+		if (!$this->teacher_owns_batch($teacher_id, $batch_id)) {
+			$this->api_json(false, 'You are not authorized to edit this batch', array(), 403);
+			return;
+		}
+
+		$batch = $this->db_model->select_data('*', 'batches use index (id)', array('id' => $batch_id), 1);
+		if (empty($batch)) {
+			$this->api_json(false, 'Batch not found', array(), 404);
+			return;
+		}
+		$b = $batch[0];
+		$image_url = !empty($b['batch_image']) ? batch_image_url($b['batch_image']) : '';
+
+		$this->api_json(true, 'Batch loaded for edit', array(
+			'batchId' => $batch_id,
+			'batchName' => (string) $b['batch_name'],
+			'startDate' => (string) $b['start_date'],
+			'endDate' => (string) $b['end_date'],
+			'startTime' => (string) $b['start_time'],
+			'endTime' => (string) $b['end_time'],
+			'instituteId' => (int) $b['institute_id'],
+			'batchMode' => (string) $b['batch_mode'],
+			'batchType' => (int) $b['batch_type'],
+			'batchPrice' => (string) $b['batch_price'],
+			'batchOfferPrice' => (string) $b['batch_offer_price'],
+			'payMode' => (string) $b['pay_mode'],
+			'categoryId' => (int) $b['cat_id'],
+			'subcategoryId' => (int) $b['sub_cat_id'],
+			'description' => (string) $b['description'],
+			'batchImage' => $image_url,
+			'batchImageFile' => (string) $b['batch_image'],
+			'subjects' => $this->api_get_batch_subjects_for_edit($batch_id),
+			'benefits' => $this->api_get_batch_benefits_for_edit($batch_id),
+		));
+	}
+
+	/**
+	 * POST api/batch/teacher-create-batch — create batch (same fields as admin add-batch)
 	 */
 	public function teacher_create_batch()
 	{
@@ -6057,62 +7359,68 @@ class Batch extends MY_Controller
 			return;
 		}
 
-		$required = array('batchName', 'startDate', 'endDate', 'startTime', 'endTime', 'instituteId', 'batchMode');
+		$required = array('batchName', 'startDate', 'endDate', 'startTime', 'endTime', 'batchMode');
 		foreach ($required as $field) {
-			if (empty($data[$field])) {
+			if (!isset($data[$field]) || $data[$field] === '' || $data[$field] === null) {
 				$this->api_json(false, ucfirst($field) . ' is required');
 				return;
 			}
 		}
 
-		$teacher_id = (int) $payload['id'];
-		$teacher_data = $this->db_model->select_data('admin_id', 'users use index (id)', array('id' => $teacher_id), 1);
-		if (empty($teacher_data)) {
+		$subjects = $this->api_normalize_subjects_list($data);
+		if (empty($subjects)) {
+			$this->api_json(false, 'At least one subject is required (same as admin batch form).');
+			return;
+		}
+
+		$teacher_id = $this->payload_teacher_user_id($payload);
+		$teacher_admin_id = $this->teacher_admin_id($teacher_id);
+		if ($teacher_admin_id < 1) {
 			$this->api_json(false, 'Teacher not found', array(), 404);
 			return;
 		}
-		$teacher_admin_id = (int) $teacher_data[0]['admin_id'];
 
-		// Validate institute belongs to teacher's admin
-		$institute = $this->db_model->select_data('id', 'users use index (id)', array(
-			'id' => (int) $data['instituteId'],
-			'admin_id' => $teacher_admin_id,
-			'status' => 1
-		), 1);
-		if (empty($institute)) {
+		$institute_id = isset($data['instituteId']) ? (int) $data['instituteId'] : (isset($data['institute_id']) ? (int) $data['institute_id'] : 0);
+		if ($institute_id > 0 && !$this->validate_teacher_institute($institute_id, $teacher_admin_id)) {
 			$this->api_json(false, 'Invalid institute selected');
 			return;
 		}
 
-		$batch_arr = array(
-			'batch_name' => (string) $data['batchName'],
-			'start_date' => date('Y-m-d', strtotime((string) $data['startDate'])),
-			'end_date' => date('Y-m-d', strtotime((string) $data['endDate'])),
-			'start_time' => date('H:i:s', strtotime((string) $data['startTime'])),
-			'end_time' => date('H:i:s', strtotime((string) $data['endTime'])),
-			'institute_id' => (int) $data['instituteId'],
-			'batch_mode' => in_array((string) $data['batchMode'], array('Online', 'Offline')) ? (string) $data['batchMode'] : 'Online',
-			'admin_id' => $teacher_id,
-			'status' => 1,
-			'batch_type' => isset($data['batchType']) ? (int) $data['batchType'] : 1,
-			'batch_price' => isset($data['batchPrice']) ? (string) $data['batchPrice'] : '0',
-			'batch_offer_price' => isset($data['batchOfferPrice']) ? (string) $data['batchOfferPrice'] : '',
-			'description' => isset($data['description']) ? (string) $data['description'] : '',
-			'cat_id' => isset($data['categoryId']) ? (int) $data['categoryId'] : 0,
-			'sub_cat_id' => isset($data['subcategoryId']) ? (int) $data['subcategoryId'] : 0,
-			'pay_mode' => isset($data['payMode']) ? (string) $data['payMode'] : '',
-		);
-
-		$batch_id = $this->db_model->insert_data('batches', $batch_arr);
-		if ($batch_id) {
-			$this->api_json(true, 'Batch created successfully', array('batchId' => $batch_id));
-		} else {
-			$this->api_json(false, 'Failed to create batch', array(), 500);
+		if ($this->batch_name_exists($data['batchName'])) {
+			$this->api_json(false, 'Batch name already exists.');
+			return;
 		}
+
+		$batch_arr = $this->api_build_batch_row_from_request($data, $teacher_id);
+		$img = $this->api_batch_image_upload($data);
+		if (!empty($img['error'])) {
+			$this->api_json(false, $img['error']);
+			return;
+		}
+		if (!empty($img['filename'])) {
+			$batch_arr['batch_image'] = $img['filename'];
+		}
+
+		$batch_id = (int) $this->db_model->insert_data('batches', $batch_arr);
+		if ($batch_id < 1) {
+			$this->api_json(false, 'Failed to create batch', array(), 500);
+			return;
+		}
+
+		$this->api_sync_batch_subjects($batch_id, $subjects, $teacher_id);
+		$benefits = $this->api_normalize_benefits_list($data);
+		if (!empty($benefits)) {
+			$this->api_sync_batch_benefits($batch_id, $benefits);
+		}
+
+		$this->api_json(true, 'Batch created successfully', array(
+			'batchId' => $batch_id,
+			'batchImage' => !empty($batch_arr['batch_image']) ? batch_image_url($batch_arr['batch_image']) : '',
+		));
 	}
 
 	/**
-	 * POST api/batch/teacher-update-batch — update a batch created by the teacher
+	 * POST api/batch/teacher-update-batch — update batch (subjects + benefits + core fields)
 	 */
 	public function teacher_update_batch()
 	{
@@ -6122,39 +7430,56 @@ class Batch extends MY_Controller
 			return;
 		}
 
-		if (empty($data['batchId'])) {
+		$batch_id = isset($data['batchId']) ? (int) $data['batchId'] : (isset($data['batch_id']) ? (int) $data['batch_id'] : 0);
+		if ($batch_id < 1) {
 			$this->api_json(false, 'Batch ID is required');
 			return;
 		}
 
-		$batch_id = (int) $data['batchId'];
-		$teacher_id = (int) $payload['id'];
-
-		// Verify batch belongs to the teacher
-		$batch = $this->db_model->select_data('admin_id', 'batches use index (id)', array('id' => $batch_id), 1);
-		if (empty($batch) || (int) $batch[0]['admin_id'] !== $teacher_id) {
+		$teacher_id = $this->payload_teacher_user_id($payload);
+		if (!$this->teacher_owns_batch($teacher_id, $batch_id)) {
 			$this->api_json(false, 'You are not authorized to update this batch', array(), 403);
 			return;
 		}
 
+		$existing = $this->db_model->select_data('*', 'batches use index (id)', array('id' => $batch_id), 1);
+		if (empty($existing)) {
+			$this->api_json(false, 'Batch not found', array(), 404);
+			return;
+		}
+
+		$teacher_admin_id = $this->teacher_admin_id($teacher_id);
 		$update_arr = array();
+
 		if (!empty($data['batchName'])) {
-			$update_arr['batch_name'] = (string) $data['batchName'];
+			if ($this->batch_name_exists($data['batchName'], $batch_id)) {
+				$this->api_json(false, 'Batch name already exists.');
+				return;
+			}
+			$update_arr['batch_name'] = trim((string) $data['batchName']);
 		}
 		if (!empty($data['startDate'])) {
-			$update_arr['start_date'] = date('Y-m-d', strtotime((string) $data['startDate']));
+			$update_arr['start_date'] = $this->api_parse_batch_date($data['startDate']);
 		}
 		if (!empty($data['endDate'])) {
-			$update_arr['end_date'] = date('Y-m-d', strtotime((string) $data['endDate']));
+			$update_arr['end_date'] = $this->api_parse_batch_date($data['endDate']);
 		}
 		if (!empty($data['startTime'])) {
-			$update_arr['start_time'] = date('H:i:s', strtotime((string) $data['startTime']));
+			$update_arr['start_time'] = $this->api_parse_batch_time($data['startTime']);
 		}
 		if (!empty($data['endTime'])) {
-			$update_arr['end_time'] = date('H:i:s', strtotime((string) $data['endTime']));
+			$update_arr['end_time'] = $this->api_parse_batch_time($data['endTime']);
 		}
 		if (!empty($data['batchMode'])) {
-			$update_arr['batch_mode'] = in_array((string) $data['batchMode'], array('Online', 'Offline')) ? (string) $data['batchMode'] : 'Online';
+			$bm = strtolower(trim((string) $data['batchMode']));
+			$update_arr['batch_mode'] = ($bm === 'offline') ? 'Offline' : 'Online';
+		}
+		if (isset($data['instituteId']) && (int) $data['instituteId'] > 0) {
+			if (!$this->validate_teacher_institute((int) $data['instituteId'], $teacher_admin_id)) {
+				$this->api_json(false, 'Invalid institute selected');
+				return;
+			}
+			$update_arr['institute_id'] = (int) $data['instituteId'];
 		}
 		if (isset($data['batchType'])) {
 			$update_arr['batch_type'] = (int) $data['batchType'];
@@ -6168,18 +7493,44 @@ class Batch extends MY_Controller
 		if (isset($data['description'])) {
 			$update_arr['description'] = (string) $data['description'];
 		}
+		if (isset($data['categoryId'])) {
+			$update_arr['cat_id'] = (int) $data['categoryId'];
+		}
+		if (isset($data['subcategoryId'])) {
+			$update_arr['sub_cat_id'] = (int) $data['subcategoryId'];
+		}
+		if (isset($data['payMode'])) {
+			$update_arr['pay_mode'] = (string) $data['payMode'];
+		}
 
-		if (empty($update_arr)) {
+		$img = $this->api_batch_image_upload($data, isset($existing[0]['batch_image']) ? $existing[0]['batch_image'] : '');
+		if (!empty($img['error'])) {
+			$this->api_json(false, $img['error']);
+			return;
+		}
+		if (!empty($img['filename'])) {
+			$update_arr['batch_image'] = $img['filename'];
+		}
+
+		$subjects = $this->api_normalize_subjects_list($data);
+		$benefits = $this->api_normalize_benefits_list($data);
+
+		if (empty($update_arr) && empty($subjects) && empty($benefits) && empty($img['filename'])) {
 			$this->api_json(false, 'No fields to update');
 			return;
 		}
 
-		$result = $this->db_model->update_data_limit('batches', $update_arr, array('id' => $batch_id), 1);
-		if ($result) {
-			$this->api_json(true, 'Batch updated successfully', array('batchId' => $batch_id));
-		} else {
-			$this->api_json(false, 'Failed to update batch', array(), 500);
+		if (!empty($update_arr)) {
+			$this->db_model->update_data_limit('batches', $update_arr, array('id' => $batch_id), 1);
 		}
+		if (!empty($subjects)) {
+			$this->api_sync_batch_subjects($batch_id, $subjects, $teacher_id);
+		}
+		if (!empty($benefits)) {
+			$this->api_sync_batch_benefits($batch_id, $benefits);
+		}
+
+		$this->api_json(true, 'Batch updated successfully', array('batchId' => $batch_id));
 	}
 
 	/**
@@ -6199,7 +7550,7 @@ class Batch extends MY_Controller
 		}
 
 		$batch_id = (int) $data['batchId'];
-		$teacher_id = (int) $payload['id'];
+		$teacher_id = $this->payload_teacher_user_id($payload);
 
 		// Verify batch belongs to the teacher
 		$batch = $this->db_model->select_data('id', 'batches use index (id)', array('id' => $batch_id), 1);

@@ -161,6 +161,7 @@
         var ltr_fecherd  ="<?php echo html_escape($this->common->languageTranslator('ltr_fecherd')); ?>";
         var ltr_email  ="<?php echo html_escape($this->common->languageTranslator('ltr_email')); ?>";
         var ltr_wrong_credentials_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_wrong_credentials_msg')); ?>";
+        var ltr_benefit  ="<?php echo html_escape($this->common->languageTranslator('ltr_benefit')); ?>";
         var ltr_batch_spe_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_batch_spe_msg')); ?>";
         var ltr_you_delete  ="<?php echo html_escape($this->common->languageTranslator('ltr_you_delete')); ?>";
         var ltr_i_learn  ="<?php echo html_escape($this->common->languageTranslator('ltr_i_learn')); ?>";

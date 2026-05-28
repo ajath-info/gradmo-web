@@ -1,6 +1,7 @@
+<link rel="stylesheet" href="<?php echo base_url('assets/css/institute-frontend.css'); ?>?v=8">
 <style>
 .exam-attempt-page {
-	max-width: 430px;
+	max-width: 820px;
 	margin: 0 auto;
 	padding: 18px 16px 34px;
 }
@@ -184,6 +185,7 @@
 }
 </style>
 
+<div class="inst-detail-page">
 <div class="exam-attempt-page">
 	<div class="exam-attempt-topbar">
 		<a href="javascript:history.back()" class="exam-attempt-back" aria-label="Back"><i class="fas fa-arrow-left"></i></a>
@@ -191,6 +193,9 @@
 	</div>
 
 	<div id="examAttemptMessage" class="exam-attempt-message"></div>
+	<div style="margin-bottom:12px;">
+		<button type="button" id="examAttemptOmrBtn" class="btn btn-sm btn-outline-primary" style="width:100%;">Download ORM Sheet</button>
+	</div>
 
 	<div id="examAttemptApp">
 		<div class="exam-attempt-status">
@@ -217,7 +222,8 @@
 		</div>
 	</div>
 </div>
-
+</div>
+<script src="<?php echo base_url('assets/js/exam-omr-download.js?v=2'); ?>"></script>
 <script>
 (function () {
 	'use strict';
@@ -225,6 +231,7 @@
 	var examId = <?php echo (int) (isset($exam_id) ? $exam_id : 0); ?>;
 	var batchId = <?php echo (int) (isset($batch_id) ? $batch_id : 0); ?>;
 	var token = <?php echo json_encode((string) (isset($api_access_token) ? $api_access_token : '')); ?>;
+	var omrApiUrl = <?php echo json_encode((string) (isset($exam_omr_sheet_api_url) ? $exam_omr_sheet_api_url : site_url('api/batch/exam-omr-sheet'))); ?>;
 	var paperUrl = <?php echo json_encode((string) (isset($student_exam_paper_api_url) ? $student_exam_paper_api_url : site_url('api/batch/student-exam-paper'))); ?>;
 	var submitUrl = <?php echo json_encode((string) (isset($student_submit_exam_api_url) ? $student_submit_exam_api_url : site_url('api/batch/student-submit-exam'))); ?>;
 	var resultPageUrl = <?php echo json_encode((string) (isset($student_exam_result_page_url) ? $student_exam_result_page_url : site_url('batch/exam-result'))); ?>;
@@ -505,6 +512,25 @@
 		}).catch(function (error) {
 			setMessage(error && error.message ? error.message : 'Could not load assessment.', true);
 			refs.app.innerHTML = '<div class="exam-attempt-empty"><a class="exam-attempt-btn secondary" href="' + esc(listPageUrl + '?batch_id=' + batchId) + '">Back to Assessments</a></div>';
+		});
+	}
+
+	var omrBtn = document.getElementById('examAttemptOmrBtn');
+	if (omrBtn) {
+		omrBtn.addEventListener('click', function () {
+			if (typeof downloadExamOmrSheet !== 'function') {
+				alert('Download helper not loaded.');
+				return;
+			}
+			var old = omrBtn.textContent;
+			omrBtn.disabled = true;
+			omrBtn.textContent = 'Preparing…';
+			downloadExamOmrSheet({ apiUrl: omrApiUrl, token: token, examId: examId, mode: 'blank' }).catch(function (err) {
+				alert(err && err.message ? err.message : 'Could not download ORM sheet.');
+			}).then(function () {
+				omrBtn.disabled = false;
+				omrBtn.textContent = old;
+			});
 		});
 	}
 

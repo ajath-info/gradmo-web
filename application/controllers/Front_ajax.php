@@ -178,6 +178,8 @@ class Front_ajax extends CI_Controller {
                                         $url = $front_home_url;
                                         $sess_arr['subject_id'] =implode(",",json_decode($userDetails[0]['teach_subject'])) ;
                                         $sess_arr['batch_id'] = $userDetails[0]['teach_batch'];
+                                    }else if($userDetails[0]['role']=='4'){
+                                        $url = base_url().'admin/dashboard';
                                     }
                 
                                     $this->session->set_userdata($sess_arr);
@@ -413,109 +415,35 @@ function change_student_status(){
                 $studentDetails = $this->db_model->select_data('id,name','students use index (id)',array('email'=>$email),1);
                 // echo $this->db->last_query();
                 // print_r($studentDetails);
-                if(!empty($userDetails)){
-                    $this->load->library('email');
-                    $frommail =$this->general_settings('smtp_mail');
-                    $frompwd =$this->general_settings('smtp_pwd');
-                    $config = array();
-                    $config['protocol'] = $this->general_settings('server_type');
-                    $config['smtp_host'] = $this->general_settings('smtp_host');
-                    $config['smtp_port'] = $this->general_settings('smtp_port');
-                    $config['smtp_user'] = $frommail;
-                    $config['smtp_pass'] = $frompwd;
-                    $config['charset'] = "utf-8";
-                    $config['mailtype'] = "html";
-                    $config['smtp_crypto'] = $this->general_settings('smtp_encryption');
-                    $config['newline'] = "\r\n";
-                    
-                    $a=str_shuffle('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789');
-                    $pwd = substr($a, 0, 5);
-                    
-                    $subj = 'Recover your account password '.$this->common->siteTitle;
-                    $em_msg = 'Hi '.ucwords($userDetails[0]['name']).',<br/><br/>We have received your request to reset your account password.<br/><br/>Here is your new password : '.$pwd.'<br/><br/> This is an auto-generated email. Please do not reply to this email.';
-                   
-                    $from_email = $this->common->siteOwnerEmail;
-                    $data['site_logo'] = $this->common->siteLogo;
-                    $data['site_Name'] = $this->common->siteTitle;
-                    $data['name'] = $userDetails[0]['name'];
-                    $data['email'] =$email; 
-    			    $data['password'] = $pwd;
-    			    $data['link'] =base_url().'login';
-    			    $data['status'] ='Reset';
-    			    $data['productname'] =array();
-                    $data['supportURL'] =$this->common->siteOwnerEmail;
-    			    $em_msg= $this->load->view("frontend/email_template",$data,true);  
-                    
-                    $res=  $this->SendMail($email, $subj, $em_msg);
-    
-                    if($res){
-                        $data = array( 
-                            'password'=>md5($pwd)
-                        );
-                        $data = $this->security->xss_clean($data);
-                        $this->db_model->update_data('users',$data, array('email'=>$email));
-    
+                if(!empty($userDetails) || !empty($studentDetails)){
+                    $pwd = substr(str_shuffle('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'), 0, 8);
+                    $is_student = !empty($studentDetails);
+                    $name = $is_student ? $studentDetails[0]['name'] : $userDetails[0]['name'];
+                    $user_id = $is_student ? (int) $studentDetails[0]['id'] : (int) $userDetails[0]['id'];
+                    $user_type = $is_student ? 'student' : 'teacher';
+
+                    $mail = $this->common->send_email(array(
+                        'purpose' => 'forgot_password',
+                        'user_id' => $user_id,
+                        'user_type' => $user_type,
+                        'to_email' => $email,
+                        'dynamic_var' => array(
+                            'name' => $name,
+                            'password' => $pwd,
+                            'link' => base_url('login'),
+                        ),
+                    ));
+
+                    if (!empty($mail['status'])) {
+                        if ($is_student) {
+                            $this->db_model->update_data('students', array('password' => md5($pwd)), array('email' => $email));
+                        } else {
+                            $this->db_model->update_data('users', array('password' => password_hash($pwd, PASSWORD_DEFAULT)), array('email' => $email));
+                        }
                         $resp = array(
                             'status'=>'1',
                             'msg'=>'We\'ve sent an email to '.$email.'.',
-                            'url'=>base_url('login') 
-                        );
-                    }
-                    else{
-                        $resp = array(
-                            'status'=>'0',
-                            'msg'=>$this->lang->line('ltr_something_msg')
-                        );
-                    }
-                }else if(!empty($studentDetails)){
-                    
-                    $this->load->library('email');
-                    $frommail =$this->general_settings('smtp_mail');
-                    $frompwd =$this->general_settings('smtp_pwd');
-                    $config = array();
-                    $config['protocol'] = $this->general_settings('server_type');
-                    $config['smtp_host'] = $this->general_settings('smtp_host');
-                    $config['smtp_port'] = $this->general_settings('smtp_port');
-                    $config['smtp_user'] = $frommail;
-                    $config['smtp_pass'] = $frompwd;
-                    $config['charset'] = "utf-8";
-                    $config['mailtype'] = "html";
-                    $config['smtp_crypto'] = $this->general_settings('smtp_encryption');
-                    $config['newline'] = "\r\n";
-                    
-                    $a=str_shuffle('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789');
-                    $pwd = substr($a, 0, 5);
-                    
-                    
-                    $subj = 'Recover your account password '.$this->common->siteTitle;
-                    $em_msg = 'Hi '.ucwords($studentDetails[0]['name']).',<br/><br/>We have received your request to reset your account password.<br/><br/>Here is your new password : '.$pwd.'<br/><br/> This is an auto-generated email. Please do not reply to this email.';
-                    
-                    $from_email = $this->common->siteOwnerEmail;
-                    $data['site_logo'] = $this->common->siteLogo;
-                    $data['site_Name'] = $this->common->siteTitle;
-                    $data['name'] = $studentDetails[0]['name'];
-                    $data['email'] =$email; 
-    			    $data['password'] = $pwd;
-    			    $data['link'] =base_url().'login';
-    			    $data['status'] ='Reset';
-    			    $data['productname'] =array();
-                    $data['supportURL'] =$this->common->siteOwnerEmail;
-    			    $em_msg= $this->load->view("frontend/email_template",$data,true);  
-                    
-                    $res=  $this->SendMail($email, $subj, $em_msg);
-                   
-                 
-                    if($res==1){
-                        $password = array( 
-                            'password'=>md5($pwd)
-                        );
-                         $data = $this->security->xss_clean($password);
-                        $this->db_model->update_data('students',$password, array('email'=>$email));
-    
-                        $resp = array(
-                            'status'=>'1',
-                            'msg'=>'We\'ve sent an email to '.$email.'.',
-                            'url'=>base_url('login') 
+                            'url'=>base_url('login')
                         );
                     }
                     else{

@@ -164,6 +164,10 @@
         var ltr_select_paper_msg ="<?php echo html_escape($this->common->languageTranslator('ltr_select_paper_msg')); ?>";
         var ltr_add_facility ="<?php echo html_escape($this->common->languageTranslator('ltr_add_facility')); ?>";
         var ltr_edit_facility ="<?php echo html_escape($this->common->languageTranslator('ltr_edit_facility')); ?>";
+        var ltr_add_cms_page ="<?php echo html_escape($this->common->languageTranslator('ltr_add_cms_page')); ?>";
+        var ltr_edit_cms_page ="<?php echo html_escape($this->common->languageTranslator('ltr_edit_cms_page')); ?>";
+        var ltr_add_template ="<?php echo html_escape($this->common->languageTranslator('ltr_add_template')); ?>";
+        var ltr_edit_template ="<?php echo html_escape($this->common->languageTranslator('ltr_edit_template')); ?>";
         var ltr_add_assignment ="<?php echo html_escape($this->common->languageTranslator('ltr_add_assignment')); ?>";
         var ltr_edit_assignment ="<?php echo html_escape($this->common->languageTranslator('ltr_edit_assignment')); ?>";
         var ltr_update_assignment ="<?php echo html_escape($this->common->languageTranslator('ltr_update_assignment')); ?>";
@@ -1117,6 +1121,14 @@ if ( ! is_array($cur_arr)) {
                                 C360,233.909,342.091,216,320,216z M320,280c-13.255,0-24-10.745-24-24c0-13.255,10.745-24,24-24s24,10.745,24,24
                                 C344,269.255,333.255,280,320,280z"/></g></g><g> <g> <rect x="176" y="72" width="128" height="16"/>  </g></g><g> <g> <rect x="96" y="120" width="288" height="16"/></g></g><g>   <g> <rect x="96" y="152" width="288" height="16"/></g></g><g>   <g> <rect x="104" y="256" width="104" height="16"/></g></g></svg>
                                 <span><?php echo html_escape($this->common->languageTranslator('ltr_themes_option'));?></span>
+                                </a></li>
+                                <li <?php echo in_array("cms-pages",$cur_arr)?'class="active"':'';?>><a href="<?php echo base_url();?>admin/cms-pages">
+                                <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/></svg>
+                                <span><?php echo html_escape($this->common->languageTranslator('ltr_cms_pages'));?></span>
+                                </a></li>
+                                <li <?php echo in_array("templates",$cur_arr)?'class="active"':'';?>><a href="<?php echo base_url();?>admin/templates">
+                                <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20,6C20.58,6 21.05,6.2 21.42,6.59C21.8,7.05 22,7.58 22,8V18C22,19.11 21.11,20 20,20H4C2.89,20 2,19.11 2,18V6C2,4.89 2.89,4 4,4H10L12,6H20M20,8H4V18H20V8Z"/></svg>
+                                <span><?php echo html_escape($this->common->languageTranslator('ltr_templates'));?></span>
                                 </a></li>
                         <?php 
                     }

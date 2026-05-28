@@ -1,0 +1,971 @@
+{
+  "api/user/login": {
+    "method": "multi_user_login",
+    "keys": [
+      "device_id",
+      "device_token",
+      "device_type",
+      "password",
+      "user_type",
+      "username"
+    ],
+    "found": true
+  },
+  "api/user/signup": {
+    "method": "multi_user_registration",
+    "keys": [
+      "device_id",
+      "device_token",
+      "device_type",
+      "email",
+      "mobile",
+      "name",
+      "password",
+      "user_type"
+    ],
+    "found": true
+  },
+  "api/user/send-otp": {
+    "method": "send_otp",
+    "keys": [
+      "mobile",
+      "user_type"
+    ],
+    "found": true
+  },
+  "api/user/verify-otp": {
+    "method": "verify_otp",
+    "keys": [
+      "device_id",
+      "device_token",
+      "device_type",
+      "mobile",
+      "otp",
+      "user_type"
+    ],
+    "found": true
+  },
+  "api/user/user_details": {
+    "method": "user_details",
+    "keys": [],
+    "found": true
+  },
+  "api/user/update-profile": {
+    "method": "profile_update",
+    "keys": [
+      "address",
+      "city",
+      "contact_no",
+      "country",
+      "email",
+      "gender",
+      "grade",
+      "image",
+      "image|file",
+      "is_complete",
+      "mobile",
+      "name",
+      "pincode",
+      "school_college_name",
+      "state",
+      "teach_education",
+      "teach_gender"
+    ],
+    "found": true
+  },
+  "api/user/logout": {
+    "method": "logout",
+    "keys": [],
+    "found": true
+  },
+  "api/user/update-password": {
+    "method": "update_password",
+    "keys": [
+      "confirm_password",
+      "mobile",
+      "password",
+      "user_type"
+    ],
+    "found": true
+  },
+  "api/user/change-password": {
+    "method": "change_password",
+    "keys": [
+      "confirm_pass",
+      "confirm_password",
+      "current_pass",
+      "current_password",
+      "new_pass",
+      "new_password"
+    ],
+    "found": true
+  },
+  "api/user/delete-account": {
+    "method": "deleteAccount",
+    "keys": [],
+    "found": true
+  },
+  "api/user/payment-history": {
+    "method": "paymentHistory",
+    "keys": [],
+    "found": true
+  },
+  "api/user/attendance-list": {
+    "method": "attendanceList",
+    "keys": [
+      "attendance_date",
+      "batch_id",
+      "date",
+      "month",
+      "year"
+    ],
+    "found": true
+  },
+  "api/user/add-attendance": {
+    "method": "addAttendance",
+    "keys": [
+      "attendance_date",
+      "attendance_status",
+      "batch_id",
+      "day_status",
+      "student_id",
+      "student_ids",
+      "time"
+    ],
+    "found": true
+  },
+  "api/main/site-details": {
+    "method": "site_details",
+    "keys": [],
+    "found": true
+  },
+  "api/main/notifications-list": {
+    "method": "notifications_list",
+    "keys": [
+      "notification_type"
+    ],
+    "found": true
+  },
+  "api/main/add-review": {
+    "method": "add_review",
+    "keys": [
+      "institute_id",
+      "msg",
+      "rating"
+    ],
+    "found": true
+  },
+  "api/main/approve-review": {
+    "method": "approve_review",
+    "keys": [
+      "review_id"
+    ],
+    "found": true
+  },
+  "api/main/institute-reviews-list": {
+    "method": "institute_reviews_list",
+    "keys": [
+      "status"
+    ],
+    "found": true
+  },
+  "api/main/reviews-list": {
+    "method": "reviews_list",
+    "keys": [
+      "institute_id"
+    ],
+    "found": true
+  },
+  "api/main/review-detail": {
+    "method": "review_detail",
+    "keys": [
+      "review_id"
+    ],
+    "found": true
+  },
+  "api/main/update-review": {
+    "method": "update_review",
+    "keys": [
+      "msg",
+      "rating",
+      "review_id"
+    ],
+    "found": true
+  },
+  "api/main/delete-review": {
+    "method": "delete_review",
+    "keys": [
+      "review_id"
+    ],
+    "found": true
+  },
+  "api/main/pages": {
+    "method": "pages",
+    "keys": [
+      "page_type"
+    ],
+    "found": true
+  },
+  "api/main/post-enquiry": {
+    "method": "post_enquiry",
+    "keys": [
+      "email",
+      "message",
+      "mobile",
+      "name",
+      "subject"
+    ],
+    "found": true
+  },
+  "api/main/country-list": {
+    "method": "country_list",
+    "keys": [
+      "id"
+    ],
+    "found": true
+  },
+  "api/main/state-list": {
+    "method": "state_list",
+    "keys": [
+      "country_id"
+    ],
+    "found": true
+  },
+  "api/main/city-list": {
+    "method": "city_list",
+    "keys": [
+      "state_id"
+    ],
+    "found": true
+  },
+  "api/main/get_defaults_requirements": {
+    "method": "get_defaults_requirements",
+    "keys": [],
+    "found": true
+  },
+  "api/courses/courses-list": {
+    "method": "courses_list",
+    "keys": [
+      "admin_id",
+      "search"
+    ],
+    "found": true
+  },
+  "api/institute/listing": {
+    "method": "institute_listing",
+    "keys": [
+      "batch_id",
+      "city",
+      "latitude",
+      "list",
+      "longitude",
+      "order_field",
+      "order_type",
+      "search",
+      "user_type"
+    ],
+    "found": true
+  },
+  "api/institute/details": {
+    "method": "institute_details",
+    "keys": [
+      "id",
+      "institute_id",
+      "reviews_limit"
+    ],
+    "found": true
+  },
+  "api/institute/city-list": {
+    "method": "institute_city_list",
+    "keys": [],
+    "found": true
+  },
+  "api/plan/plans": {
+    "method": "plans",
+    "keys": [],
+    "found": true
+  },
+  "api/plan/promo-codes": {
+    "method": "promo_codes",
+    "keys": [],
+    "found": true
+  },
+  "api/payment/razorpay/create-order": {
+    "method": "create_order",
+    "keys": [
+      "amount_in_paise",
+      "amount_in_rupees",
+      "currency",
+      "notes",
+      "receipt"
+    ],
+    "found": true
+  },
+  "api/payment/razorpay/verify-payment": {
+    "method": "verify_payment",
+    "keys": [
+      "batch_id",
+      "first_payment_plan_id",
+      "planId",
+      "plan_id",
+      "razorpay_order_id",
+      "razorpay_payment_id",
+      "razorpay_signature",
+      "renewal_plan_id",
+      "student_id"
+    ],
+    "found": true
+  },
+  "api/payment/razorpay/fetch-payment": {
+    "method": "fetch_payment",
+    "keys": [
+      "payment_id"
+    ],
+    "found": true
+  },
+  "api/payment/razorpay/order-status": {
+    "method": "order_status",
+    "keys": [
+      "order_id"
+    ],
+    "found": true
+  },
+  "api/payment/razorpay/webhook": {
+    "method": "webhook",
+    "keys": [],
+    "found": true
+  },
+  "api/batch/batch-list": {
+    "method": "batch_list",
+    "keys": [
+      "list",
+      "search"
+    ],
+    "found": true
+  },
+  "api/batch/slider-list": {
+    "method": "slider_list",
+    "keys": [],
+    "found": true
+  },
+  "api/batch/batch-details": {
+    "method": "batch_details",
+    "keys": [
+      "batch_id"
+    ],
+    "found": true
+  },
+  "api/batch/batch-subjects": {
+    "method": "batch_subjects",
+    "keys": [
+      "batch_id"
+    ],
+    "found": true
+  },
+  "api/batch/attendance-roster": {
+    "method": "attendance_roster",
+    "keys": [
+      "batch_id",
+      "date"
+    ],
+    "found": true
+  },
+  "api/batch/attendance-roster-matrix": {
+    "method": "attendance_roster_matrix",
+    "keys": [
+      "batch_id",
+      "month",
+      "year"
+    ],
+    "found": true
+  },
+  "api/batch/attendance-matrix-save": {
+    "method": "attendance_matrix_save",
+    "keys": [
+      "batch_id",
+      "default_time",
+      "entries"
+    ],
+    "found": true
+  },
+  "api/batch/homework-list": {
+    "method": "homework_list",
+    "keys": [
+      "admin_id",
+      "batch_id",
+      "date"
+    ],
+    "found": true
+  },
+  "api/batch/homework-details": {
+    "method": "homework_details",
+    "keys": [
+      "homework_id"
+    ],
+    "found": true
+  },
+  "api/batch/homework-add": {
+    "method": "homework_add",
+    "keys": [
+      "batch_id",
+      "date",
+      "description",
+      "pdf_file|file",
+      "subject_id"
+    ],
+    "found": true
+  },
+  "api/batch/homework-edit": {
+    "method": "homework_edit",
+    "keys": [
+      "batch_id",
+      "date",
+      "description",
+      "homework_id",
+      "pdf_file|file",
+      "subject_id"
+    ],
+    "found": true
+  },
+  "api/batch/homework-delete": {
+    "method": "homework_delete",
+    "keys": [
+      "homework_id"
+    ],
+    "found": true
+  },
+  "api/batch/homework-submit": {
+    "method": "homework_submit",
+    "keys": [
+      "homework_id",
+      "submission_file|file",
+      "submission_text"
+    ],
+    "found": true
+  },
+  "api/batch/homework-submissions": {
+    "method": "homework_submissions",
+    "keys": [
+      "homework_id"
+    ],
+    "found": true
+  },
+  "api/batch/homework-submission-details": {
+    "method": "homework_submission_details",
+    "keys": [
+      "submission_id"
+    ],
+    "found": true
+  },
+  "api/batch/homework-evaluate": {
+    "method": "homework_evaluate",
+    "keys": [
+      "eval_status",
+      "marks",
+      "remark",
+      "submission_id"
+    ],
+    "found": true
+  },
+  "api/batch/my-homework-submissions": {
+    "method": "my_homework_submissions",
+    "keys": [
+      "batch_id",
+      "eval_status",
+      "homework_id"
+    ],
+    "found": true
+  },
+  "api/batch/library-add-book": {
+    "method": "library_add_book",
+    "keys": [
+      "batch_id",
+      "pdf_file|file",
+      "subject",
+      "title",
+      "topic"
+    ],
+    "found": true
+  },
+  "api/batch/library-list": {
+    "method": "library_list",
+    "keys": [
+      "batch_id",
+      "search",
+      "sort_by",
+      "sort_dir"
+    ],
+    "found": true
+  },
+  "api/batch/library-edit-book": {
+    "method": "library_edit_book",
+    "keys": [
+      "batch_id",
+      "book_id",
+      "pdf_file|file",
+      "subject",
+      "title",
+      "topic"
+    ],
+    "found": true
+  },
+  "api/batch/library-delete-book": {
+    "method": "library_delete_book",
+    "keys": [
+      "batch_id",
+      "book_id"
+    ],
+    "found": true
+  },
+  "api/batch/library-book-details": {
+    "method": "library_book_details",
+    "keys": [
+      "batch_id",
+      "book_id"
+    ],
+    "found": true
+  },
+  "api/batch/notes-list": {
+    "method": "notes_list",
+    "keys": [
+      "batch_id",
+      "search"
+    ],
+    "found": true
+  },
+  "api/batch/notes-add": {
+    "method": "notes_add",
+    "keys": [
+      "batch_id",
+      "pdf_file|file",
+      "subject",
+      "title",
+      "topic"
+    ],
+    "found": true
+  },
+  "api/batch/notes-edit": {
+    "method": "notes_edit",
+    "keys": [
+      "batch_id",
+      "notes_id",
+      "pdf_file|file",
+      "subject",
+      "title",
+      "topic"
+    ],
+    "found": true
+  },
+  "api/batch/notes-delete": {
+    "method": "notes_delete",
+    "keys": [
+      "batch_id",
+      "notes_id"
+    ],
+    "found": true
+  },
+  "api/batch/notes-details": {
+    "method": "notes_details",
+    "keys": [
+      "batch_id",
+      "notes_id"
+    ],
+    "found": true
+  },
+  "api/batch/live-class-list": {
+    "method": "live_class_list",
+    "keys": [
+      "batch_id",
+      "search",
+      "sort_by",
+      "sort_dir"
+    ],
+    "found": true
+  },
+  "api/batch/live-class-details": {
+    "method": "live_class_details",
+    "keys": [
+      "batch_id",
+      "live_class_id"
+    ],
+    "found": true
+  },
+  "api/batch/class-status": {
+    "method": "class_status",
+    "keys": [
+      "batch_id",
+      "live_class_id"
+    ],
+    "found": true
+  },
+  "api/batch/live-meeting-end": {
+    "method": "live_meeting_end",
+    "keys": [
+      "action",
+      "batch_id",
+      "live_class_id"
+    ],
+    "found": true
+  },
+  "api/batch/recorded-meeting-list": {
+    "method": "recorded_meeting_list",
+    "keys": [
+      "batch_id",
+      "search",
+      "sort_by",
+      "sort_dir",
+      "sync"
+    ],
+    "found": true
+  },
+  "api/batch/recorded-meeting-details": {
+    "method": "recorded_meeting_details",
+    "keys": [
+      "recorded_meeting_id",
+      "recording_id"
+    ],
+    "found": true
+  },
+  "api/batch/recorded-meeting-sync": {
+    "method": "recorded_meeting_sync",
+    "keys": [
+      "batch_id"
+    ],
+    "found": true
+  },
+  "api/batch/batch-zoom-details": {
+    "method": "batch_zoom_details",
+    "keys": [
+      "batch_id"
+    ],
+    "found": true
+  },
+  "api/batch/batch-zoom-create": {
+    "method": "batch_zoom_create",
+    "keys": [
+      "agenda",
+      "batch_id",
+      "duration",
+      "start_time",
+      "timezone",
+      "topic"
+    ],
+    "found": true
+  },
+  "api/batch/batch-zoom-update": {
+    "method": "batch_zoom_update",
+    "keys": [
+      "agenda",
+      "batch_id",
+      "duration",
+      "start_time",
+      "timezone",
+      "topic"
+    ],
+    "found": true
+  },
+  "api/batch/batch-zoom-delete": {
+    "method": "batch_zoom_delete",
+    "keys": [
+      "batch_id"
+    ],
+    "found": true
+  },
+  "api/batch/batch-zoom-join": {
+    "method": "batch_zoom_join",
+    "keys": [],
+    "found": true
+  },
+  "api/batch/batch-notify-students": {
+    "method": "batch_notify_students",
+    "keys": [
+      "batch_id",
+      "msg",
+      "notification_type",
+      "url"
+    ],
+    "found": true
+  },
+  "api/batch/video-lecture-list": {
+    "method": "video_lecture_list",
+    "keys": [
+      "batch_id",
+      "search",
+      "sort_by",
+      "sort_dir"
+    ],
+    "found": true
+  },
+  "api/batch/video-lecture-details": {
+    "method": "video_lecture_details",
+    "keys": [
+      "video_lecture_id"
+    ],
+    "found": true
+  },
+  "api/batch/video-lecture-add": {
+    "method": "video_lecture_add",
+    "keys": [
+      "batch_id",
+      "description",
+      "preview_type",
+      "subject",
+      "title",
+      "topic",
+      "url",
+      "video_file|file",
+      "video_type"
+    ],
+    "found": true
+  },
+  "api/batch/video-lecture-edit": {
+    "method": "video_lecture_edit",
+    "keys": [
+      "batch_id",
+      "preview_type",
+      "url",
+      "video_file|file",
+      "video_lecture_id",
+      "video_type"
+    ],
+    "found": true
+  },
+  "api/batch/video-lecture-delete": {
+    "method": "video_lecture_delete",
+    "keys": [
+      "batch_id",
+      "video_lecture_id"
+    ],
+    "found": true
+  },
+  "api/batch/upcoming-exam-list": {
+    "method": "upcoming_exam_list",
+    "keys": [
+      "batch_id",
+      "search",
+      "sort_by",
+      "sort_dir"
+    ],
+    "found": true
+  },
+  "api/batch/upcoming-exam-details": {
+    "method": "upcoming_exam_details",
+    "keys": [
+      "exam_id"
+    ],
+    "found": true
+  },
+  "api/batch/student-exam-dashboard": {
+    "method": "student_exam_dashboard",
+    "keys": [
+      "batch_id"
+    ],
+    "found": true
+  },
+  "api/batch/student-exam-paper": {
+    "method": "student_exam_paper",
+    "keys": [
+      "exam_id"
+    ],
+    "found": true
+  },
+  "api/batch/student-submit-exam": {
+    "method": "student_submit_exam",
+    "keys": [
+      "answers",
+      "exam_id",
+      "question_answer",
+      "start_time",
+      "started_at"
+    ],
+    "found": true
+  },
+  "api/batch/student-exam-result": {
+    "method": "student_exam_result",
+    "keys": [
+      "exam_id"
+    ],
+    "found": true
+  },
+  "api/batch/exam-manage-list": {
+    "method": "exam_manage_list",
+    "keys": [
+      "batch_id",
+      "search"
+    ],
+    "found": true
+  },
+  "api/batch/exam-add": {
+    "method": "exam_add",
+    "keys": [
+      "batch_id",
+      "format",
+      "marking_parcent",
+      "mock_sheduled_date",
+      "mock_sheduled_time",
+      "name",
+      "question_ids",
+      "time_duration",
+      "total_marks",
+      "total_question",
+      "type"
+    ],
+    "found": true
+  },
+  "api/batch/exam-edit": {
+    "method": "exam_edit",
+    "keys": [
+      "batch_id",
+      "exam_id"
+    ],
+    "found": true
+  },
+  "api/batch/exam-delete": {
+    "method": "exam_delete",
+    "keys": [
+      "exam_id"
+    ],
+    "found": true
+  },
+  "api/batch/exam-submission-list": {
+    "method": "exam_submission_list",
+    "keys": [
+      "exam_id",
+      "search",
+      "sort"
+    ],
+    "found": true
+  },
+  "api/batch/exam-submission-details": {
+    "method": "exam_submission_details",
+    "keys": [
+      "exam_id",
+      "student_id",
+      "submission_id"
+    ],
+    "found": true
+  },
+  "api/batch/exam-omr-sheet": {
+    "method": "exam_omr_sheet",
+    "keys": [
+      "exam_id",
+      "mode",
+      "show_correct",
+      "student_id",
+      "student_name",
+      "submission_id"
+    ],
+    "found": true
+  },
+  "api/batch/batch-chapters": {
+    "method": "batch_chapters",
+    "keys": [
+      "batch_id",
+      "subject_id"
+    ],
+    "found": true
+  },
+  "api/batch/categories": {
+    "method": "categories",
+    "keys": [],
+    "found": true
+  },
+  "api/batch/subcategories": {
+    "method": "subcategories",
+    "keys": [
+      "cat_id",
+      "categoryId",
+      "category_id"
+    ],
+    "found": true
+  },
+  "api/batch/teacher-batches": {
+    "method": "teacher_batches",
+    "keys": [],
+    "found": true
+  },
+  "api/batch/teacher-batch-form-options": {
+    "method": "teacher_batch_form_options",
+    "keys": [],
+    "found": true
+  },
+  "api/batch/teacher-batch-subjects": {
+    "method": "teacher_batch_subjects",
+    "keys": [],
+    "found": true
+  },
+  "api/batch/teacher-batch-subject-chapters": {
+    "method": "teacher_batch_subject_chapters",
+    "keys": [
+      "subjectId",
+      "subject_id"
+    ],
+    "found": true
+  },
+  "api/batch/teacher-batch-edit": {
+    "method": "teacher_batch_edit",
+    "keys": [
+      "batchId",
+      "batch_id"
+    ],
+    "found": true
+  },
+  "api/batch/teacher-create-batch": {
+    "method": "teacher_create_batch",
+    "keys": [
+      "batchName",
+      "instituteId",
+      "institute_id"
+    ],
+    "found": true
+  },
+  "api/batch/teacher-update-batch": {
+    "method": "teacher_update_batch",
+    "keys": [
+      "batchId",
+      "batchMode",
+      "batchName",
+      "batchOfferPrice",
+      "batchPrice",
+      "batchType",
+      "batch_id",
+      "categoryId",
+      "description",
+      "endDate",
+      "endTime",
+      "instituteId",
+      "payMode",
+      "startDate",
+      "startTime",
+      "subcategoryId"
+    ],
+    "found": true
+  },
+  "api/batch/teacher-delete-batch": {
+    "method": "teacher_delete_batch",
+    "keys": [
+      "batchId"
+    ],
+    "found": true
+  },
+  "api/batch/zoom-webhook": {
+    "method": "zoom_webhook",
+    "keys": [
+      "event",
+      "payload"
+    ],
+    "found": true
+  },
+  "api/batch/zoom-cron-sync": {
+    "method": "zoom_cron_sync",
+    "keys": [],
+    "found": true
+  },
+  "api/batch/zoom-debug": {
+    "method": "zoom_debug",
+    "keys": [
+      "batch_id"
+    ],
+    "found": true
+  }
+}

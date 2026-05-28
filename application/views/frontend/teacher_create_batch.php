@@ -1,220 +1,124 @@
-<div class="container my-5">
-	<div class="row">
-		<div class="col-md-8 mx-auto">
-			<div class="card">
-				<div class="card-header bg-primary text-white">
-					<h4 class="mb-0"><?php echo isset($page_title) ? html_escape($page_title) : 'Create New Batch'; ?></h4>
-				</div>
-				<div class="card-body">
-					<form id="batchForm" method="POST" enctype="multipart/form-data">
-						<div class="form-group mb-3">
-							<label for="batch_name" class="form-label">Batch Name *</label>
-							<input type="text" class="form-control" id="batch_name" name="batch_name"
-								value="<?php echo isset($batch_data) ? html_escape($batch_data['batch_name']) : ''; ?>"
-								placeholder="Enter batch name" required>
-						</div>
+<link rel="stylesheet" href="<?php echo base_url('assets/css/institute-frontend.css'); ?>?v=9">
+<link rel="stylesheet" href="<?php echo base_url('assets/css/jquery-ui.css'); ?>">
+<link rel="stylesheet" href="<?php echo base_url('assets/css/select2.min.css'); ?>">
+<link rel="stylesheet" href="<?php echo base_url('assets/js/timepicker/bootstrap-clockpicker.min.css'); ?>">
+<link rel="stylesheet" href="<?php echo base_url('assets/css/backend.css'); ?>?v=<?php echo time(); ?>">
+<style>
+/* Teacher batch form — same markup/classes as admin/add-batch; only layout tweaks */
+.tcb-page .inst-detail-container { max-width: 1180px; }
+.tcb-page .edu_admin_content {
+	display: block;
+	width: 100%;
+	padding: 0;
+	padding-top: 0;
+}
+.tcb-page .edu_admin_right.sectionHolder.edu_add_users {
+	padding: 0;
+}
+.tcb-page .edu_admin_informationdiv.edu_main_wrapper {
+	background: transparent;
+	box-shadow: none;
+	padding: 0;
+}
+.tcb-page .edu_btn_wrapper .edu_admin_btn {
+	text-transform: uppercase;
+}
+.tcb-cancel-row {
+	margin-top: 16px;
+	padding: 0 4px;
+}
+/* Category / subcategory / institute — native selects (same look as Batch mode) */
+.tcb-page .select2-container + select.tcb-native-select,
+.tcb-page select.tcb-native-select + .select2-container {
+	display: none !important;
+}
+.tcb-page #category_dropdown,
+.tcb-page #subcategory_dropdown,
+.tcb-page #institute_id,
+.tcb-page select.tcb-native-select {
+	display: block !important;
+	width: 100% !important;
+	min-height: 45px !important;
+	height: 45px !important;
+	padding: 0 12px;
+	border: 1px solid #e7e7e9;
+	border-radius: 4px;
+	background: #fff;
+	color: #333;
+	font-size: 14px;
+	line-height: 43px;
+	-webkit-appearance: menulist;
+	appearance: menulist;
+	opacity: 1 !important;
+	position: static !important;
+	clip: auto !important;
+	clip-path: none !important;
+}
+/* Select2 for subject/chapter rows inside accordions */
+.tcb-page .form-group .select2-container {
+	width: 100% !important;
+	display: block;
+	min-height: 45px;
+}
+.tcb-page .select2-container--default .select2-selection--single {
+	height: 45px;
+	border: 1px solid #e7e7e9;
+	border-radius: 4px;
+}
+.tcb-page .select2-container--default .select2-selection--single .select2-selection__rendered {
+	line-height: 43px;
+	padding-left: 12px;
+	color: #333;
+}
+.tcb-page .select2-container--default .select2-selection--single .select2-selection__arrow {
+	height: 43px;
+}
+.tcb-page .form-control,
+.tcb-page #b_startDate,
+.tcb-page #b_endDate {
+	min-height: 45px;
+	border-radius: 4px;
+	border: 1px solid #e7e7e9;
+}
+.tcb-page .edu_accordion_container_heading,
+.tcb-page .edu_accordion_container {
+	margin-bottom: 12px;
+}
+.tcb-page .eb_subhead_icon {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+}
+.tcb-page .eb_subhead_icon i {
+	cursor: pointer;
+	font-size: 16px;
+}
+.tcb-page .AssignBatchHeading,
+.tcb-page .AssignSubBatch {
+	margin-top: 8px;
+}
+</style>
+<script>
+	var ltr_valid_price_msg = <?php echo json_encode(html_escape($this->common->languageTranslator('ltr_valid_price_msg'))); ?>;
+	var ltr_benefit = <?php echo json_encode(html_escape($this->common->languageTranslator('ltr_benefit'))); ?>;
+	var ltr_batch_spe_msg = <?php echo json_encode(html_escape($this->common->languageTranslator('ltr_batch_spe_msg'))); ?>;
+</script>
 
-						<div class="form-group mb-3">
-							<label for="institute_id" class="form-label">Institute</label>
-							<select class="form-control" id="institute_id" name="institute_id">
-								<option value="">-- Select Institute --</option>
-								<?php if (!empty($institutes)): ?>
-									<?php foreach ($institutes as $inst): ?>
-										<option value="<?php echo (int) $inst['id']; ?>"
-											<?php echo (isset($batch_data) && (int) $batch_data['institute_id'] === (int) $inst['id']) ? 'selected' : ''; ?>>
-											<?php echo html_escape($inst['name']); ?>
-										</option>
-									<?php endforeach; ?>
-								<?php endif; ?>
-							</select>
-						</div>
-
-						<div class="row">
-							<div class="col-md-6">
-								<div class="form-group mb-3">
-									<label for="start_date" class="form-label">Start Date *</label>
-									<input type="date" class="form-control" id="start_date" name="start_date"
-										value="<?php echo isset($batch_data) ? html_escape($batch_data['start_date']) : ''; ?>"
-										required>
-								</div>
-							</div>
-							<div class="col-md-6">
-								<div class="form-group mb-3">
-									<label for="end_date" class="form-label">End Date *</label>
-									<input type="date" class="form-control" id="end_date" name="end_date"
-										value="<?php echo isset($batch_data) ? html_escape($batch_data['end_date']) : ''; ?>"
-										required>
-								</div>
-							</div>
-						</div>
-
-						<div class="row">
-							<div class="col-md-6">
-								<div class="form-group mb-3">
-									<label for="start_time" class="form-label">Start Time *</label>
-									<input type="time" class="form-control" id="start_time" name="start_time"
-										value="<?php echo isset($batch_data) ? html_escape(substr($batch_data['start_time'], 0, 5)) : ''; ?>"
-										required>
-								</div>
-							</div>
-							<div class="col-md-6">
-								<div class="form-group mb-3">
-									<label for="end_time" class="form-label">End Time *</label>
-									<input type="time" class="form-control" id="end_time" name="end_time"
-										value="<?php echo isset($batch_data) ? html_escape(substr($batch_data['end_time'], 0, 5)) : ''; ?>"
-										required>
-								</div>
-							</div>
-						</div>
-
-						<div class="form-group mb-3">
-							<label for="batch_mode" class="form-label">Mode *</label>
-							<select class="form-control" id="batch_mode" name="batch_mode" required>
-								<option value="">-- Select Mode --</option>
-								<option value="Online" <?php echo (isset($batch_data) && $batch_data['batch_mode'] === 'Online') ? 'selected' : ''; ?>>Online</option>
-								<option value="Offline" <?php echo (isset($batch_data) && $batch_data['batch_mode'] === 'Offline') ? 'selected' : ''; ?>>Offline</option>
-							</select>
-						</div>
-
-						<div class="row">
-							<div class="col-md-6">
-								<div class="form-group mb-3">
-									<label for="batchType" class="form-label">Batch Type</label>
-									<select class="form-control" id="batchType" name="batchType">
-										<option value="1" <?php echo (!isset($batch_data) || (int) $batch_data['batch_type'] === 1) ? 'selected' : ''; ?>>Free</option>
-										<option value="2" <?php echo (isset($batch_data) && (int) $batch_data['batch_type'] === 2) ? 'selected' : ''; ?>>Paid</option>
-									</select>
-								</div>
-							</div>
-							<div class="col-md-6">
-								<div class="form-group mb-3">
-									<label for="batchPrice" class="form-label">Price (if Paid)</label>
-									<input type="number" class="form-control" id="batchPrice" name="batchPrice"
-										value="<?php echo isset($batch_data) ? html_escape($batch_data['batch_price']) : '0'; ?>"
-										placeholder="0" min="0" step="0.01">
-								</div>
-							</div>
-						</div>
-
-						<div class="form-group mb-3">
-							<label for="category" class="form-label">Category</label>
-							<select class="form-control" id="category" name="category">
-								<option value="">-- Select Category --</option>
-								<?php if (!empty($categories)): ?>
-									<?php foreach ($categories as $cat): ?>
-										<option value="<?php echo (int) $cat['id']; ?>"
-											<?php echo (isset($batch_data) && (int) $batch_data['cat_id'] === (int) $cat['id']) ? 'selected' : ''; ?>>
-											<?php echo html_escape($cat['name']); ?>
-										</option>
-									<?php endforeach; ?>
-								<?php endif; ?>
-							</select>
-						</div>
-
-						<div class="form-group mb-3">
-							<label for="batch_description" class="form-label">Description</label>
-							<textarea class="form-control" id="batch_description" name="batch_description" rows="4"
-								placeholder="Enter batch description"><?php echo isset($batch_data) ? html_escape($batch_data['description']) : ''; ?></textarea>
-						</div>
-
-						<div class="form-group mb-3">
-							<label for="batch_image" class="form-label">Batch Image</label>
-							<input type="file" class="form-control" id="batch_image" name="batch_image" accept="image/*">
-							<?php if (isset($batch_data) && !empty($batch_data['batch_image'])): ?>
-								<div id="current_image_preview" style="margin-top: 10px;">
-									<small class="text-muted">Current image:</small><br>
-									<img src="<?php echo base_url('uploads/batch_image/' . html_escape($batch_data['batch_image'])); ?>" alt="Current batch image" style="max-width: 200px; max-height: 200px; margin-top: 10px; border-radius: 4px;">
-								</div>
-							<?php endif; ?>
-							<div id="image_preview" style="margin-top: 10px;"></div>
-						</div>
-
-						<input type="hidden" name="type" value="<?php echo isset($batch_data) ? 'edit' : 'add'; ?>">
-						<?php if (isset($batch_data)): ?>
-							<input type="hidden" name="batch_id" value="<?php echo (int) $batch_data['id']; ?>">
-						<?php endif; ?>
-						<input type="hidden" name="payMode" value="online">
-
-						<div class="form-group">
-							<button type="submit" class="btn btn-primary">
-								<?php echo isset($batch_data) ? 'Update Batch' : 'Create Batch'; ?>
-							</button>
-							<a href="<?php echo base_url('batch/mylist'); ?>" class="btn btn-secondary">Cancel</a>
-						</div>
-					</form>
+<div class="inst-detail-page tcb-page">
+	<div class="inst-detail-mobile-bar">
+		<a href="<?php echo base_url('batch/mylist'); ?>" class="inst-detail-mobile-back" aria-label="Back"><i class="fas fa-arrow-left"></i></a>
+		<div class="inst-detail-mobile-title"><?php echo !empty($batch_id) ? html_escape($this->common->languageTranslator('ltr_edit_batch')) : html_escape($this->common->languageTranslator('ltr_add_batch')); ?></div>
+	</div>
+	<div class="inst-detail-container">
+		<section class="edu_admin_content">
+			<div class="edu_admin_right sectionHolder edu_add_users">
+				<div class="edu_admin_informationdiv edu_main_wrapper tcb-form-wrap" id="teacherBatchFormRoot">
+					<?php $this->load->view('common/batch_add_form'); ?>
 				</div>
 			</div>
+		</section>
+		<div class="tcb-cancel-row">
+			<a href="<?php echo base_url('batch/mylist'); ?>" class="btn btn-outline-secondary"><?php echo html_escape($this->common->languageTranslator('ltr_cancel')); ?></a>
 		</div>
 	</div>
 </div>
-
-<script>
-document.getElementById('batch_image').addEventListener('change', function(e) {
-	const file = e.target.files[0];
-	const previewDiv = document.getElementById('image_preview');
-
-	if (file) {
-		const reader = new FileReader();
-		reader.onload = function(event) {
-			previewDiv.innerHTML = '<small class="text-muted">Selected image:</small><br>' +
-				'<img src="' + event.target.result + '" alt="Selected batch image" style="max-width: 200px; max-height: 200px; margin-top: 10px; border-radius: 4px;">';
-		};
-		reader.readAsDataURL(file);
-	} else {
-		previewDiv.innerHTML = '';
-	}
-});
-
-document.getElementById('batchForm').addEventListener('submit', function(e) {
-	e.preventDefault();
-
-	const formData = new FormData(this);
-	const submitBtn = this.querySelector('button[type="submit"]');
-	const originalText = submitBtn.textContent;
-	submitBtn.disabled = true;
-	submitBtn.textContent = 'Processing...';
-
-	fetch('<?php echo site_url('ajaxcall/addbatch'); ?>', {
-		method: 'POST',
-		body: formData,
-		headers: {
-			'X-Requested-With': 'XMLHttpRequest'
-		}
-	})
-	.then(response => response.json())
-	.then(data => {
-		submitBtn.disabled = false;
-		submitBtn.textContent = originalText;
-
-		if (data.status === '1' || data.status === 1) {
-			alert('Batch <?php echo isset($batch_data) ? 'updated' : 'created'; ?> successfully!');
-			window.location.href = '<?php echo base_url('batch/mylist'); ?>';
-		} else {
-			alert('Error: ' + (data.msg || 'Failed to <?php echo isset($batch_data) ? 'update' : 'create'; ?> batch'));
-		}
-	})
-	.catch(error => {
-		submitBtn.disabled = false;
-		submitBtn.textContent = originalText;
-		alert('Error: ' + error.message);
-	});
-});
-</script>
-
-<style>
-.card {
-	box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
-.card-header {
-	border-bottom: 3px solid #0052cc;
-	padding: 20px;
-}
-.form-group label {
-	font-weight: 500;
-	color: #333;
-}
-.btn {
-	padding: 8px 20px;
-	font-weight: 500;
-}
-</style>

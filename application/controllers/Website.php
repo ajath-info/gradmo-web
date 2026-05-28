@@ -157,6 +157,19 @@ class Website extends MY_Controller
 			$this->render_frontend_layout('frontend/forgot_password', $data);
 		}
 
+		/**
+		 * Email verification link from admin-created accounts (institute / teacher / student).
+		 */
+		public function verify_account($token = '')
+		{
+			$result = $this->common->email_verify_account($token);
+			$data = $this->frontend_shell_data('Verify account');
+			$data['verify_success'] = !empty($result['status']);
+			$data['verify_message'] = isset($result['msg']) ? $result['msg'] : '';
+			$data['load_auth_form_assets'] = true;
+			$this->render_frontend_layout('frontend/verify_account', $data);
+		}
+
 		public function update_profile()
 		{
 			if (! isset($this->session->userdata['role'])) {
@@ -1006,10 +1019,39 @@ class Website extends MY_Controller
 
 			$user_id = (int) $this->session->userdata('uid');
 			$user_admin_id = (int) $this->session->userdata('admin_id');
-			$data = $this->frontend_shell_data('Create Batch');
+			$cond = array('admin_id' => $user_admin_id, 'status' => '1');
 
-			// Get institutes that belong to teacher's admin (with role=4 or user_type='institute')
-			$this->db->select('id, name');
+			$data = $this->frontend_shell_data(empty($batch_id) ? 'Create Batch' : 'Edit Batch');
+			$data['load_batch_form_assets'] = true;
+			$data['load_batch_dropdowns_via_api'] = true;
+			$data['api_access_token'] = $this->website_session_access_token();
+			$data['batch_subjects_api_url'] = site_url('api/batch/batch-subjects');
+			$data['batch_categories_api_url'] = site_url('api/batch/categories');
+			$data['batch_subcategories_api_url'] = site_url('api/batch/subcategories');
+			$data['teacher_user_id'] = $user_id;
+			$data['batch_id'] = '';
+			$data['batch_fecherd'] = array();
+
+			if (!empty($batch_id)) {
+				$batch_id = (int) $batch_id;
+				$data['batch_id'] = $batch_id;
+				$data['batch_data'] = $this->db_model->select_data('*', 'batches use index (id)', array('id' => $batch_id, 'admin_id' => $user_id));
+				if (empty($data['batch_data'])) {
+					redirect(base_url('batch/mylist'));
+					return;
+				}
+				$data['batch_fecherd'] = $this->db_model->select_data('*', 'batch_fecherd', array('batch_id' => $batch_id));
+			}
+
+			$currency_rows = $this->db_model->select_data('*', 'general_settings', array('key_text' => 'currency_decimal_code'));
+			$data['currency_code'] = (!empty($currency_rows[0]['velue_text'])) ? $currency_rows[0]['velue_text'] : '';
+			// Category / subcategory / subject dropdowns load via API on teacher batch form.
+			$data['subject'] = array();
+			$data['category_data'] = array();
+			$data['subcat_data'] = array();
+
+			$this->db->reset_query();
+			$this->db->select('id,name');
 			$this->db->from('users');
 			$this->db->where('admin_id', $user_admin_id);
 			$this->db->where('status', 1);
@@ -1017,30 +1059,8 @@ class Website extends MY_Controller
 			$this->db->where('role', 4);
 			$this->db->or_where("LOWER(TRIM(IFNULL(user_type,''))) = 'institute'", null, false);
 			$this->db->group_end();
-			$this->db->order_by('id', 'ASC');
-			$institutes = $this->db->get()->result_array();
-
-			// If editing, get batch data
-			$batch_data = null;
-			if (!empty($batch_id)) {
-				$batch_id = (int) $batch_id;
-				$batch_data = $this->db_model->select_data('*', 'batches use index (id)', array('id' => $batch_id), 1);
-				if (empty($batch_data) || (int) $batch_data[0]['admin_id'] !== $user_id) {
-					redirect(base_url('batch/mylist'));
-					return;
-				}
-				$data['page_title'] = 'Edit Batch';
-				$batch_data = $batch_data[0];
-			}
-
-			// Get categories
-			$categories = $this->db_model->select_data('id, name', 'batch_category', array(), '', array('id', 'asc'));
-
-			$data['institutes'] = !empty($institutes) ? $institutes : array();
-			$data['categories'] = !empty($categories) ? $categories : array();
-			$data['batch_data'] = $batch_data;
-			$data['user_id'] = $user_id;
-			$data['user_admin_id'] = $user_admin_id;
+			$this->db->order_by('id', 'desc');
+			$data['institute_list'] = $this->db->get()->result_array();
 
 			$this->render_frontend_layout('frontend/teacher_create_batch', $data);
 		}
@@ -1244,6 +1264,7 @@ class Website extends MY_Controller
 			$data['student_exam_dashboard_api_url'] = site_url('api/batch/student-exam-dashboard');
 			$data['student_exam_attempt_url'] = site_url('batch/exam-attempt');
 			$data['student_exam_result_url'] = site_url('batch/exam-result');
+			$data['exam_omr_sheet_api_url'] = site_url('api/batch/exam-omr-sheet');
 			$this->render_frontend_layout('frontend/batch_exams', $data);
 		}
 
@@ -1269,6 +1290,7 @@ class Website extends MY_Controller
 			$data['student_submit_exam_api_url'] = site_url('api/batch/student-submit-exam');
 			$data['student_exam_result_page_url'] = site_url('batch/exam-result');
 			$data['student_exam_list_page_url'] = site_url('batch/exams');
+			$data['exam_omr_sheet_api_url'] = site_url('api/batch/exam-omr-sheet');
 			$this->render_frontend_layout('frontend/batch_exam_attempt', $data);
 		}
 
@@ -1293,6 +1315,7 @@ class Website extends MY_Controller
 			$data['api_access_token'] = $this->website_session_access_token();
 			$data['student_exam_result_api_url'] = site_url('api/batch/student-exam-result');
 			$data['student_exam_list_page_url'] = site_url('batch/exams');
+			$data['exam_omr_sheet_api_url'] = site_url('api/batch/exam-omr-sheet');
 			$this->render_frontend_layout('frontend/batch_exam_result', $data);
 		}
 
@@ -1377,9 +1400,75 @@ class Website extends MY_Controller
 			}
 			$data = $this->frontend_shell_data('Homework');
 			$data['homework_api_url'] = site_url('api/batch/homework-list');
+			$data['my_submissions_api_url'] = site_url('api/batch/my-homework-submissions');
+			$data['homework_view_url'] = site_url('homework/view');
 			$data['batch_id'] = (int) $this->input->get('batch_id');
 			$data['api_access_token'] = $this->website_session_access_token();
 			$this->render_frontend_layout('frontend/homework_list_page', $data);
+		}
+
+		public function homework_detail_page()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$data = $this->frontend_shell_data('Homework details');
+			$data['homework_id'] = (int) $this->input->get('homework_id');
+			$data['batch_id'] = (int) $this->input->get('batch_id');
+			$data['api_access_token'] = $this->website_session_access_token();
+			$data['homework_details_api_url'] = site_url('api/batch/homework-details');
+			$data['homework_submit_api_url'] = site_url('api/batch/homework-submit');
+			$data['my_submissions_api_url'] = site_url('api/batch/my-homework-submissions');
+			$data['homework_list_url'] = site_url('homework-list');
+			$this->render_frontend_layout('frontend/homework_detail_page', $data);
+		}
+
+		public function teacher_homework_submissions_page()
+		{
+			if (! isset($this->session->userdata['role']) || ! $this->website_session_is_teacher()) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$data = $this->frontend_shell_data('Homework submissions');
+			$data['homework_id'] = (int) $this->input->get('homework_id');
+			$data['batch_id'] = (int) $this->input->get('batch_id');
+			$data['api_access_token'] = $this->website_session_access_token();
+			$data['homework_details_api_url'] = site_url('api/batch/homework-details');
+			$data['homework_submissions_api_url'] = site_url('api/batch/homework-submissions');
+			$data['attendance_roster_api_url'] = site_url('api/batch/attendance-roster');
+			$data['teacher_homework_url'] = site_url('teacher/homework');
+			$data['submission_detail_url'] = site_url('teacher/homework/submission');
+			$this->render_frontend_layout('frontend/teacher/teacher_homework_submissions', $data);
+		}
+
+		public function teacher_homework_submission_page()
+		{
+			if (! isset($this->session->userdata['role']) || ! $this->website_session_is_teacher()) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$data = $this->frontend_shell_data('Review submission');
+			$data['submission_id'] = (int) $this->input->get('submission_id');
+			$data['homework_id'] = (int) $this->input->get('homework_id');
+			$data['batch_id'] = (int) $this->input->get('batch_id');
+			$data['api_access_token'] = $this->website_session_access_token();
+			$data['submission_details_api_url'] = site_url('api/batch/homework-submission-details');
+			$data['homework_evaluate_api_url'] = site_url('api/batch/homework-evaluate');
+			$data['submissions_list_url'] = site_url('teacher/homework/submissions');
+			$this->render_frontend_layout('frontend/teacher/teacher_homework_submission_detail', $data);
 		}
 
 		public function notifications_page()
@@ -1519,6 +1608,7 @@ class Website extends MY_Controller
 			$data['homework_add_api_url'] = site_url('api/batch/homework-add');
 			$data['homework_edit_api_url'] = site_url('api/batch/homework-edit');
 			$data['homework_delete_api_url'] = site_url('api/batch/homework-delete');
+			$data['homework_submissions_page_url'] = site_url('teacher/homework/submissions');
 			$this->render_frontend_layout('frontend/teacher/teacher_homework', $data);
 		}
 
@@ -1546,7 +1636,54 @@ class Website extends MY_Controller
 			$data['batch_mylist_data_url'] = site_url('batch/mylist-data');
 			$data['exam_builder_role_label'] = $is_institute ? 'Institute' : 'Teacher';
 			$data['legacy_question_manage_url'] = $is_institute ? '' : site_url('teacher/exam-manage');
+			$data['exam_submissions_page_url'] = site_url($is_institute ? 'institute/exam/submissions' : 'teacher/exam/submissions');
+			$data['exam_omr_sheet_api_url'] = site_url('api/batch/exam-omr-sheet');
 			$this->render_frontend_layout('frontend/exam_builder_page', $data);
+		}
+
+		public function teacher_exam_submissions_page()
+		{
+			if (! isset($this->session->userdata['role']) || (! $this->website_session_is_teacher() && ! $this->website_session_is_institute())) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$is_institute = $this->website_session_is_institute();
+			$data = $this->frontend_shell_data('Exam submissions');
+			$data['exam_id'] = (int) $this->input->get('exam_id');
+			$data['batch_id'] = (int) $this->input->get('batch_id');
+			$data['api_access_token'] = $this->website_session_access_token();
+			$data['exam_submission_list_api_url'] = site_url('api/batch/exam-submission-list');
+			$data['exam_details_api_url'] = site_url('api/batch/upcoming-exam-details');
+			$data['teacher_exams_url'] = site_url($is_institute ? 'institute/exams' : 'teacher/exams');
+			$data['submission_detail_url'] = site_url($is_institute ? 'institute/exam/submission' : 'teacher/exam/submission');
+			$data['exam_omr_sheet_api_url'] = site_url('api/batch/exam-omr-sheet');
+			$this->render_frontend_layout('frontend/teacher/teacher_exam_submissions', $data);
+		}
+
+		public function teacher_exam_submission_page()
+		{
+			if (! isset($this->session->userdata['role']) || (! $this->website_session_is_teacher() && ! $this->website_session_is_institute())) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$is_institute = $this->website_session_is_institute();
+			$data = $this->frontend_shell_data('Submission details');
+			$data['submission_id'] = (int) $this->input->get('submission_id');
+			$data['exam_id'] = (int) $this->input->get('exam_id');
+			$data['batch_id'] = (int) $this->input->get('batch_id');
+			$data['api_access_token'] = $this->website_session_access_token();
+			$data['exam_submission_details_api_url'] = site_url('api/batch/exam-submission-details');
+			$data['submissions_list_url'] = site_url($is_institute ? 'institute/exam/submissions' : 'teacher/exam/submissions');
+			$data['exam_omr_sheet_api_url'] = site_url('api/batch/exam-omr-sheet');
+			$this->render_frontend_layout('frontend/teacher/teacher_exam_submission_detail', $data);
 		}
 
 		public function institute_listing()

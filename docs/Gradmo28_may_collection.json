@@ -1,0 +1,3766 @@
+{
+  "info": {
+    "_postman_id": "74e18c99-b8ca-49b4-9951-edc51c4b7adc",
+    "name": "Gradmo module wise 28_may_collection",
+    "description": "Generated from docs/old_collocton.json: one request per endpoint (deduped), grouped by API module. Regenerate: node docs/build-modulewise-postman-collection.js",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "18960555",
+    "_collection_link": "https://go.postman.co/collection/18960555-74e18c99-b8ca-49b4-9951-edc51c4b7adc?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "User",
+      "item": [
+        {
+          "name": "Auth",
+          "item": [
+            {
+              "name": "SignUp",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "name",
+                      "value": "Daksh Cauhan",
+                      "type": "text"
+                    },
+                    {
+                      "key": "email",
+                      "value": "daksh@gmail.com",
+                      "type": "text"
+                    },
+                    {
+                      "key": "mobile",
+                      "value": "9711438522",
+                      "type": "text"
+                    },
+                    {
+                      "key": "password",
+                      "value": "123456",
+                      "type": "text"
+                    },
+                    {
+                      "key": "user_type",
+                      "value": "teacher",
+                      "type": "text",
+                      "description": "student, teacher, institute"
+                    },
+                    {
+                      "key": "device_id",
+                      "value": "12nhgr45hstdhd",
+                      "type": "text"
+                    },
+                    {
+                      "key": "device_token",
+                      "value": "gsfsfrsgsbnnskssbsjbjbsjbjsjssjj",
+                      "type": "text",
+                      "description": "fcm for sending pushnotification"
+                    },
+                    {
+                      "key": "device_type",
+                      "value": "android",
+                      "type": "text",
+                      "description": "android,ios"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/user/signup",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "signup"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Login",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "username",
+                      "value": "shachisheh@gmail.com",
+                      "type": "text"
+                    },
+                    {
+                      "key": "password",
+                      "value": "123456789",
+                      "type": "text"
+                    },
+                    {
+                      "key": "user_type",
+                      "value": "student",
+                      "type": "text",
+                      "description": "student, teacher, institute"
+                    },
+                    {
+                      "key": "device_id",
+                      "value": "12nhgr45hstdhd",
+                      "type": "text",
+                      "uuid": "2ef604ee-ccb7-4d56-913e-603e3aca7761"
+                    },
+                    {
+                      "key": "device_token",
+                      "value": "gsfsfrsgsbnnskssbsjbjbsjbjsjssjj",
+                      "description": "fcm for sending pushnotification",
+                      "type": "text",
+                      "uuid": "44c24ebd-8597-4e1e-b62a-10eca3067eb0"
+                    },
+                    {
+                      "key": "device_type",
+                      "value": "android",
+                      "description": "android,ios",
+                      "type": "text",
+                      "uuid": "e66c4cbb-1b28-4b83-912d-e1d107249929"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/user/login",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "login"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Login via OTP",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "mobile",
+                      "value": "9711438522",
+                      "type": "text",
+                      "uuid": "10982adc-ac97-4a44-9bb5-cb77cf58ddc2"
+                    },
+                    {
+                      "key": "user_type",
+                      "value": "institute",
+                      "type": "text",
+                      "description": "student, teacher, institute"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/user/send-otp",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "send-otp"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "VerifyOTP",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "mobile",
+                      "value": "9990960404",
+                      "type": "text"
+                    },
+                    {
+                      "key": "otp",
+                      "value": "1868",
+                      "type": "text"
+                    },
+                    {
+                      "key": "user_type",
+                      "value": "institute",
+                      "type": "text",
+                      "description": "student/teacher/institute"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/user/verify-otp",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "verify-otp"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Logout",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "student_id",
+                      "value": "20",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/user/logout",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "logout"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Profile & account",
+          "item": [
+            {
+              "name": "Update Profile",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "name",
+                      "value": "Gajendra",
+                      "type": "text"
+                    },
+                    {
+                      "key": "email",
+                      "value": "shachisheh@gmail.com",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "mobile",
+                      "value": "9927631632",
+                      "type": "text"
+                    },
+                    {
+                      "key": "user_type",
+                      "value": "teacher",
+                      "type": "text",
+                      "description": "student, teacher, institute"
+                    },
+                    {
+                      "key": "address",
+                      "value": "G 52, 2nd floor",
+                      "type": "text",
+                      "uuid": "bd846a11-4d37-4d20-a3fd-cc6d17490de5"
+                    },
+                    {
+                      "key": "country",
+                      "value": "India",
+                      "type": "text",
+                      "uuid": "d59f51d0-766c-4cd5-9508-039337b6b306"
+                    },
+                    {
+                      "key": "state",
+                      "value": "Uttar Pradesh",
+                      "type": "text",
+                      "uuid": "7e0f16f5-e2d1-49dd-9805-691223cc75f4"
+                    },
+                    {
+                      "key": "city",
+                      "value": "Noida",
+                      "type": "text",
+                      "uuid": "86010f2a-b3e0-4cc5-9658-b28115632d3e"
+                    },
+                    {
+                      "key": "image",
+                      "value": "https://i.pravatar.cc/40",
+                      "type": "text",
+                      "uuid": "c1977df6-bf88-434e-be71-1f23a9728af1"
+                    },
+                    {
+                      "key": "pincode",
+                      "value": "201301",
+                      "type": "text",
+                      "uuid": "2a08a227-e393-4417-b0e7-441e8b990796"
+                    },
+                    {
+                      "key": "school_college_name",
+                      "value": "P.G. College, Varanasi",
+                      "type": "text",
+                      "uuid": "1c6b7998-9197-4912-bb2e-ce31c3e34fc2"
+                    },
+                    {
+                      "key": "grade",
+                      "value": "A++",
+                      "type": "text",
+                      "uuid": "525b2d7e-70a4-4afb-a471-9906debbea9f"
+                    },
+                    {
+                      "key": "student_id",
+                      "value": "20",
+                      "type": "text",
+                      "uuid": "7d3be399-2a76-47f0-94f7-b744589b8eb1",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/user/update-profile",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "update-profile"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Forgot Update Password",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "mobile",
+                      "value": "9711438500",
+                      "type": "text",
+                      "uuid": "7d3be399-2a76-47f0-94f7-b744589b8eb1"
+                    },
+                    {
+                      "key": "password",
+                      "value": "shachish212",
+                      "type": "text",
+                      "uuid": "2c59a07a-ffb5-41d4-9c6a-e295c4e09e0a"
+                    },
+                    {
+                      "key": "confirm_password",
+                      "value": "shachish212",
+                      "type": "text",
+                      "uuid": "0a7cee09-dedc-4d8c-a9ce-edb1dfec4fa7"
+                    },
+                    {
+                      "key": "user_type",
+                      "value": "student",
+                      "type": "text",
+                      "uuid": "f8e0de3e-ba03-4995-adfc-e253c2fa2034"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/user/update-password",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "update-password"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Account",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "student_id",
+                      "value": "20",
+                      "type": "text",
+                      "uuid": "7d3be399-2a76-47f0-94f7-b744589b8eb1",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/user/delete-account",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "delete-account"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "change password",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "student_id",
+                      "value": "20",
+                      "type": "text",
+                      "uuid": "7d3be399-2a76-47f0-94f7-b744589b8eb1",
+                      "disabled": true
+                    },
+                    {
+                      "key": "current_password",
+                      "value": "123",
+                      "type": "text",
+                      "uuid": "2c3fec78-0d5e-411b-b68a-ce1bc6b05016"
+                    },
+                    {
+                      "key": "new_password",
+                      "value": "123456",
+                      "type": "text",
+                      "uuid": "4170c997-37f9-49e1-bdfd-6afef3919167"
+                    },
+                    {
+                      "key": "confirm_password",
+                      "value": "123456",
+                      "type": "text",
+                      "uuid": "48520cec-4341-4b66-956e-75f2a8f8c7fe"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/user/change-password",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "change-password"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Attendance",
+          "item": [
+            {
+              "name": "add Attendance",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "attendance_date",
+                      "value": "2026-05-13",
+                      "type": "text"
+                    },
+                    {
+                      "key": "attendance_status",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "day_status",
+                      "value": "present",
+                      "type": "text"
+                    },
+                    {
+                      "key": "student_id",
+                      "value": "20",
+                      "type": "text"
+                    },
+                    {
+                      "key": "student_ids",
+                      "value": "20,21",
+                      "type": "text"
+                    },
+                    {
+                      "key": "time",
+                      "value": "10:30",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/user/add-attendance",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "add-attendance"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "attendance-list",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "attendance_date",
+                      "value": "2026-05-13",
+                      "type": "text"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "date",
+                      "value": "2026-04-27",
+                      "type": "text"
+                    },
+                    {
+                      "key": "month",
+                      "value": "5",
+                      "type": "text"
+                    },
+                    {
+                      "key": "year",
+                      "value": "2026",
+                      "type": "text"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/user/attendance-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "attendance-list"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Other",
+          "item": [
+            {
+              "name": "user_details",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "uuid": "3aa7cc9b-605b-4d72-bad7-9bcbeea8b5d5"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/user/user_details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "user_details"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Homework",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "uuid": "3aa7cc9b-605b-4d72-bad7-9bcbeea8b5d5"
+                    },
+                    {
+                      "key": "admin_id",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "66d09e8a-f5fc-4862-93e9-e6e3e9d7b4e4"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/user/Home/Homework",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "Home",
+                    "Homework"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "payment history",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "3aa7cc9b-605b-4d72-bad7-9bcbeea8b5d5"
+                    },
+                    {
+                      "key": "admin_id",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "66d09e8a-f5fc-4862-93e9-e6e3e9d7b4e4"
+                    },
+                    {
+                      "key": "student_id",
+                      "value": "20",
+                      "type": "text",
+                      "uuid": "e7a7de0e-8eb9-477b-a44f-6679086da914"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/user/payment-history",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "payment-history"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Main",
+      "item": [
+        {
+          "name": "Locations",
+          "item": [
+            {
+              "name": "country",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "uuid": "3aa7cc9b-605b-4d72-bad7-9bcbeea8b5d5"
+                    },
+                    {
+                      "key": "admin_id",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "66d09e8a-f5fc-4862-93e9-e6e3e9d7b4e4"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/main/country-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "country-list"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "State",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "uuid": "3aa7cc9b-605b-4d72-bad7-9bcbeea8b5d5",
+                      "disabled": true
+                    },
+                    {
+                      "key": "country_id",
+                      "value": "105",
+                      "type": "text",
+                      "uuid": "66d09e8a-f5fc-4862-93e9-e6e3e9d7b4e4"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/main/state-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "state-list"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "city",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "3aa7cc9b-605b-4d72-bad7-9bcbeea8b5d5"
+                    },
+                    {
+                      "key": "state_id",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "66d09e8a-f5fc-4862-93e9-e6e3e9d7b4e4"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/main/city-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "city-list"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Site & content",
+          "item": [
+            {
+              "name": "pages",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "uuid": "3aa7cc9b-605b-4d72-bad7-9bcbeea8b5d5"
+                    },
+                    {
+                      "key": "state_id",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "66d09e8a-f5fc-4862-93e9-e6e3e9d7b4e4"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/main/pages",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "pages"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "site-details",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "zoom",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "3aa7cc9b-605b-4d72-bad7-9bcbeea8b5d5",
+                      "disabled": true
+                    },
+                    {
+                      "key": "payment",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "66d09e8a-f5fc-4862-93e9-e6e3e9d7b4e4",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/main/site-details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "site-details"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "api/main/get_defaults_requirements",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "uuid": "3aa7cc9b-605b-4d72-bad7-9bcbeea8b5d5",
+                      "disabled": true
+                    },
+                    {
+                      "key": "state_id",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "66d09e8a-f5fc-4862-93e9-e6e3e9d7b4e4",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/main/get_defaults_requirements",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "get_defaults_requirements"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Notifications",
+          "item": [
+            {
+              "name": "notifications-list",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "uuid": "3aa7cc9b-605b-4d72-bad7-9bcbeea8b5d5"
+                    },
+                    {
+                      "key": "state_id",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "66d09e8a-f5fc-4862-93e9-e6e3e9d7b4e4",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/main/notifications-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "notifications-list"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Reviews & enquiry",
+          "item": [
+            {
+              "name": "post-enquiry",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "uuid": "3aa7cc9b-605b-4d72-bad7-9bcbeea8b5d5"
+                    },
+                    {
+                      "key": "state_id",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "66d09e8a-f5fc-4862-93e9-e6e3e9d7b4e4"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/main/post-enquiry?name=Gajendra&mobile=9990960404&email=chauhan.gd@gmail.com&subject=test&message=testing",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "post-enquiry"
+                  ],
+                  "query": [
+                    {
+                      "key": "name",
+                      "value": "Gajendra"
+                    },
+                    {
+                      "key": "mobile",
+                      "value": "9990960404"
+                    },
+                    {
+                      "key": "email",
+                      "value": "chauhan.gd@gmail.com"
+                    },
+                    {
+                      "key": "subject",
+                      "value": "test"
+                    },
+                    {
+                      "key": "message",
+                      "value": "testing"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "add-review",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "uuid": "3aa7cc9b-605b-4d72-bad7-9bcbeea8b5d5"
+                    },
+                    {
+                      "key": "state_id",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "66d09e8a-f5fc-4862-93e9-e6e3e9d7b4e4",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/main/add-review?institute_id=69&rating=4&msg=sdfgh djf  dfkf k",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "add-review"
+                  ],
+                  "query": [
+                    {
+                      "key": "institute_id",
+                      "value": "69"
+                    },
+                    {
+                      "key": "rating",
+                      "value": "4"
+                    },
+                    {
+                      "key": "msg",
+                      "value": "sdfgh djf  dfkf k"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Review list",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "uuid": "3aa7cc9b-605b-4d72-bad7-9bcbeea8b5d5"
+                    },
+                    {
+                      "key": "state_id",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "66d09e8a-f5fc-4862-93e9-e6e3e9d7b4e4",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/main/reviews-list?institute_id=69&page=1&limit=1",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "reviews-list"
+                  ],
+                  "query": [
+                    {
+                      "key": "institute_id",
+                      "value": "69"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "1"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "approve-review",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "review_id",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "0fb2fc7f-d650-4961-82d3-88f6401db976"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/main/approve-review",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "approve-review"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "institute-reviews-list",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "3df8b482-ee9b-499f-9df3-b7d0423844f6"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text",
+                      "uuid": "e8a35182-4f72-4bbd-9782-4a5c6e0af7f0"
+                    },
+                    {
+                      "key": "status",
+                      "value": "0",
+                      "type": "text",
+                      "uuid": "dab25310-16c3-4ebb-8397-ad148fa2ec26",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/main/institute-reviews-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "institute-reviews-list"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "review-detail",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "review_id",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "1026dd08-97b8-42f4-9911-03ec8b0c8ea4"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/main/review-detail",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "review-detail"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "update-review",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "review_id",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "fbed0785-bcdc-4126-9de5-d60a59a816c5"
+                    },
+                    {
+                      "key": "rating",
+                      "value": "5",
+                      "type": "text",
+                      "uuid": "8b2bfd55-6ebb-4676-8ed9-213a279c725d"
+                    },
+                    {
+                      "key": "msg",
+                      "value": "updated",
+                      "type": "text",
+                      "uuid": "0a6e958f-e14d-4d70-ac7f-bd675d7bb51b"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/main/update-review",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "update-review"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "delete-review",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "review_id",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "aad8cd8b-d44d-4854-950e-5dc92babc49a"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/main/delete-review",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "delete-review"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Batch",
+      "item": [
+        {
+          "name": "General",
+          "item": [
+            {
+              "name": "batch-my-homework-submissions",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "eval_status",
+                      "value": "1",
+                      "type": "text",
+                      "description": "0=pending, 1=evaluated"
+                    },
+                    {
+                      "key": "homework_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/my-homework-submissions",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "my-homework-submissions"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Batch & chapters",
+          "item": [
+            {
+              "name": "slider-list",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "search",
+                      "value": "Batch 1",
+                      "type": "text",
+                      "uuid": "846dc425-f236-4bf8-a65f-6cb00b020cd3"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/slider-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "slider-list"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-list",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "search",
+                      "value": "Batch 1",
+                      "type": "text",
+                      "uuid": "846dc425-f236-4bf8-a65f-6cb00b020cd3",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "b8419607-e2d2-4111-b2e0-efac33e4806a"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10",
+                      "type": "text",
+                      "uuid": "72cf3b64-496c-40f7-bf4d-f26b0e56c37f"
+                    },
+                    {
+                      "key": "list",
+                      "value": "All",
+                      "type": "text",
+                      "uuid": "68582cc5-bdbf-4c34-ab9e-2f7c13ad82d6"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/batch-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "batch-list"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-details",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "uuid": "3aa7cc9b-605b-4d72-bad7-9bcbeea8b5d5"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/batch-details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "batch-details"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-subjects",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "uuid": "66314b2d-5378-4afa-8a41-29447c4f6b09"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/batch-subjects",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "batch-subjects"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-chapters",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "uuid": "c344ff29-688b-4684-8710-eba8107d1b2a"
+                    },
+                    {
+                      "key": "subject_id",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "20388caf-ccde-420c-b174-d49af88d1802"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/batch-chapters",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "batch-chapters"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Attendance",
+          "item": [
+            {
+              "name": "attendance-roster",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "date",
+                      "value": "2026-05-13",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/attendance-roster",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "attendance-roster"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "attendance-roster-matrix",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "month",
+                      "value": "5",
+                      "type": "text"
+                    },
+                    {
+                      "key": "year",
+                      "value": "2026",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/attendance-roster-matrix",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "attendance-roster-matrix"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "attendance-matrix-save",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "default_time",
+                      "value": "10:30",
+                      "type": "text"
+                    },
+                    {
+                      "key": "entries",
+                      "value": "[]",
+                      "type": "text",
+                      "description": "JSON array: [{student_id,date,time,day_status}]"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/attendance-matrix-save",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "attendance-matrix-save"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Homework",
+          "item": [
+            {
+              "name": "batch-homework-list",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "admin_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "date",
+                      "value": "2026-05-13",
+                      "type": "text"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/homework-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "homework-list"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-homework-details",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "homework_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/homework-details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "homework-details"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-homework-add",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "date",
+                      "value": "2026-05-13",
+                      "type": "text"
+                    },
+                    {
+                      "key": "description",
+                      "value": "Homework",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "pdf_file",
+                      "type": "file",
+                      "src": [],
+                      "description": "PDF file (homework/notes/library)"
+                    },
+                    {
+                      "key": "subject_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/homework-add",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "homework-add"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-homework-edit",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "date",
+                      "value": "2026-05-13",
+                      "type": "text"
+                    },
+                    {
+                      "key": "description",
+                      "value": "Description text",
+                      "type": "text"
+                    },
+                    {
+                      "key": "homework_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "pdf_file",
+                      "type": "file",
+                      "src": [],
+                      "description": "PDF file (homework/notes/library)"
+                    },
+                    {
+                      "key": "subject_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/homework-edit",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "homework-edit"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-homework-delete",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "homework_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/homework-delete",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "homework-delete"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-homework-submit",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "homework_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "submission_file",
+                      "type": "file",
+                      "src": [],
+                      "description": "Student submission attachment"
+                    },
+                    {
+                      "key": "submission_text",
+                      "value": "My answer",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/homework-submit",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "homework-submit"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-homework-submissions",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "homework_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/homework-submissions",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "homework-submissions"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-homework-submission-details",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "submission_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/homework-submission-details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "homework-submission-details"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-homework-evaluate",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "eval_status",
+                      "value": "1",
+                      "type": "text",
+                      "description": "0=pending, 1=evaluated"
+                    },
+                    {
+                      "key": "marks",
+                      "value": "10",
+                      "type": "text"
+                    },
+                    {
+                      "key": "remark",
+                      "value": "Good",
+                      "type": "text"
+                    },
+                    {
+                      "key": "submission_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/homework-evaluate",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "homework-evaluate"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Library",
+          "item": [
+            {
+              "name": "library-list",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "search",
+                      "value": "",
+                      "type": "text"
+                    },
+                    {
+                      "key": "sort_by",
+                      "value": "id",
+                      "type": "text"
+                    },
+                    {
+                      "key": "sort_dir",
+                      "value": "desc",
+                      "type": "text"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/library-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "library-list"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-library-add-book",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "pdf_file",
+                      "type": "file",
+                      "src": [],
+                      "description": "PDF file (homework/notes/library)"
+                    },
+                    {
+                      "key": "subject",
+                      "value": "Subject",
+                      "type": "text"
+                    },
+                    {
+                      "key": "title",
+                      "value": "Book",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "topic",
+                      "value": "Live class topic",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/library-add-book",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "library-add-book"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-library-edit-book",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "book_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "pdf_file",
+                      "type": "file",
+                      "src": [],
+                      "description": "PDF file (homework/notes/library)"
+                    },
+                    {
+                      "key": "subject",
+                      "value": "Subject",
+                      "type": "text"
+                    },
+                    {
+                      "key": "title",
+                      "value": "Title",
+                      "type": "text"
+                    },
+                    {
+                      "key": "topic",
+                      "value": "Live class topic",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/library-edit-book",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "library-edit-book"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-library-delete-book",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "book_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/library-delete-book",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "library-delete-book"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-library-book-details",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "book_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/library-book-details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "library-book-details"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Notes",
+          "item": [
+            {
+              "name": "batch-notes-list",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "uuid": "972d55d6-c848-4a62-98df-fa82a1116ac6"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "3abd6934-7541-4e81-9cf0-cec4c7099a3a"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text",
+                      "uuid": "dbbf0760-973f-4a8a-a412-26e3367c15d8"
+                    },
+                    {
+                      "key": "search",
+                      "value": "",
+                      "type": "text",
+                      "uuid": "3d196f0e-5bfd-484f-8d9e-6c5536bf3ba4",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/notes-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "notes-list"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-notes-add",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "uuid": "80106e42-a502-4250-a137-710e7d9e1e02"
+                    },
+                    {
+                      "key": "title",
+                      "value": "Note title",
+                      "type": "text",
+                      "uuid": "e15d9a97-c7dc-4069-934a-7b2c9bce67a9"
+                    },
+                    {
+                      "key": "topic",
+                      "value": "Topic",
+                      "type": "text",
+                      "uuid": "aeb8c604-73af-47c0-8171-779a2e430ddb"
+                    },
+                    {
+                      "key": "subject",
+                      "value": "Subject",
+                      "type": "text",
+                      "uuid": "f4cca5c9-a39a-472d-adea-6e502503834f"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/notes-add",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "notes-add"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-notes-edit",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "notes_id",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "eda3a444-8180-4c90-a9ed-2daf53a99494"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "uuid": "a5fcc1f3-61be-4fef-840d-1689f93a719b"
+                    },
+                    {
+                      "key": "title",
+                      "value": "Updated title",
+                      "type": "text",
+                      "uuid": "9738dbc8-92ab-457c-a619-6aa9b7e38497",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/notes-edit",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "notes-edit"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-notes-delete",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "notes_id",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "b3b81eab-16df-4ed0-a606-8213203c9ce7"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "uuid": "1c9b38e7-51be-4033-9b45-a2b8b50e3b4f"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/notes-delete",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "notes-delete"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-notes-details",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "notes_id",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "8910b4ae-00d8-4e8e-b1c9-954484d1db17"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "uuid": "e71b1d00-e396-4e67-b5e6-71f333567add"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/notes-details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "notes-details"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Live class",
+          "item": [
+            {
+              "name": "batch-live-class-list",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "search",
+                      "value": "",
+                      "type": "text"
+                    },
+                    {
+                      "key": "sort_by",
+                      "value": "id",
+                      "type": "text"
+                    },
+                    {
+                      "key": "sort_dir",
+                      "value": "desc",
+                      "type": "text"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/live-class-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "live-class-list"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-live-class-details",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "live_class_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/live-class-details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "live-class-details"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Video lectures",
+          "item": [
+            {
+              "name": "batch-video-lecture-list",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "search",
+                      "value": "",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "sort_by",
+                      "value": "id",
+                      "type": "text"
+                    },
+                    {
+                      "key": "sort_dir",
+                      "value": "desc",
+                      "type": "text"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/video-lecture-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "video-lecture-list"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-video-lecture-details",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "video_lecture_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/video-lecture-details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "video-lecture-details"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-video-lecture-add",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "description",
+                      "value": "Description text",
+                      "type": "text"
+                    },
+                    {
+                      "key": "preview_type",
+                      "value": "url",
+                      "type": "text"
+                    },
+                    {
+                      "key": "subject",
+                      "value": "Subject",
+                      "type": "text"
+                    },
+                    {
+                      "key": "title",
+                      "value": "Title",
+                      "type": "text"
+                    },
+                    {
+                      "key": "topic",
+                      "value": "Live class topic",
+                      "type": "text"
+                    },
+                    {
+                      "key": "url",
+                      "value": "https://example.com",
+                      "type": "text"
+                    },
+                    {
+                      "key": "video_file",
+                      "type": "file",
+                      "src": [],
+                      "description": "Video file upload"
+                    },
+                    {
+                      "key": "video_type",
+                      "value": "youtube",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/video-lecture-add",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "video-lecture-add"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-video-lecture-edit",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "preview_type",
+                      "value": "url",
+                      "type": "text"
+                    },
+                    {
+                      "key": "url",
+                      "value": "https://example.com",
+                      "type": "text"
+                    },
+                    {
+                      "key": "video_file",
+                      "type": "file",
+                      "src": [],
+                      "description": "Video file upload"
+                    },
+                    {
+                      "key": "video_lecture_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "video_type",
+                      "value": "youtube",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/video-lecture-edit",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "video-lecture-edit"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-video-lecture-delete",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "video_lecture_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/video-lecture-delete",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "video-lecture-delete"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Exams",
+          "item": [
+            {
+              "name": "batch-upcoming-exam-list",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "search",
+                      "value": "",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "sort_by",
+                      "value": "id",
+                      "type": "text"
+                    },
+                    {
+                      "key": "sort_dir",
+                      "value": "desc",
+                      "type": "text"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/upcoming-exam-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "upcoming-exam-list"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-upcoming-exam-details",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "exam_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/upcoming-exam-details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "upcoming-exam-details"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-student-exam-dashboard",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/student-exam-dashboard",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "student-exam-dashboard"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-student-exam-paper",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "exam_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/student-exam-paper",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "student-exam-paper"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-student-submit-exam",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "exam_id",
+                      "value": "1",
+                      "type": "text",
+                      "uuid": "13468894-5c22-48ba-b35c-2f60cdab75db"
+                    },
+                    {
+                      "key": "started_at",
+                      "value": "2026-05-13 10:00:00",
+                      "type": "text",
+                      "uuid": "ec7bdfe1-ffa4-41b8-8276-b901d59419c2"
+                    },
+                    {
+                      "key": "answers",
+                      "value": "{\"1\":\"A\"}",
+                      "type": "text",
+                      "uuid": "d83fe47e-0e6e-4f24-8745-b31f83094fa2"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/student-submit-exam",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "student-submit-exam"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-student-exam-result",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "exam_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/student-exam-result",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "student-exam-result"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-exam-manage-list",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "search",
+                      "value": "",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    },
+                    {
+                      "key": "sort_by",
+                      "value": "id",
+                      "type": "text"
+                    },
+                    {
+                      "key": "sort_dir",
+                      "value": "desc",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/exam-manage-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "exam-manage-list"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-exam-add",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "format",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "marking_parcent",
+                      "value": "25",
+                      "type": "text"
+                    },
+                    {
+                      "key": "mock_sheduled_date",
+                      "value": "2026-05-20",
+                      "type": "text"
+                    },
+                    {
+                      "key": "mock_sheduled_time",
+                      "value": "10:00",
+                      "type": "text"
+                    },
+                    {
+                      "key": "name",
+                      "value": "Mock",
+                      "type": "text"
+                    },
+                    {
+                      "key": "question_ids",
+                      "value": "1,2,3",
+                      "type": "text"
+                    },
+                    {
+                      "key": "time_duration",
+                      "value": "60",
+                      "type": "text"
+                    },
+                    {
+                      "key": "total_marks",
+                      "value": "100",
+                      "type": "text"
+                    },
+                    {
+                      "key": "total_question",
+                      "value": "10",
+                      "type": "text"
+                    },
+                    {
+                      "key": "type",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/exam-add",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "exam-add"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-exam-edit",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "exam_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/exam-edit",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "exam-edit"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "batch-exam-delete",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "exam_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}api/batch/exam-delete",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "exam-delete"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "New Request",
+          "request": {
+            "method": "GET",
+            "header": []
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Institute",
+      "item": [
+        {
+          "name": "institute_list",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "batch_id",
+                  "value": "6",
+                  "type": "text",
+                  "uuid": "3aa7cc9b-605b-4d72-bad7-9bcbeea8b5d5",
+                  "disabled": true
+                },
+                {
+                  "key": "latitude",
+                  "value": "28.93466857138595",
+                  "type": "text",
+                  "uuid": "66d09e8a-f5fc-4862-93e9-e6e3e9d7b4e4",
+                  "disabled": true
+                },
+                {
+                  "key": "longitude",
+                  "value": "78.34283781396569",
+                  "type": "text",
+                  "uuid": "36100da9-9973-4476-86fb-802ede421e39",
+                  "disabled": true
+                },
+                {
+                  "key": "order_field",
+                  "value": "name",
+                  "type": "text",
+                  "uuid": "41af269d-f8b2-47f3-8069-9cc7e7771ffe"
+                },
+                {
+                  "key": "order_type",
+                  "value": "DESC",
+                  "type": "text",
+                  "uuid": "baa9b06f-25d8-4a4d-86e5-ee67fe337f0e"
+                },
+                {
+                  "key": "search",
+                  "value": "chauhan",
+                  "type": "text",
+                  "uuid": "47b138bc-aca3-4cd4-9909-ebc34010269d",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "type": "text",
+                  "uuid": "b1bd03c1-a37e-4603-98de-fb4ef0556333"
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "type": "text",
+                  "uuid": "eaaacb57-8c7c-40d6-a2ea-71b9e68d3bcc"
+                },
+                {
+                  "key": "city",
+                  "value": "delhi",
+                  "type": "text",
+                  "uuid": "33eab2d0-0f08-4702-8b8d-3fc0c97f4103",
+                  "disabled": true
+                },
+                {
+                  "key": "list",
+                  "value": "my",
+                  "type": "text",
+                  "uuid": "1794cdb2-438e-4d5c-9744-1f335f80768f",
+                  "disabled": true
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/institute/listing",
+              "host": [
+                "{{base_url}}api"
+              ],
+              "path": [
+                "institute",
+                "listing"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "institute_details",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "batch_id",
+                  "value": "6",
+                  "type": "text",
+                  "uuid": "3aa7cc9b-605b-4d72-bad7-9bcbeea8b5d5"
+                },
+                {
+                  "key": "latitude",
+                  "value": "28.93466857138595",
+                  "type": "text",
+                  "uuid": "66d09e8a-f5fc-4862-93e9-e6e3e9d7b4e4"
+                },
+                {
+                  "key": "longitude",
+                  "value": "78.34283781396569",
+                  "type": "text",
+                  "uuid": "36100da9-9973-4476-86fb-802ede421e39"
+                },
+                {
+                  "key": "order_field",
+                  "value": "name",
+                  "type": "text",
+                  "uuid": "41af269d-f8b2-47f3-8069-9cc7e7771ffe"
+                },
+                {
+                  "key": "order_type",
+                  "value": "DESC",
+                  "type": "text",
+                  "uuid": "baa9b06f-25d8-4a4d-86e5-ee67fe337f0e"
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "type": "text",
+                  "uuid": "47b138bc-aca3-4cd4-9909-ebc34010269d"
+                },
+                {
+                  "key": "institute_id",
+                  "value": "69",
+                  "type": "text",
+                  "uuid": "089d5d51-7a58-4543-afdb-a483204fef40"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/institute/details",
+              "host": [
+                "{{base_url}}api"
+              ],
+              "path": [
+                "institute",
+                "details"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "api/institute/city-list",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "batch_id",
+                  "value": "6",
+                  "type": "text",
+                  "uuid": "3aa7cc9b-605b-4d72-bad7-9bcbeea8b5d5"
+                },
+                {
+                  "key": "latitude",
+                  "value": "28.93466857138595",
+                  "type": "text",
+                  "uuid": "66d09e8a-f5fc-4862-93e9-e6e3e9d7b4e4"
+                },
+                {
+                  "key": "longitude",
+                  "value": "78.34283781396569",
+                  "type": "text",
+                  "uuid": "36100da9-9973-4476-86fb-802ede421e39"
+                },
+                {
+                  "key": "order_field",
+                  "value": "name",
+                  "type": "text",
+                  "uuid": "41af269d-f8b2-47f3-8069-9cc7e7771ffe"
+                },
+                {
+                  "key": "order_type",
+                  "value": "DESC",
+                  "type": "text",
+                  "uuid": "baa9b06f-25d8-4a4d-86e5-ee67fe337f0e"
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "type": "text",
+                  "uuid": "47b138bc-aca3-4cd4-9909-ebc34010269d"
+                },
+                {
+                  "key": "institute_id",
+                  "value": "69",
+                  "type": "text",
+                  "uuid": "089d5d51-7a58-4543-afdb-a483204fef40"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/institute/city-list",
+              "host": [
+                "{{base_url}}api"
+              ],
+              "path": [
+                "institute",
+                "city-list"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Courses",
+      "item": [
+        {
+          "name": "courses-list",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "batch_id",
+                  "value": "6",
+                  "type": "text",
+                  "uuid": "3aa7cc9b-605b-4d72-bad7-9bcbeea8b5d5"
+                },
+                {
+                  "key": "state_id",
+                  "value": "1",
+                  "type": "text",
+                  "uuid": "66d09e8a-f5fc-4862-93e9-e6e3e9d7b4e4",
+                  "disabled": true
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/courses/courses-list",
+              "host": [
+                "{{base_url}}api"
+              ],
+              "path": [
+                "courses",
+                "courses-list"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Plan",
+      "item": [
+        {
+          "name": "Plan",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "batch_id",
+                  "value": "6",
+                  "type": "text",
+                  "uuid": "3aa7cc9b-605b-4d72-bad7-9bcbeea8b5d5"
+                },
+                {
+                  "key": "state_id",
+                  "value": "1",
+                  "type": "text",
+                  "uuid": "66d09e8a-f5fc-4862-93e9-e6e3e9d7b4e4",
+                  "disabled": true
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/plan/plans",
+              "host": [
+                "{{base_url}}api"
+              ],
+              "path": [
+                "plan",
+                "plans"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "promo code",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "batch_id",
+                  "value": "6",
+                  "type": "text",
+                  "uuid": "3aa7cc9b-605b-4d72-bad7-9bcbeea8b5d5"
+                },
+                {
+                  "key": "state_id",
+                  "value": "1",
+                  "type": "text",
+                  "uuid": "66d09e8a-f5fc-4862-93e9-e6e3e9d7b4e4",
+                  "disabled": true
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/plan/promo-codes",
+              "host": [
+                "{{base_url}}api"
+              ],
+              "path": [
+                "plan",
+                "promo-codes"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Payment",
+      "item": [
+        {
+          "name": "payment/razorpay/create-order",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "batch_id",
+                  "value": "6",
+                  "type": "text",
+                  "uuid": "3aa7cc9b-605b-4d72-bad7-9bcbeea8b5d5"
+                },
+                {
+                  "key": "state_id",
+                  "value": "1",
+                  "type": "text",
+                  "uuid": "66d09e8a-f5fc-4862-93e9-e6e3e9d7b4e4",
+                  "disabled": true
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/payment/razorpay/create-order?amount_in_rupees=1&plan_id=1&promo_id=1&batch_id=6",
+              "host": [
+                "{{base_url}}api"
+              ],
+              "path": [
+                "payment",
+                "razorpay",
+                "create-order"
+              ],
+              "query": [
+                {
+                  "key": "amount_in_rupees",
+                  "value": "1"
+                },
+                {
+                  "key": "plan_id",
+                  "value": "1"
+                },
+                {
+                  "key": "promo_id",
+                  "value": "1"
+                },
+                {
+                  "key": "batch_id",
+                  "value": "6"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "payment/razorpay/verify-payment",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "razorpay_order_id",
+                  "value": "",
+                  "type": "text",
+                  "uuid": "1266496a-2c18-452e-9531-e869432f2f45"
+                },
+                {
+                  "key": "razorpay_payment_id",
+                  "value": "",
+                  "type": "text",
+                  "uuid": "0b9182f6-77ce-4a88-8038-f4aa7fe1c27c"
+                },
+                {
+                  "key": "razorpay_signature",
+                  "value": "",
+                  "type": "text",
+                  "uuid": "f3cff68c-afef-439e-8073-2676b523e00f"
+                },
+                {
+                  "key": "student_id",
+                  "value": "1",
+                  "type": "text",
+                  "uuid": "4084380f-6aab-49be-bedb-20c6cd94718d"
+                },
+                {
+                  "key": "batch_id",
+                  "value": "6",
+                  "type": "text",
+                  "uuid": "fd5e81b2-1be4-43a7-8c0b-fae5e12c860e"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/payment/razorpay/verify-payment",
+              "host": [
+                "{{base_url}}api"
+              ],
+              "path": [
+                "payment",
+                "razorpay",
+                "verify-payment"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "payment/razorpay/fetch-payment",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "payment_id",
+                  "value": "",
+                  "type": "text",
+                  "uuid": "c6d339ac-5242-45ed-bc95-0f72655550c9"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/payment/razorpay/fetch-payment",
+              "host": [
+                "{{base_url}}api"
+              ],
+              "path": [
+                "payment",
+                "razorpay",
+                "fetch-payment"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "payment/razorpay/order-status",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "order_id",
+                  "value": "",
+                  "type": "text",
+                  "uuid": "049346ef-c00e-451d-9b96-e06380506484"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/payment/razorpay/order-status",
+              "host": [
+                "{{base_url}}api"
+              ],
+              "path": [
+                "payment",
+                "razorpay",
+                "order-status"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "payment/razorpay/webhook",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "payload",
+                  "value": "{}",
+                  "type": "text",
+                  "uuid": "94ed853e-1f40-4ca1-aab2-40e7d387eb49",
+                  "disabled": true
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/payment/razorpay/webhook",
+              "host": [
+                "{{base_url}}api"
+              ],
+              "path": [
+                "payment",
+                "razorpay",
+                "webhook"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost/education/"
+    }
+  ]
+}

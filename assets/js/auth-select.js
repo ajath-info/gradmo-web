@@ -12,6 +12,9 @@
     if (sel.multiple) return false;
     if (sel.size && parseInt(sel.size, 10) > 1) return false;
     if (sel.classList.contains('select2-hidden-accessible')) return false;
+    if (sel.classList.contains('edu_selectbox_with_search')) return false;
+    if (sel.classList.contains('edu_selectbox_without_search')) return false;
+    if (sel.closest('.tcb-form-wrap')) return false;
     if (sel.classList.contains('selectpicker')) return false;
     if (sel.closest('.select2, .bootstrap-select, .chosen-container')) return false;
     if (sel.closest('[data-native-select="1"]')) return false;

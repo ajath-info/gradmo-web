@@ -64,7 +64,7 @@ $ft_twitter = !empty($fd0['twitter']) ? trim((string) $fd0['twitter']) : '';
 							<div class="edu-footer-gradmo__links-col">
 								<p><a href="<?php echo base_url('institute/listing'); ?>">› <?php echo html_escape('Institute listing'); ?></a></p>
 								<p><a href="<?php echo base_url('privacy-policy'); ?>">› <?php echo html_escape($this->common->languageTranslator('ltr_privacy_policy')); ?></a></p>
-								<p><a href="<?php echo base_url('contact-us'); ?>">› <?php echo html_escape('Get in touch'); ?></a></p>
+								<p><a href="<?php echo base_url('term-condition'); ?>">› <?php echo html_escape($this->common->languageTranslator('ltr_terms_conditions')); ?></a></p>
 							</div>
 						</div>
 					</div>
@@ -132,5 +132,14 @@ $ft_twitter = !empty($fd0['twitter']) ? trim((string) $fd0['twitter']) : '';
 	<?php endif; ?>
 	<?php if (!empty($load_register_otp_script)) { $this->load->view('frontend/register_otp_script'); } ?>
 	<?php if (!empty($load_login_otp_script)) { $this->load->view('frontend/login_otp_script'); } ?>
+	<?php if (!empty($load_batch_form_assets)) { ?>
+	<script src="<?php echo base_url();?>assets/js/jquery-ui.js"></script>
+	<script src="<?php echo base_url();?>assets/js/select2.min.js"></script>
+	<script src="<?php echo base_url();?>assets/js/timepicker/bootstrap-clockpicker.min.js"></script>
+	<script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
+	<script src="<?php echo base_url();?>assets/js/custom.js?<?php echo time(); ?>"></script>
+	<script src="<?php echo base_url();?>assets/js/backend.js?<?php echo time(); ?>"></script>
+	<?php $this->load->view('frontend/batch_form_init_script'); ?>
+	<?php } ?>
   </body>
 </html>

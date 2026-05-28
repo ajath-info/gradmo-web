@@ -579,24 +579,6 @@ CREATE TABLE `live_class_history` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `live_class_setting`
---
-
-CREATE TABLE `live_class_setting` (
-  `id` int(11) NOT NULL,
-  `batch` int(11) NOT NULL,
-  `zoom_api_key` varchar(500) NOT NULL,
-  `zoom_api_secret` varchar(500) NOT NULL,
-  `meeting_number` varchar(255) NOT NULL,
-  `password` varchar(255) NOT NULL,
-  `status` int(11) NOT NULL,
-  `admin_id` int(11) NOT NULL,
-  `added_at` datetime NOT NULL
-) ENGINE=MyISAM DEFAULT CHARSET=latin1;
-
--- --------------------------------------------------------
-
---
 -- Table structure for table `mock_result`
 --
 
@@ -1219,12 +1201,6 @@ ALTER TABLE `live_class_history`
   ADD PRIMARY KEY (`id`);
 
 --
--- Indexes for table `live_class_setting`
---
-ALTER TABLE `live_class_setting`
-  ADD PRIMARY KEY (`id`);
-
---
 -- Indexes for table `mock_result`
 --
 ALTER TABLE `mock_result`
@@ -1533,12 +1509,6 @@ ALTER TABLE `leave_management`
 -- AUTO_INCREMENT for table `live_class_history`
 --
 ALTER TABLE `live_class_history`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
-
---
--- AUTO_INCREMENT for table `live_class_setting`
---
-ALTER TABLE `live_class_setting`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --

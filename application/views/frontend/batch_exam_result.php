@@ -1,6 +1,7 @@
+<link rel="stylesheet" href="<?php echo base_url('assets/css/institute-frontend.css'); ?>?v=8">
 <style>
 .exam-result-page {
-	max-width: 430px;
+	max-width: 720px;
 	margin: 0 auto;
 	padding: 18px 16px 40px;
 }
@@ -158,6 +159,7 @@
 }
 </style>
 
+<div class="inst-detail-page">
 <div class="exam-result-page">
 	<div class="exam-result-topbar">
 		<a href="javascript:history.back()" class="exam-result-back" aria-label="Back"><i class="fas fa-arrow-left"></i></a>
@@ -174,7 +176,8 @@
 
 	<div id="examResultApp"></div>
 </div>
-
+</div>
+<script src="<?php echo base_url('assets/js/exam-omr-download.js?v=2'); ?>"></script>
 <script>
 (function () {
 	'use strict';
@@ -185,6 +188,21 @@
 	var token = <?php echo json_encode((string) (isset($api_access_token) ? $api_access_token : '')); ?>;
 	var endpoint = <?php echo json_encode((string) (isset($student_exam_result_api_url) ? $student_exam_result_api_url : site_url('api/batch/student-exam-result'))); ?>;
 	var listPageUrl = <?php echo json_encode((string) (isset($student_exam_list_page_url) ? $student_exam_list_page_url : site_url('batch/exams'))); ?>;
+	var omrApiUrl = <?php echo json_encode((string) (isset($exam_omr_sheet_api_url) ? $exam_omr_sheet_api_url : site_url('api/batch/exam-omr-sheet'))); ?>;
+
+	function downloadOmrFilled(btn) {
+		if (typeof downloadExamOmrSheet !== 'function') {
+			alert('Download helper not loaded.');
+			return;
+		}
+		var old = btn ? btn.textContent : '';
+		if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
+		downloadExamOmrSheet({ apiUrl: omrApiUrl, token: token, examId: examId, mode: 'filled' }).catch(function (err) {
+			alert(err && err.message ? err.message : 'Could not download ORM sheet.');
+		}).then(function () {
+			if (btn) { btn.disabled = false; btn.textContent = old; }
+		});
+	}
 
 	var msgEl = document.getElementById('examResultMsg');
 	var appEl = document.getElementById('examResultApp');
@@ -224,6 +242,7 @@
 						'<div class="exam-result-stat"><div class="exam-result-stat-label">Attempted</div><div class="exam-result-stat-value">' + esc(result.attemptedQuestion || 0) + '</div></div>' +
 						'<div class="exam-result-stat"><div class="exam-result-stat-label">Time Taken</div><div class="exam-result-stat-value">' + esc(result.timeTaken || '--') + '</div></div>' +
 					'</div>' +
+					'<button type="button" class="exam-result-action exam-omr-download" style="border:0;cursor:pointer;width:100%;margin-bottom:10px;background:#1e40af;">Download ORM Sheet</button>' +
 					'<a class="exam-result-action" href="' + esc(listPageUrl + '?batch_id=' + encodeURIComponent(batchId)) + '">Back to Assessments</a>' +
 				'</div>' +
 			'</article>';
@@ -256,6 +275,10 @@
 			}
 			var data = res.data || {};
 			appEl.innerHTML = renderResult(data.exam || {}, data.result || {});
+			var omrBtn = appEl.querySelector('.exam-omr-download');
+			if (omrBtn) {
+				omrBtn.addEventListener('click', function () { downloadOmrFilled(omrBtn); });
+			}
 			setMessage('', false);
 		}).catch(function (error) {
 			setMessage(error && error.message ? error.message : 'Could not load result.', true);

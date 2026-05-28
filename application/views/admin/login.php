@@ -26,7 +26,7 @@
 
                         <input type="password" id="password_show"  name="password" class="require edu_form_field" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_password'));?>" value="<?php echo(isset($_COOKIE['SSD'])) ? base64_decode(urldecode(base64_decode($_COOKIE['SSD']))) : ''; ?>">
 
-                     <i class="fas fa-eye-slash hide_show" onclick="myFunction()" style="transform: translate(500px, -38px);"></i>
+                     <i class="fas fa-eye-slash hide_show" role="button" tabindex="0" aria-label="Toggle password visibility" style="transform: translate(500px, -38px); cursor: pointer;"></i>
 
                     </div>
 
@@ -106,6 +106,34 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    var pwInput = document.getElementById('password_show');
+    var pwToggleIcon = document.querySelector('.hide_show');
+
+    window.myFunction = function () {
+        if (!pwInput || !pwToggleIcon) {
+            return;
+        }
+        if (pwInput.type === 'password') {
+            pwInput.type = 'text';
+            pwToggleIcon.classList.remove('fa-eye-slash');
+            pwToggleIcon.classList.add('fa-eye');
+        } else {
+            pwInput.type = 'password';
+            pwToggleIcon.classList.remove('fa-eye');
+            pwToggleIcon.classList.add('fa-eye-slash');
+        }
+    };
+
+    if (pwToggleIcon) {
+        pwToggleIcon.addEventListener('click', window.myFunction);
+        pwToggleIcon.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                window.myFunction();
+            }
+        });
+    }
+
     var loginBtn = document.getElementById('auth_login');
     if (!loginBtn) {
         return;

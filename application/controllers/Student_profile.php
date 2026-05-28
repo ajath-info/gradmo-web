@@ -247,20 +247,21 @@ class Student_profile extends CI_Controller {
 	}
     function start_class($id){
         $data =array();
-		$livedata =$this->db_model->select_data('*','live_class_setting',array('batch' =>$id));
+		$batch_id = (int) $id;
 		$date = date('Y-m-d');
 		$time_s = date('h:i:s A');
-		$subCon = "batch_id = '$id' AND date ='$date' AND end_time =''";
+		$subCon = "batch_id = '$batch_id' AND date ='$date' AND end_time =''";
 		$livedata_his =$this->db_model->select_data('*','live_class_history',$subCon,1,array('id','desc'));
-	    
+		$this->load->library('zoom_live_lib');
+		$zoom = $this->zoom_live_lib->prepare_legacy_embed_view_data($batch_id, 0);
 	
-		if(!empty($livedata) && !empty($livedata_his)){
-  		$data['signature'] = $this->generate_signature($livedata[0]['zoom_api_key'], $livedata[0]['zoom_api_secret'],$livedata[0]['meeting_number'],1);
-		$data['sdk_key']=$livedata[0]['zoom_api_key'];
-		$data['sdk_secret']=$livedata[0]['zoom_api_secret'];
+		if(!empty($livedata_his) && !empty($zoom['ok'])){
+  		$data['signature'] = $zoom['signature'];
+		$data['sdk_key']=$zoom['sdk_key'];
+		$data['sdk_secret']=$zoom['sdk_secret'];
 		$data['display_name']=$this->session->userdata('name');
-		$data['meeting_number']=$livedata[0]['meeting_number'];
-		$data['password']=$livedata[0]['password'];
+		$data['meeting_number']=$zoom['meeting_number'];
+		$data['password']=$zoom['password'];
     		$this->load->view("student/start_live_class",$data);
         }else{
            

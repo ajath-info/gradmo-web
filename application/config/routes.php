@@ -114,6 +114,8 @@ $route['admin/student-attendance/(:any)'] = 'admin_profile/student_attendance/$1
 $route['admin/student-attendance-extra-class/(:any)'] = 'admin_profile/student_attendance_extra_class/$1';
 
 $route['admin/certificate'] = 'admin_profile/certificate';
+$route['admin/cms-pages'] = 'admin_profile/cms_pages';
+$route['admin/templates'] = 'admin_profile/templates';
 $route['admin/privacy-policy'] = 'admin_profile/privacy_policy';
 $route['admin/terms-conditions'] = 'admin_profile/terms_conditions';
 $route['admin/view-certificate'] = 'admin_profile/view_certificate';
@@ -234,6 +236,7 @@ $route['login-otp-verify'] = 'website/login_otp_verify';
 $route['login-password'] = 'website/login_password';
 $route['register'] = 'website/register';
 $route['forgot-password'] = 'website/forgot_password';
+$route['verify-account/(:any)'] = 'website/verify_account/$1';
 $route['logout'] = 'website/logout';
 $route['update-profile'] = 'website/update_profile';
 $route['update-password'] = 'website/update_password';
@@ -264,13 +267,20 @@ $route['batch/live-room'] = 'website/batch_live_room';
 $route['batch/recorded-meetings'] = 'website/batch_recorded_meetings';
 $route['attendance'] = 'website/attendance_page';
 $route['homework-list'] = 'website/homework_page';
+$route['homework/view'] = 'website/homework_detail_page';
+$route['teacher/homework/submissions'] = 'website/teacher_homework_submissions_page';
+$route['teacher/homework/submission'] = 'website/teacher_homework_submission_page';
 $route['teacher/attendance'] = 'website/teacher_attendance_page';
 $route['teacher/videos'] = 'website/teacher_videos_page';
 $route['teacher/books'] = 'website/teacher_books_page';
 $route['teacher/notes'] = 'website/teacher_notes_page';
 $route['teacher/homework'] = 'website/teacher_homework_page';
 $route['teacher/exams'] = 'website/teacher_exams_page';
+$route['teacher/exam/submissions'] = 'website/teacher_exam_submissions_page';
+$route['teacher/exam/submission'] = 'website/teacher_exam_submission_page';
 $route['institute/exams'] = 'website/teacher_exams_page';
+$route['institute/exam/submissions'] = 'website/teacher_exam_submissions_page';
+$route['institute/exam/submission'] = 'website/teacher_exam_submission_page';
 $route['notifications'] = 'website/notifications_page';
 $route['library'] = 'website/library_page';
 $route['institute/listing'] = 'website/institute_listing';
@@ -289,7 +299,6 @@ $route['institute/update-review-submit'] = 'website/institute_update_review_subm
 $route['institute/delete-review-submit'] = 'website/institute_delete_review_submit';
 
 
-$route['about-us'] = 'home/about';
 $route['courses-offered'] = 'home/courses';
 $route['courses-details/(:any)'] = 'home/courses_details/$1';
 $route['enroll-now/(:any)'] = 'home/enroll_now/$1';
@@ -303,9 +312,11 @@ $route['facilities'] = 'home/facilities';
 $route['gallery'] = 'home/gallery';
 $route['video-gallery'] = 'home/video_gallery';
 $route['contact-us'] = 'home/contact';
-$route['privacy-policy'] = 'home/privacypolicy';
-$route['privacyandpolicy'] = 'home/privacyandpolicy';
-$route['term-condition'] = 'home/termscondition';
+// CMS pages: URI segment = `pages.url` → home/cms_page
+$route['about-us'] = 'home/cms_page';
+$route['privacy-policy'] = 'home/cms_page';
+$route['term-condition'] = 'home/cms_page';
+$route['delete-policy'] = 'home/cms_page';
 
 $route['themes-option'] = 'home/themes_option';
 
@@ -426,10 +437,20 @@ $route['api/batch/exam-manage-list'] = 'api/batch/batch/exam_manage_list';
 $route['api/batch/exam-add'] = 'api/batch/batch/exam_add';
 $route['api/batch/exam-edit'] = 'api/batch/batch/exam_edit';
 $route['api/batch/exam-delete'] = 'api/batch/batch/exam_delete';
+$route['api/batch/exam-submission-list'] = 'api/batch/batch/exam_submission_list';
+$route['api/batch/exam-submission-details'] = 'api/batch/batch/exam_submission_details';
+$route['api/batch/exam-omr-sheet'] = 'api/batch/batch/exam_omr_sheet';
 $route['api/batch/batch-chapters'] = 'api/batch/batch/batch_chapters';
+$route['api/batch/categories'] = 'api/batch/batch/categories';
+$route['api/batch/subcategories'] = 'api/batch/batch/subcategories';
+
 
 // Teacher batch CRUD routes
 $route['api/batch/teacher-batches'] = 'api/batch/batch/teacher_batches';
+$route['api/batch/teacher-batch-form-options'] = 'api/batch/batch/teacher_batch_form_options';
+$route['api/batch/teacher-batch-subjects'] = 'api/batch/batch/teacher_batch_subjects';
+$route['api/batch/teacher-batch-subject-chapters'] = 'api/batch/batch/teacher_batch_subject_chapters';
+$route['api/batch/teacher-batch-edit'] = 'api/batch/batch/teacher_batch_edit';
 $route['api/batch/teacher-create-batch'] = 'api/batch/batch/teacher_create_batch';
 $route['api/batch/teacher-update-batch'] = 'api/batch/batch/teacher_update_batch';
 $route['api/batch/teacher-delete-batch'] = 'api/batch/batch/teacher_delete_batch';

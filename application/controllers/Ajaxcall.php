@@ -776,7 +776,10 @@ class Ajaxcall extends CI_Controller{
 								}
                             }
 							
-                            $resp = array('status'=>'1', 'msg' => $this->lang->line('ltr_batch_updated_msg'),'url' => base_url('admin/batch-manage'));
+                            $batch_list_url = ((int) $this->session->userdata('role') === 3)
+                                ? base_url('batch/mylist')
+                                : base_url('admin/batch-manage');
+                            $resp = array('status'=>'1', 'msg' => $this->lang->line('ltr_batch_updated_msg'),'url' => $batch_list_url);
                         }else{
                             $resp = array('status'=>'0');
                         }
@@ -889,7 +892,10 @@ class Ajaxcall extends CI_Controller{
 									$this->db_model->insert_data('batch_fecherd',$speci_heading);
 								}
                             }
-                            $resp = array('status'=>'1', 'msg' => 'Batch added successfully.','url' => base_url('admin/batch-manage'));
+                            $batch_list_url = ((int) $this->session->userdata('role') === 3)
+                                ? base_url('batch/mylist')
+                                : base_url('admin/batch-manage');
+                            $resp = array('status'=>'1', 'msg' => 'Batch added successfully.','url' => $batch_list_url);
                         }else{
                             $resp = array('status'=>'0');
                         }
@@ -2077,31 +2083,25 @@ class Ajaxcall extends CI_Controller{
                     $like1 = '';
                     $or_like = ''; 
                 }
-                if($this->session->userdata('role')==1){
-                    $uid = $this->session->userdata('uid');
-                    // $cond='';
-                    // $cond = array('students.admin_id'=>$this->session->userdata('uid'));
-                    // $cond['students.admin_id'] = $this->session->userdata('uid');
-                    //   $cond1 = "`students`";
-                      $cond1 = "`student_batchs`";
-                      $cond2 = "`admin_id`";
-                      $cond3 = $uid;
-                   $cond = ($cond1.'.'.$cond2.'='.$cond3); 
-                }else{
+                $role_id = (int) $this->session->userdata('role');
+                if ($role_id === 1 || $role_id === 4) {
+                    $uid = (int) $this->session->userdata('uid');
+                    $cond1 = "`student_batchs`";
+                    $cond2 = "`admin_id`";
+                    $cond3 = $uid;
+                    $cond = ($cond1.'.'.$cond2.'='.$cond3);
+                } else {
                     $batch_ids = $this->session->userdata('batch_id');
                     $admin_id = $this->session->userdata('admin_id');
-            		if(!empty($batch_ids)){
-                		$cond1 = "`students`";
-                        $cond2 = "`admin_id`";
+                    if (!empty($batch_ids)) {
+                        $cond1 = "`students`";
                         $cond3 = "`student_batchs`";
                         $cond4 = "`batch_id`";
                         $cond5 = "`status`";
-    
-                        $cond = ($cond3.'.'.$cond4.' in ('.$batch_ids.') AND '.$cond1.'.'.$cond5.'= 1'); 
-            // 		$cond = "students.admin_id = $admin_id AND student_batchs.batch_id in ($batch_ids) AND students.status = 1";
-            		}else{
-            			$cond = '';
-            		}
+                        $cond = ($cond3.'.'.$cond4.' in ('.$batch_ids.') AND '.$cond1.'.'.$cond5.'= 1');
+                    } else {
+                        $cond = '1=0';
+                    }
                 }
                 
                 if(isset($get['user_status']) || isset($get['lgStatus']) || isset($get['user_batch'])){
@@ -2289,10 +2289,11 @@ class Ajaxcall extends CI_Controller{
                     }
                 }
                 
-                if(!empty($cond_in['batch_id'])){
-                    $where_in=array('student_batchs.batch_id',$cond_in['batch_id']); 
-                }else{
-                    $where_in="";
+                $cond_in = isset($cond_in) ? $cond_in : array();
+                if (is_array($cond_in) && !empty($cond_in['batch_id'])) {
+                    $where_in = array('student_batchs.batch_id', $cond_in['batch_id']);
+                } else {
+                    $where_in = '';
                 }
 
 
@@ -2310,14 +2311,14 @@ class Ajaxcall extends CI_Controller{
                 // print_r($student_data);
                 // echo $this->db->last_query();
     
-                if(($this->session->userdata('role')==3) && empty($this->session->userdata('batch_id'))){
+                if (((int) $this->session->userdata('role') === 3) && empty($this->session->userdata('batch_id'))) {
                     $student_data = "";
                 }
                 if(!empty($student_dat)){
                     $role = $this->session->userdata('role');
-                    if($role == '1'){  
+                    if ($role == '1' || $role == 1 || $role == '4' || $role == 4) {
                         $profile = 'admin';
-                    }else if($role == '3'){
+                    } else if ($role == '3' || $role == 3) {
                         $profile = 'teacher';
                     }
                     $batch_array = $this->db_model->select_data('id,batch_name','batches use index (id)',array('id'=>$student_data[0]['batch_id']));
@@ -2558,9 +2559,13 @@ class Ajaxcall extends CI_Controller{
                     }
                     
                   $table = 'student_batchs';
-                //   $recordsTotal = $this->db_model->countAll('students use index (id)',array('admin_id'=>$_SESSION['uid']),'','',$like,'','',$or_like,$where_in);
+                    $where_in_sql = is_string($where_in) ? $where_in : '';
+                    $where_sql = trim($cond . ' ' . $where_in_sql);
+                    if ($where_sql === '') {
+                        $where_sql = '1=0';
+                    }
                     $recordsTotal = $this->db_model->custom_slect_query("COUNT(id) AS `numrows`
-                    FROM (SELECT `student_batchs`.`id` FROM $table LEFT JOIN `students` ON `students`.`id`=`student_batchs`.`student_id` WHERE $cond $where_in GROUP BY `students`.`id`) sada")[0]['numrows'];
+                    FROM (SELECT `student_batchs`.`id` FROM $table LEFT JOIN `students` ON `students`.`id`=`student_batchs`.`student_id` WHERE " . $where_sql . " GROUP BY `students`.`id`) sada")[0]['numrows'];
                     
                     $output = array(
                         "draw" => $post['draw'],
@@ -3084,6 +3089,9 @@ class Ajaxcall extends CI_Controller{
                     $data['email'] = $data_arr['email'];
                     $data['address'] = $data_arr['address'];
                     $data['pay_mode'] = $data_arr['payMode'];
+                    if ($this->students_column_exists('is_verified')) {
+                        $data['is_verified'] = 0;
+                    }
                    
                         $data = $this->security->xss_clean($data);
                         $ins = $this->db_model->insert_data('students',$data);
@@ -3119,29 +3127,20 @@ class Ajaxcall extends CI_Controller{
                        
                         if($ins1 && (!empty($data['batch_id']))){
                             $resp = array('status'=>'1', 'msg' => $this->input->post('name',TRUE).$this->lang->line('ltr_added_msg'),'enroll_id'=>$enrolid, 'password'=>$password);
-                         
-                            $title = $this->db_model->select_data('site_title','site_details','',1,array('id','desc'))[0]['site_title'];
-                            $subj = $title.'- '.$this->lang->line('ltr_credentials');
-                            $em_msg = $this->lang->line('ltr_hey').' '.ucwords($this->input->post('name',TRUE)).', '.$this->lang->line('ltr_congratulation').' <br/><br/>'.$this->lang->line('ltr_successfully_enrolled').'<br/><br/>'.$this->lang->line('ltr_login_details').'<br/><br/> '.$this->lang->line('ltr_enrolment_id').' : '.$enrolid.'<br/><br/>'.$this->lang->line('ltr_password').' : '.$password.'';
-                            $to_male =$this->input->post('email',TRUE);
-                             $bName = [];
-                        foreach($batch_id as $value){
-                            $batch_type =$this->db_model->select_data('batch_name,id','batches use index (id)',array('id'=>$value),1)[0];
-                           array_push($bName,$batch_type);
-                        }  
-                       
-                        $data1['site_logo'] = $this->common->siteLogo;
-                        $data1['site_Name'] = $this->common->siteTitle;
-                        $data1['name'] =ucwords($this->input->post('name',TRUE));
-                        $data1['email'] = $enrolid;
-        			    $data1['password'] = $password;
-        			    $data1['link'] =base_url().'login';
-        			    $data1['status'] ='new';
-        			    $data1['productname'] =$bName;
-                        $data1['supportURL'] =$this->common->siteOwnerEmail;
-                        
-        			    $em_msg= $this->load->view("frontend/email_template",$data1,true); 
-                        $res=  $this->SendMail($data_arr['email'], $subj, $em_msg);
+
+                            $batch_names = array();
+                            foreach ($batch_id as $value) {
+                                $batch_type = $this->db_model->select_data('batch_name', 'batches use index (id)', array('id' => $value), 1);
+                                if (!empty($batch_type[0]['batch_name'])) {
+                                    $batch_names[] = $batch_type[0]['batch_name'];
+                                }
+                            }
+                            $this->send_admin_account_verify_email((int) $ins, 'student', $data_arr['email'], $data_arr['name'], array(
+                                'password' => $password,
+                                'enrollment_id' => $enrolid,
+                                'mobile' => isset($data_arr['contact_no']) ? $data_arr['contact_no'] : '',
+                                'batch_name' => implode(', ', $batch_names),
+                            ));
                         }
                     }else{
                         $resp = array('status'=>'0', 'msg' => $this->lang->line('ltr_email_already_msg')); 
@@ -4233,7 +4232,7 @@ function subcategory_table(){
                 $batch_ids =$this->session->userdata('batch_id');
                 $batCon = "batches.admin_id = $admin_id AND batches.id in ($batch_ids)";
                 if($type =="zoom"){
-                    $setting_data = $this->db_model->select_data('live_class_setting.*,batches.batch_name','live_class_setting',$batCon,$limit,array('id','desc'),$like,array('batches','batches.id=live_class_setting.batch'));
+                    $setting_data = $this->db_model->select_data('batches.id,batches.id as batch,batches.batch_name','batches',$batCon,$limit,array('batches.id','desc'),$like);
                 }else{
                     $setting_data = $this->db_model->select_data('jetsi_setting.*,batches.batch_name','jetsi_setting',$batCon,$limit,array('id','desc'),$like,array('batches','batches.id=jetsi_setting.batch'));                    
                 }
@@ -4248,7 +4247,7 @@ function subcategory_table(){
                 }
                 foreach($setting_data as $setting){
                     if($type =="zoom"){
-                        $action = '<p class="actions_wrap"><a class="btn_view add_live_class" title="Live Class" data-id="'.$setting['id'].'"><i class="fa fa-users" aria-hidden="true"></i></a></p>';
+                        $action = '<p class="actions_wrap"><a class="btn_view add_live_class" title="Live Class" data-id="'.$setting['id'].'" data-batch="'.$setting['id'].'"><i class="fa fa-users" aria-hidden="true"></i></a></p>';
                     }else{
                         $action = '<p class="actions_wrap"><a class="btn_view jetsi_add_live_class" title="Live Class" data-id="'.$setting['id'].'"><i class="fa fa-users" aria-hidden="true"></i></a></p>';
                     }
@@ -4260,8 +4259,7 @@ function subcategory_table(){
                     $count++;
                 }
                 if($type =="zoom"){
-                     $where_in=array('live_class_setting.batch',$batch_ids);
-                    $recordsTotal = $this->db_model->countAll('live_class_setting',array('live_class_setting.admin_id' => $admin_id),$like,'','',array('batches','batches.id=live_class_setting.batch'),'','',$where_in);
+                    $recordsTotal = $this->db_model->countAll('batches', $batCon, $like);
                
                 }else{
                     $where_in=array('batch',$batch_ids);
@@ -5632,6 +5630,52 @@ function subcategory_table(){
         return isset($flip[$column]);
     }
 
+    private function students_column_exists($column)
+    {
+        static $flip = null;
+        if ($flip === null) {
+            $flip = array();
+            try {
+                if ($this->db->table_exists('students')) {
+                    foreach ($this->db->list_fields('students') as $f) {
+                        $flip[$f] = true;
+                    }
+                }
+            } catch (Exception $e) {
+                $flip = array();
+            }
+        }
+        return isset($flip[$column]);
+    }
+
+    /**
+     * Send register email with verify link after admin creates institute / teacher / student.
+     */
+    private function send_admin_account_verify_email($user_id, $user_type, $email, $name, array $extra = array())
+    {
+        $user_id = (int) $user_id;
+        $user_type = strtolower(trim((string) $user_type));
+        $email = trim((string) $email);
+        $name = trim((string) $name);
+        if ($user_id < 1 || $email === '') {
+            return;
+        }
+        $verify_link = $this->common->email_verify_link($user_id, $user_type);
+        $vars = array_merge(array(
+            'name' => $name,
+            'email' => $email,
+            'link' => base_url('login'),
+            'verify_link' => $verify_link,
+        ), $extra);
+        $this->common->send_email(array(
+            'purpose' => 'register',
+            'user_id' => $user_id,
+            'user_type' => $user_type,
+            'to_email' => $email,
+            'dynamic_var' => $vars,
+        ));
+    }
+
     private function filter_users_payload(array $data)
     {
         $flip = $this->users_field_flip();
@@ -6035,6 +6079,9 @@ function subcategory_table(){
                         if ($this->users_column_exists('teach_education')) {
                             unset($data_arr['teach_education']);
                         }
+                        if ($this->users_column_exists('is_verified')) {
+                            $data_arr['is_verified'] = 0;
+                        }
                         $data_arr = $this->filter_users_payload($data_arr);
                         $preserve_teach_image = isset($data_arr['teach_image']) ? $data_arr['teach_image'] : null;
                         $data_arr = $this->security->xss_clean($data_arr);
@@ -6042,9 +6089,18 @@ function subcategory_table(){
                             $data_arr['teach_image'] = $preserve_teach_image;
                         }
                         $ins = $this->db_model->insert_data('users',$data_arr);
-                        $resp = ((is_numeric($ins) && (int) $ins > 0) || $ins === true)
-                            ? array('status' => 1, 'msg' => 'Institute added successfully.')
-                            : array('status' => 2, 'msg' => 'Could not add institute. Check database logs or required columns.');
+                        if (is_numeric($ins) && (int) $ins > 0) {
+                            $inst_email = isset($data_arr['email']) ? $data_arr['email'] : '';
+                            $inst_name = isset($data_arr['name']) ? $data_arr['name'] : '';
+                            $inst_pwd = $this->input->post('password', true);
+                            $this->send_admin_account_verify_email((int) $ins, 'institute', $inst_email, $inst_name, array(
+                                'password' => $inst_pwd !== '' ? $inst_pwd : '',
+                                'mobile' => isset($data_arr['mobile']) ? $data_arr['mobile'] : (isset($data_arr['contact_no']) ? $data_arr['contact_no'] : ''),
+                            ));
+                            $resp = array('status' => 1, 'msg' => 'Institute added successfully. Verification email sent.');
+                        } else {
+                            $resp = array('status' => 2, 'msg' => 'Could not add institute. Check database logs or required columns.');
+                        }
                     }else{
                         $resp = array('status'=>2,'msg'=> $this->lang->line('ltr_email_already_msg'));
                     }
@@ -6339,12 +6395,19 @@ function subcategory_table(){
                     $prevDataStu =  $this->db_model->select_data('id','students use index (id)',array('email'=>$data_arr['email'],'admin_id'=>$this->session->userdata('uid')),1);
                     if(empty($prevData) && empty($prevDataStu)){
                         unset($data_arr['teacher_id']);
+                        $teacher_plain_password = isset($data_arr['password']) ? $data_arr['password'] : '';
                         $data_arr['parent_id'] = $this->session->userdata('uid');   
                         $data_arr['password'] = md5($data_arr['password']); 
                         $data_arr['teach_subject'] = json_encode($data_arr['teach_subject']);
                         $data_arr['role'] = 3;
                         $data_arr['status'] = 1;
                         $data_arr['admin_id'] =$this->session->userdata('uid') ;
+                        if ($this->users_column_exists('user_type')) {
+                            $data_arr['user_type'] = 'teacher';
+                        }
+                        if ($this->users_column_exists('is_verified')) {
+                            $data_arr['is_verified'] = 0;
+                        }
                         if(isset($_FILES['teach_image']) && !empty($_FILES['teach_image']['name'])){
                             $image = $this->upload_media($_FILES,'uploads/teachers/','teach_image');
                             if(is_array($image)){
@@ -6390,7 +6453,11 @@ function subcategory_table(){
                         }
                         
                         $ins = $this->db_model->insert_data('users',$data_arr);               
-                        if($ins==true){
+                        if (is_numeric($ins) && (int) $ins > 0) {
+                            $this->send_admin_account_verify_email((int) $ins, 'teacher', $data_arr['email'], $data_arr['name'], array(
+                                'password' => $teacher_plain_password,
+                                'mobile' => isset($data_arr['mobile']) ? $data_arr['mobile'] : '',
+                            ));
                             $resp = array('status'=>1,'msg'=>$this->lang->line('ltr_teacher_added_msg'));
                         }else{
                             $resp = array('status'=>0);
@@ -7910,6 +7977,358 @@ function result_table($type){
     }
 
     /********   Result Manage End   ********/
+    /********   CMS Pages Start   ********/
+
+    function pages_table(){
+        if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
+            $post = $this->input->post(NULL,TRUE);
+            $dataarray = array();
+            if(isset($post['length']) && $post['length']>0){
+                if(isset($post['start']) && !empty($post['start'])){
+                    $limit = array($post['length'],$post['start']);
+                    $count = $post['start']+1;
+                }else{
+                    $limit = array($post['length'],0);
+                    $count = 1;
+                }
+            }else{
+                $limit = '';
+                $count = 1;
+            }
+
+            if($post['search']['value'] != ''){
+                $like = array('subject',$post['search']['value']);
+            }else{
+               $like = ''; 
+            }
+
+            $pages = $this->db_model->select_data('*','pages','',$limit,array('id','desc'),$like);
+
+            if(!empty($pages)){
+                foreach($pages as $page){
+                    $page_url = trim((string) $page['url']);
+                    $url_link = $page_url !== '' ? '<a href="'.base_url($page_url).'" target="_blank">'.html_escape($page_url).'</a>' : '';
+                    $content_preview = $this->readMoreWord(strip_tags($page['content']), $this->lang->line('ltr_description'));
+
+                    $action = '<p class="actions_wrap"><a class="edit_cms_page btn_edit" title="Edit" data-id="'.$page['id'].'"><i class="fa fa-edit"></i></a>
+                    <a class="deleteData btn_delete" title="Delete" data-id="'.$page['id'].'" data-table="pages"><i class="fa fa-trash"></i></a></p>';
+
+                    if($page['status'] == 1){
+                        $statusDrop = '<div class="admin_tbl_status_wrap"><a class="tbl_status_btn light_sky_bg changeStatusButton" data-id="'.$page['id'].'" data-table ="pages" data-status ="0" href="javascript:;">'.$this->lang->line('ltr_active').'</a></div>';
+                    }else{
+                        $statusDrop = '<div class="admin_tbl_status_wrap">
+                    <a class="tbl_status_btn light_red_bg changeStatusButton" data-id="'.$page['id'].'" data-table ="pages" data-status ="1" href="javascript:;">'.$this->lang->line('ltr_inactive').'</a></div>';
+                    }
+
+                    $dataarray[] = array(
+                        '<input type="checkbox" class="checkOneRow" value="'.$page['id'].'">',
+                        $count,
+                        html_escape($page['key']),
+                        $url_link,
+                        html_escape($page['subject']),
+                        '<p class="descParaCls">'.$content_preview.'</p>',
+                        $statusDrop,
+                        $action
+                    );
+                    $count++;
+                }
+
+                $recordsTotal = $this->db_model->countAll('pages','','','',$like);
+
+                $output = array(
+                    "draw" => $post['draw'],
+                    "recordsTotal" => $recordsTotal,
+                    "recordsFiltered" => $recordsTotal,
+                    "data" => $dataarray,
+                );
+            }else{
+                $output = array(
+                    "draw" => $post['draw'],
+                    "recordsTotal" => 0,
+                    "recordsFiltered" => 0,
+                    "data" => array(),
+                );
+            }
+            echo json_encode($output,JSON_UNESCAPED_SLASHES);
+        }else{
+            echo $this->lang->line('ltr_not_allowed_msg');
+        }
+    }
+
+    function get_cms_page(){
+        if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
+            $id = (int) $this->input->post('id', TRUE);
+            $page = $this->db_model->select_data(
+                'id,added_by,`key`,url,subject,content,status,updated_at,created_at',
+                'pages',
+                array('id'=>$id),
+                1
+            );
+            if(!empty($page[0])){
+                $json_flags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
+                if (defined('JSON_INVALID_UTF8_SUBSTITUTE')) {
+                    $json_flags |= JSON_INVALID_UTF8_SUBSTITUTE;
+                }
+                echo json_encode(array('status'=>1,'data'=>$page[0]), $json_flags);
+            }else{
+                echo json_encode(array('status'=>0,'msg'=>$this->lang->line('ltr_no_data_msg')),JSON_UNESCAPED_SLASHES);
+            }
+        }else{
+            echo json_encode(array('status'=>0,'msg'=>$this->lang->line('ltr_not_allowed_msg')),JSON_UNESCAPED_SLASHES);
+        }
+    }
+
+    function add_cms_page(){
+        if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
+            $key = trim((string) $this->input->post('page_key', TRUE));
+            $url = trim((string) $this->input->post('page_url', TRUE));
+            $subject = trim((string) $this->input->post('subject', TRUE));
+            $content = $this->input->post('content', FALSE);
+
+            if($key === '' || $url === '' || $subject === ''){
+                echo json_encode(array('status'=>0,'msg'=>$this->lang->line('ltr_all_fields_msg')),JSON_UNESCAPED_SLASHES);
+                return;
+            }
+
+            $key = preg_replace('/[^a-zA-Z0-9_]/', '_', str_replace('-', '_', strtolower($key)));
+            $url = strtolower(preg_replace('/[^a-z0-9\-]/', '-', str_replace('_', '-', $url)));
+            $url = trim(preg_replace('/-+/', '-', $url), '-');
+
+            $edit_id = (int) $this->input->post('edit_id', TRUE);
+            $where_key = array('key'=>$key);
+            $where_url = array('url'=>$url);
+            if($edit_id > 0){
+                $where_key['id !='] = $edit_id;
+                $where_url['id !='] = $edit_id;
+            }
+
+            if(!empty($this->db_model->select_data('id','pages',$where_key,1))){
+                echo json_encode(array('status'=>0,'msg'=>$this->lang->line('ltr_cms_page_key_exists')),JSON_UNESCAPED_SLASHES);
+                return;
+            }
+            if(!empty($this->db_model->select_data('id','pages',$where_url,1))){
+                echo json_encode(array('status'=>0,'msg'=>$this->lang->line('ltr_cms_page_url_exists')),JSON_UNESCAPED_SLASHES);
+                return;
+            }
+
+            $data_arr = array(
+                'key' => $key,
+                'url' => $url,
+                'subject' => $subject,
+                'content' => $content,
+                'updated_at' => date('Y-m-d H:i:s'),
+            );
+
+            if($edit_id > 0){
+                $ins = $this->db_model->update_data_limit('pages',$data_arr,array('id'=>$edit_id),1);
+                $msg = $this->lang->line('ltr_cms_page_updated_msg');
+            }else{
+                $data_arr['status'] = 1;
+                $data_arr['added_by'] = (int) $this->session->userdata('uid');
+                $data_arr['created_at'] = date('Y-m-d H:i:s');
+                $ins = $this->db_model->insert_data('pages',$data_arr);
+                $msg = $this->lang->line('ltr_cms_page_added_msg');
+            }
+
+            if($ins == true){
+                echo json_encode(array('status'=>1,'msg'=>$msg),JSON_UNESCAPED_SLASHES);
+            }else{
+                echo json_encode(array('status'=>0),JSON_UNESCAPED_SLASHES);
+            }
+        }else{
+            echo $this->lang->line('ltr_not_allowed_msg');
+        }
+    }
+
+    /********   CMS Pages End   ********/
+
+    /********   Templates Start   ********/
+
+    function templates_table(){
+        if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
+            $post = $this->input->post(NULL,TRUE);
+            $dataarray = array();
+            if(isset($post['length']) && $post['length']>0){
+                if(isset($post['start']) && !empty($post['start'])){
+                    $limit = array($post['length'],$post['start']);
+                    $count = $post['start']+1;
+                }else{
+                    $limit = array($post['length'],0);
+                    $count = 1;
+                }
+            }else{
+                $limit = '';
+                $count = 1;
+            }
+
+            if($post['search']['value'] != ''){
+                $like = array('title',$post['search']['value']);
+            }else{
+               $like = '';
+            }
+
+            $templates = $this->db_model->select_data('*','templates','',$limit,array('id','desc'),$like);
+
+            if(!empty($templates)){
+                foreach($templates as $row){
+                    $template_for = ucfirst(html_escape($row['template_for']));
+                    $desc_preview = $this->readMoreWord(strip_tags($row['description']), $this->lang->line('ltr_description'));
+                    $image_cell = '';
+                    if(!empty($row['image'])){
+                        $image_cell = '<img src="'.base_url('uploads/templates/'.$row['image']).'" alt="template" class="view_large_image" style="max-height:40px;">';
+                    }
+
+                    $action = '<p class="actions_wrap"><a class="edit_template btn_edit" title="Edit" data-id="'.$row['id'].'"><i class="fa fa-edit"></i></a>
+                    <a class="deleteData btn_delete" title="Delete" data-id="'.$row['id'].'" data-table="templates"><i class="fa fa-trash"></i></a></p>';
+
+                    // templates.status: 0 = Active, 1 = Inactive
+                    if($row['status'] == '0' || $row['status'] === 0){
+                        $statusDrop = '<div class="admin_tbl_status_wrap"><a class="tbl_status_btn light_sky_bg changeStatusButton" data-id="'.$row['id'].'" data-table="templates" data-status="1" href="javascript:;">'.$this->lang->line('ltr_active').'</a></div>';
+                    }else{
+                        $statusDrop = '<div class="admin_tbl_status_wrap"><a class="tbl_status_btn light_red_bg changeStatusButton" data-id="'.$row['id'].'" data-table="templates" data-status="0" href="javascript:;">'.$this->lang->line('ltr_inactive').'</a></div>';
+                    }
+
+                    $dataarray[] = array(
+                        '<input type="checkbox" class="checkOneRow" value="'.$row['id'].'">',
+                        $count,
+                        $template_for,
+                        html_escape($row['purpose']),
+                        html_escape($row['title']),
+                        $image_cell,
+                        '<p class="descParaCls">'.$desc_preview.'</p>',
+                        $statusDrop,
+                        $action
+                    );
+                    $count++;
+                }
+
+                $recordsTotal = $this->db_model->countAll('templates','','','',$like);
+
+                $output = array(
+                    "draw" => $post['draw'],
+                    "recordsTotal" => $recordsTotal,
+                    "recordsFiltered" => $recordsTotal,
+                    "data" => $dataarray,
+                );
+            }else{
+                $output = array(
+                    "draw" => $post['draw'],
+                    "recordsTotal" => 0,
+                    "recordsFiltered" => 0,
+                    "data" => array(),
+                );
+            }
+            echo json_encode($output,JSON_UNESCAPED_SLASHES);
+        }else{
+            echo $this->lang->line('ltr_not_allowed_msg');
+        }
+    }
+
+    function get_template(){
+        if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
+            $id = (int) $this->input->post('id', TRUE);
+            $row = $this->db_model->select_data('*','templates',array('id'=>$id),1);
+            if(!empty($row[0])){
+                $json_flags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
+                if (defined('JSON_INVALID_UTF8_SUBSTITUTE')) {
+                    $json_flags |= JSON_INVALID_UTF8_SUBSTITUTE;
+                }
+                echo json_encode(array('status'=>1,'data'=>$row[0]), $json_flags);
+            }else{
+                echo json_encode(array('status'=>0,'msg'=>$this->lang->line('ltr_no_data_msg')),JSON_UNESCAPED_SLASHES);
+            }
+        }else{
+            echo json_encode(array('status'=>0,'msg'=>$this->lang->line('ltr_not_allowed_msg')),JSON_UNESCAPED_SLASHES);
+        }
+    }
+
+    function add_template(){
+        if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
+            $template_for = trim((string) $this->input->post('template_for', TRUE));
+            $purpose = trim((string) $this->input->post('purpose', TRUE));
+            $title = trim((string) $this->input->post('title', TRUE));
+            $description = $this->input->post('description', FALSE);
+            $html_code = $this->input->post('html_code', FALSE);
+            $edit_id = (int) $this->input->post('edit_id', TRUE);
+
+            if(!in_array($template_for, array('email', 'sms'), true)){
+                $template_for = 'email';
+            }
+            if($purpose === '' || $title === '' || trim((string) $html_code) === ''){
+                echo json_encode(array('status'=>0,'msg'=>$this->lang->line('ltr_all_fields_msg')),JSON_UNESCAPED_SLASHES);
+                return;
+            }
+
+            $purpose = preg_replace('/[^a-zA-Z0-9_\-]/', '_', str_replace(' ', '_', strtolower($purpose)));
+
+            $where_purpose = array('purpose'=>$purpose);
+            if($edit_id > 0){
+                $where_purpose['id !='] = $edit_id;
+            }
+            if(!empty($this->db_model->select_data('id','templates',$where_purpose,1))){
+                echo json_encode(array('status'=>0,'msg'=>$this->lang->line('ltr_template_purpose_exists')),JSON_UNESCAPED_SLASHES);
+                return;
+            }
+
+            $data_arr = array(
+                'template_for' => $template_for,
+                'purpose' => $purpose,
+                'title' => $title,
+                'description' => $description,
+                'html_code' => $html_code,
+                'updated_at' => date('Y-m-d H:i:s'),
+            );
+
+            if(isset($_FILES['image']) && !empty($_FILES['image']['name'])){
+                $upload_path = './uploads/templates/';
+                if(!is_dir($upload_path)){
+                    mkdir($upload_path, 0755, true);
+                }
+                $config['upload_path'] = $upload_path;
+                $config['allowed_types'] = 'jpeg|jpg|png|gif|webp';
+                $config['max_size'] = '2048';
+                $this->load->library('upload', $config);
+                if($this->upload->do_upload('image')){
+                    $upload_data = $this->upload->data();
+                    $pic = $upload_data['raw_name'];
+                    $pic_ext = $upload_data['file_ext'];
+                    $image_name = $pic.'_'.date('ymdHis').$pic_ext;
+                    rename($upload_path.$pic.$pic_ext, $upload_path.$image_name);
+                    if($edit_id > 0){
+                        $old = $this->db_model->select_data('image','templates',array('id'=>$edit_id),1);
+                        if(!empty($old[0]['image']) && file_exists($upload_path.$old[0]['image'])){
+                            @unlink($upload_path.$old[0]['image']);
+                        }
+                    }
+                    $data_arr['image'] = $image_name;
+                }else{
+                    echo json_encode(array('status'=>0,'msg'=>strip_tags($this->upload->display_errors())),JSON_UNESCAPED_SLASHES);
+                    return;
+                }
+            }
+
+            if($edit_id > 0){
+                $ins = $this->db_model->update_data_limit('templates',$data_arr,array('id'=>$edit_id),1);
+                $msg = $this->lang->line('ltr_template_updated_msg');
+            }else{
+                $data_arr['status'] = '0';
+                $data_arr['created_at'] = date('Y-m-d H:i:s');
+                $ins = $this->db_model->insert_data('templates',$data_arr);
+                $msg = $this->lang->line('ltr_template_added_msg');
+            }
+
+            if($ins == true){
+                echo json_encode(array('status'=>1,'msg'=>$msg),JSON_UNESCAPED_SLASHES);
+            }else{
+                echo json_encode(array('status'=>0),JSON_UNESCAPED_SLASHES);
+            }
+        }else{
+            echo json_encode(array('status'=>0,'msg'=>$this->lang->line('ltr_not_allowed_msg')),JSON_UNESCAPED_SLASHES);
+        }
+    }
+
+    /********   Templates End   ********/
+
     /********   Facility Manage Start   ********/
     
     function facility_table(){
@@ -8965,32 +9384,45 @@ function result_table($type){
             echo $this->lang->line('ltr_not_allowed_msg');
         } 
     }
-    function add_live_class_setting(){
+    /**
+     * Save global Zoom credentials (zoom_api_credentials).
+     */
+    function save_zoom_api_credentials(){
         if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
-            if(!empty($this->input->post('batch',TRUE))){
-                $setting_data = $this->db_model->select_data('*','live_class_setting',array('batch'=>$this->input->post('batch',TRUE)));
-                if(empty($setting_data)){
-                     $data_arr['batch'] = $this->input->post('batch',TRUE);
-                    $data_arr['zoom_api_key'] = $this->input->post('zoom_api_key',TRUE);
-                    $data_arr['zoom_api_secret'] = $this->input->post('zoom_api_secret',TRUE);
-                    $data_arr['meeting_number'] = $this->input->post('meeting_number',TRUE);
-                    $data_arr['password'] = $this->input->post('password',TRUE);
-                    $data_arr['status'] = 1;
-                    $data_arr['added_at'] = date('Y-m-d H:i:s');
-                    $data_arr['admin_id'] = $this->session->userdata('uid');
-                    $data_arr = $this->security->xss_clean($data_arr);
-                    $ins = $this->db_model->insert_data('live_class_setting',$data_arr);
-                    if($ins==true){
-                        $resp = array('status'=>1,'msg'=>$this->lang->line('ltr_class_added_msg'));
-                    }else{
-                        $resp = array('status'=>0);
-                    }
-                }else{
-                    $resp = array('status'=>2,'msg'=>$this->lang->line('ltr_batch_exists_msg'));
+            $this->load->library('zoom_live_lib');
+            $data_arr = array();
+            $fields = array(
+                'meeting_sdk_key', 'meeting_sdk_secret',
+                'android_api_key', 'android_api_secret',
+                's2s_account_id', 's2s_client_id', 's2s_client_secret',
+                'zoom_host_email', 'zoom_host_user_id',
+            );
+            foreach ($fields as $f) {
+                if ($this->db->field_exists($f, 'zoom_api_credentials')) {
+                    $data_arr[$f] = $this->input->post($f, TRUE);
                 }
-                
-                echo json_encode($resp,JSON_UNESCAPED_SLASHES);
-            } 
+            }
+            if (empty($data_arr)) {
+                $data_arr['android_api_key'] = $this->input->post('zoom_api_key', TRUE);
+                $data_arr['android_api_secret'] = $this->input->post('zoom_api_secret', TRUE);
+                if ($this->db->field_exists('meeting_sdk_key', 'zoom_api_credentials')) {
+                    $data_arr['meeting_sdk_key'] = $this->input->post('zoom_api_key', TRUE);
+                    $data_arr['meeting_sdk_secret'] = $this->input->post('zoom_api_secret', TRUE);
+                }
+            }
+            $data_arr = $this->security->xss_clean($data_arr);
+            $existing = $this->db_model->select_data('id', 'zoom_api_credentials', '', 1, array('id', 'desc'));
+            if (empty($existing)) {
+                $ins = $this->db_model->insert_data('zoom_api_credentials', $data_arr);
+            } else {
+                $ins = $this->db_model->update_data_limit('zoom_api_credentials', $data_arr, array('id' => (int) $existing[0]['id']), 1);
+            }
+            if ($ins == true) {
+                $resp = array('status' => 1, 'msg' => $this->lang->line('ltr_data_updated_msg'));
+            } else {
+                $resp = array('status' => 0);
+            }
+            echo json_encode($resp, JSON_UNESCAPED_SLASHES);
         }else{
             echo $this->lang->line('ltr_not_allowed_msg');
         } 
@@ -9082,102 +9514,31 @@ function result_table($type){
             echo $this->lang->line('ltr_not_allowed_msg');
         } 
     }
-    function live_class_setting_table(){
+    function zoom_api_credentials_table(){
         if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
             $post = $this->input->post(NULL,TRUE);
-            $get = $this->input->get(NULL,TRUE);
-            if(isset($post['length']) && $post['length']>0){
-                if(isset($post['start']) && !empty($post['start'])){
-                    $limit = array($post['length'],$post['start']);
-                    $count = $post['start']+1;
-                }else{ 
-                    $limit = array($post['length'],0);
-                    $count = 1;
-                }
-            }else{
-                $limit = '';
-                $count = 1;
-            }
-        
-            if($post['search']['value'] != ''){
-                $like = array('batches.batch_name',$post['search']['value']);
-            }else{
-               $like = ''; 
-            }
-            if(isset($get['admin'])){
-                if($get['admin']!=''){   
-                    $like = array('live_class_setting.admin_id',$get['admin']); 
-                }
-            }
-            if($this->session->userdata('role') == 1 && $this->session->userdata('super_admin') == 1){  
-                $cond = array('live_class_setting.admin_id'=>$this->session->userdata('uid'));
-            //   $cond = '';
-            }else{
-               $cond = array('live_class_setting.admin_id'=>$this->session->userdata('uid'));
-            }
-            
-        
-            $setting_data = $this->db_model->select_data('live_class_setting.*,batches.batch_name','live_class_setting',$cond,$limit,array('live_class_setting.id','desc'),$like,array('batches','batches.id=live_class_setting.batch'));
-
-            if(!empty($setting_data)){
-                $role = $this->session->userdata('role');
-                if($role == '1'){  
-                    $profile = 'admin';
-                }
-    
-                foreach($setting_data as $setting){
-                    $action = '<p class="actions_wrap"><a class="edit_live_class btn_edit" data-table-name="live_class_setting" title="Edit" data-id="'.$setting['id'].'" data-batch="'.$setting['batch'].'"><i class="fa fa-edit"></i></a>
-                        <a class="deleteData btn_delete" title="Delete" data-id="'.$setting['id'].'" data-table="live_class_setting"><i class="fa fa-trash"></i></a>
-                        <a class="btn_view add_live_class_admin" title="Live Class" data-id="'.$setting['id'].'" data-batch="'.$setting['batch'].'"><i class="fa fa-users" aria-hidden="true" ></i></a>
-
-                        </p>';
-                        
-                        
-                      $name = $this->db_model->select_data('*','users use index (id)',array('id'=>$setting['admin_id']),1);
-                     
-                         if($name){
-                             if($name[0]['admin_id']==1 && $name[0]['super_admin'] == 1)
-                             {
-                                 $added_by= $name[0]['name']."  (Super Admin) ";
-                             }else  if($name[0]['admin_id']==1 && $name[0]['super_admin'] == 0 &&  $name[0]['super_admin'] == 1){
-                                 $added_by = $name[0]['name']."  (Sub-Admin)";
-                             }else{
-                                 $added_by = $name[0]['name']."  (Teacher)";
-                             }
-                       
-                         }else{
-                             $added_by = '';
-                         }
-                    $dataarray[] = array(
-                                $count,
-                                $setting['batch_name'],
-                                $setting['zoom_api_key'],
-                                $setting['zoom_api_secret'],
-                                $setting['meeting_number'],
-                                $setting['password'],
-                                $action,
-                                $added_by
-                    ); 
-                    $count++;
-                }
-    
-                $recordsTotal = $this->db_model->countAll('live_class_setting',$cond,'','',$like);
-    
-                $output = array(
-                    "draw" => $post['draw'],
-                    "recordsTotal" => $recordsTotal,
-                    "recordsFiltered" => $recordsTotal,
-                    "data" => $dataarray,
-                );
-    
-            }else{
-                $output = array(
-                    "draw" => $post['draw'],
-                    "recordsTotal" => 0,
-                    "recordsFiltered" => 0,
-                    "data" => array(),
-                );
-            }
+            $cred = $this->db_model->select_data('*', 'zoom_api_credentials', '', 1, array('id', 'desc'));
+            $c = !empty($cred[0]) ? $cred[0] : array();
+            $msk = isset($c['meeting_sdk_key']) ? $c['meeting_sdk_key'] : (isset($c['android_api_key']) ? $c['android_api_key'] : '');
+            $mss = isset($c['meeting_sdk_secret']) ? $c['meeting_sdk_secret'] : (isset($c['android_api_secret']) ? $c['android_api_secret'] : '');
+            $s2s = trim((isset($c['s2s_client_id']) ? $c['s2s_client_id'] : '') . ' / ' . (isset($c['zoom_host_email']) ? $c['zoom_host_email'] : ''));
+            $action = '<p class="actions_wrap"><a class="edit_live_class btn_edit" data-table-name="zoom_api_credentials" title="Edit" data-id="'.(isset($c['id']) ? (int)$c['id'] : 1).'" data-batch="0"><i class="fa fa-edit"></i></a></p>';
+            $dataarray = array(array(
+                1,
+                'Global (all batches)',
+                $msk,
+                $mss,
+                'batch_zoom_meetings',
+                $s2s,
+                $action,
+                'zoom_api_credentials',
+            ));
+            $output = array(
+                "draw" => isset($post['draw']) ? $post['draw'] : 0,
+                "recordsTotal" => 1,
+                "recordsFiltered" => 1,
+                "data" => $dataarray,
+            );
             echo json_encode($output,JSON_UNESCAPED_SLASHES);
         }else{
             echo $this->lang->line('ltr_not_allowed_msg');
@@ -9285,34 +9646,6 @@ function result_table($type){
         } 
     }
     
-    function edit_live_class_setting(){
-        if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
-            if(!empty($this->input->post('batch',TRUE))){
-                $setting_data = $this->db_model->select_data('*','live_class_setting',array('batch'=>$this->input->post('batch',TRUE),'id !='=>$this->input->post('live_class_id',TRUE)));
-                if(empty($setting_data)){
-                    
-                    $data_arr['batch'] = $this->input->post('batch',TRUE);
-                    $data_arr['zoom_api_key'] = $this->input->post('zoom_api_key',TRUE);
-                    $data_arr['zoom_api_secret'] = $this->input->post('zoom_api_secret',TRUE);
-                    $data_arr['meeting_number'] = $this->input->post('meeting_number',TRUE);
-                    $data_arr['password'] = $this->input->post('password',TRUE);
-                    $data_arr = $this->security->xss_clean($data_arr);
-                    $ins = $this->db_model->update_data_limit('live_class_setting',$data_arr,array('id'=>$this->input->post('live_class_id',TRUE)),1);
-                    if($ins==true){
-                        $resp = array('status'=>1,'msg'=>$this->lang->line('ltr_class_added_msg'));
-                    }else{
-                        $resp = array('status'=>0);
-                    }
-                }else{
-                    $resp = array('status'=>2,'msg'=>$this->lang->line('ltr_batch_exists_msg'));
-                }
-                
-                echo json_encode($resp,JSON_UNESCAPED_SLASHES);
-            } 
-        }else{
-            echo $this->lang->line('ltr_not_allowed_msg');
-        } 
-    }
     function live_class_list_teacher(){
         if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
            
@@ -9343,7 +9676,7 @@ function result_table($type){
             $batch_ids =$this->session->userdata('batch_id');
             $batCon = "batches.admin_id = $admin_id AND batches.id in ($batch_ids)";
             
-            $setting_data = $this->db_model->select_data('live_class_setting.*,batches.batch_name','live_class_setting',$batCon,$limit,array('id','desc'),$like,array('batches','batches.id=live_class_setting.batch'));
+            $setting_data = $this->db_model->select_data('batches.id,batches.id as batch,batches.batch_name','batches',$batCon,$limit,array('batches.id','desc'),$like);
             }else{
                 $setting_data='';
             }
@@ -9357,7 +9690,7 @@ function result_table($type){
                 }
                 foreach($setting_data as $setting){
                     $action = '<p class="actions_wrap">
-                        <a class="btn_view add_live_class" title="Live Class" data-id="'.$setting['id'].'"><i class="fa fa-users" aria-hidden="true"></i></a>
+                        <a class="btn_view add_live_class" title="Live Class" data-id="'.$setting['id'].'" data-batch="'.$setting['id'].'"><i class="fa fa-users" aria-hidden="true"></i></a>
                         </p>';
                     $dataarray[] = array(
                                 $count,
@@ -9366,7 +9699,7 @@ function result_table($type){
                     ); 
                     $count++;
                 }
-                $recordsTotal = $this->db_model->countAll('batches use index (id)',array('admin_id'=>$this->session->userdata('uid')),'','',$like);
+                $recordsTotal = !empty($batCon) ? $this->db_model->countAll('batches', $batCon, $like) : 0;
                 $output = array(
                     "draw" => $post['draw'],
                     "recordsTotal" => $recordsTotal,
@@ -13252,7 +13585,22 @@ function themesOption(){
             }
 
             public function live_class_edit_common(){
-                $table = $_POST['table'];
+                $table = isset($_POST['table']) ? $_POST['table'] : '';
+                if ($table === 'zoom_api_credentials') {
+                    $setting_data = $this->db_model->select_data('*', 'zoom_api_credentials', '', 1, array('id', 'desc'));
+                    if (!empty($setting_data[0])) {
+                        $row = $setting_data[0];
+                        $row['zoom_api_key'] = isset($row['meeting_sdk_key']) && $row['meeting_sdk_key'] !== ''
+                            ? $row['meeting_sdk_key'] : (isset($row['android_api_key']) ? $row['android_api_key'] : '');
+                        $row['zoom_api_secret'] = isset($row['meeting_sdk_secret']) && $row['meeting_sdk_secret'] !== ''
+                            ? $row['meeting_sdk_secret'] : (isset($row['android_api_secret']) ? $row['android_api_secret'] : '');
+                        $row['meeting_number'] = '';
+                        $row['password'] = '';
+                        $row['batch'] = 0;
+                    }
+                    echo json_encode($setting_data);
+                    return;
+                }
                  $setting_data = $this->db_model->select_data('*',$table,array('id'=> $_POST['id'])); 
                  echo json_encode($setting_data);
 
