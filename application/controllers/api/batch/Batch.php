@@ -3033,7 +3033,13 @@ class Batch extends MY_Controller
 			$teacher_early_start = $class_start_datetime - (10 * 60); // 10 minutes before
 
 			// Debug: Log time validation details
-			error_log('[TimeValidation] start_date=' . $start_date . ' start_time=' . $start_time . ' class_start_datetime=' . ($class_start_datetime ? date('Y-m-d H:i:s', $class_start_datetime) : 'FALSE') . ' teacher_early_start=' . ($teacher_early_start ? date('Y-m-d H:i:s', $teacher_early_start) : 'FALSE') . ' current_time=' . date('Y-m-d H:i:s', $current_time) . ' is_teacher=' . ($is_teacher_or_institute ? '1' : '0'));
+			$debug_msg = '[TimeValidation] Batch=' . $batch_id . ' start_date=' . $start_date . ' start_time=' . $start_time;
+			$debug_msg .= ' | Parsed: class_start=' . ($class_start_datetime ? date('Y-m-d H:i:s', $class_start_datetime) : 'FAILED');
+			$debug_msg .= ' teacher_early=' . ($teacher_early_start ? date('Y-m-d H:i:s', $teacher_early_start) : 'N/A');
+			$debug_msg .= ' current=' . date('Y-m-d H:i:s', $current_time);
+			$debug_msg .= ' is_teacher=' . ($is_teacher_or_institute ? '1' : '0');
+			$debug_msg .= ' class_started=' . $class_started;
+			error_log($debug_msg);
 
 			if ($class_start_datetime && $class_start_datetime !== false) {
 				if ($is_teacher_or_institute) {

@@ -212,28 +212,41 @@
 					var body = { batch_id: batchId, live_class_id: 0 };
 					if (accessToken) { body.access_token = accessToken; }
 
+					console.log('[TimeCheck] Fetching live class details from:', detailsUrl);
+					console.log('[TimeCheck] Request body:', body);
+
 					fetch(detailsUrl, {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (accessToken || '') },
 						body: JSON.stringify(body)
-					}).then(function(r) { return r.json(); }).then(function(j) {
+					}).then(function(r) {
+						console.log('[TimeCheck] Response status:', r.status);
+						return r.json();
+					}).then(function(j) {
+						console.log('[TimeCheck] API Response:', j);
 						if (ok(j.status) && j.liveClass && j.liveClass.meeting) {
 							var m = j.liveClass.meeting;
+							console.log('[TimeCheck] Meeting object:', m);
+							console.log('[TimeCheck] canJoin value:', m.canJoin, 'type:', typeof m.canJoin);
 							// Check time validation
 							if (m.canJoin === 0 || m.canJoin === '0') {
+								console.log('[TimeCheck] BLOCKED - Cannot join at this time');
 								linkLive.disabled = false;
 								linkLive.textContent = 'Join live class';
 								alert(m.timeMessage || 'You cannot join the class at this time.');
 								return;
 							}
+							console.log('[TimeCheck] ALLOWED - Redirecting to live room');
 							// Time validation passed, redirect to live room
 							window.location.href = liveRoomHref(true);
 						} else {
+							console.log('[TimeCheck] ERROR - Invalid response structure');
 							linkLive.disabled = false;
 							linkLive.textContent = 'Join live class';
 							alert('Could not load class details. Please try again.');
 						}
 					}).catch(function(e) {
+						console.log('[TimeCheck] CATCH error:', e);
 						linkLive.disabled = false;
 						linkLive.textContent = 'Join live class';
 						alert('Error: ' + (e.message || 'Could not verify class time'));
