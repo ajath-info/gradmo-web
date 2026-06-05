@@ -2885,6 +2885,9 @@ class Batch extends MY_Controller
 	 */
 	private function live_class_details_attach_meeting(array &$row, array $payload)
 	{
+		// Set timezone for time validation - Change to your timezone
+		date_default_timezone_set('Asia/Kolkata'); // India Standard Time (UTC+5:30)
+
 		$batch_id = (int) $row['batchId'];
 		$type = isset($row['typeClass']) ? (int) $row['typeClass'] : 0;
 		$row['typeLabel'] = ($type === 1) ? 'Zoom' : (($type === 2) ? 'Jetsi' : '');
@@ -3374,6 +3377,9 @@ class Batch extends MY_Controller
 	 */
 	public function class_status()
 	{
+		// Set timezone for time validation - Change to your timezone
+		date_default_timezone_set('Asia/Kolkata'); // India Standard Time (UTC+5:30)
+
 		$data = $this->read_request_data();
 		$payload = $this->require_auth_payload(array(), $data);
 		if ($payload === false) {
