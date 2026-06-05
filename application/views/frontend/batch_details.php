@@ -201,52 +201,41 @@
 				linkLive.textContent = 'Join live class';
 				linkLive.classList.remove('inst-detail-hidden');
 
-				// Add click handler to check time validation before joining
+				// Add click handler to check time validation and start Zoom directly
 				linkLive.onclick = function(e) {
 					e.preventDefault();
 					linkLive.disabled = true;
-					linkLive.textContent = 'Checking...';
+					linkLive.textContent = 'Loading...';
 
 					// Fetch live class details to check time validation
 					var detailsUrl = <?php echo json_encode(site_url('api/batch/live-class-details')); ?>;
 					var body = { batch_id: batchId, live_class_id: 0 };
 					if (accessToken) { body.access_token = accessToken; }
 
-					console.log('[TimeCheck] Fetching live class details from:', detailsUrl);
-					console.log('[TimeCheck] Request body:', body);
-
 					fetch(detailsUrl, {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (accessToken || '') },
 						body: JSON.stringify(body)
 					}).then(function(r) {
-						console.log('[TimeCheck] Response status:', r.status);
 						return r.json();
 					}).then(function(j) {
-						console.log('[TimeCheck] API Response:', j);
 						if (ok(j.status) && j.liveClass && j.liveClass.meeting) {
 							var m = j.liveClass.meeting;
-							console.log('[TimeCheck] Meeting object:', m);
-							console.log('[TimeCheck] canJoin value:', m.canJoin, 'type:', typeof m.canJoin);
 							// Check time validation
 							if (m.canJoin === 0 || m.canJoin === '0') {
-								console.log('[TimeCheck] BLOCKED - Cannot join at this time');
 								linkLive.disabled = false;
 								linkLive.textContent = 'Join live class';
 								alert(m.timeMessage || 'You cannot join the class at this time.');
 								return;
 							}
-							console.log('[TimeCheck] ALLOWED - Redirecting to live room');
-							// Time validation passed, redirect to live room
-							window.location.href = liveRoomHref(true);
+							// Time validation passed, start Zoom directly
+							window.startZoomDirectly(m);
 						} else {
-							console.log('[TimeCheck] ERROR - Invalid response structure');
 							linkLive.disabled = false;
 							linkLive.textContent = 'Join live class';
 							alert('Could not load class details. Please try again.');
 						}
 					}).catch(function(e) {
-						console.log('[TimeCheck] CATCH error:', e);
 						linkLive.disabled = false;
 						linkLive.textContent = 'Join live class';
 						alert('Error: ' + (e.message || 'Could not verify class time'));
@@ -369,7 +358,82 @@
 			}
 			window.location.href = liveRoomHref(false);
 		});
+
+		// Zoom meeting modal
+		var zoomModalStarted = false;
+		window.startZoomDirectly = function(meetingData) {
+			if (zoomModalStarted) { return; }
+			zoomModalStarted = true;
+
+			// Show Zoom modal
+			var modal = document.getElementById('bd_zoom_modal');
+			if (!modal) { return; }
+			modal.style.display = 'flex';
+
+			// Initialize Zoom
+			initZoomMeeting(meetingData);
+		};
+
+		function initZoomMeeting(m) {
+			var ZoomMtg = window.ZoomMtg;
+			if (!ZoomMtg) { alert('Zoom SDK not loaded'); return; }
+
+			ZoomMtg.setZoomJSLib('https://source.zoom.us/3.8.10/lib', '/zoom.worker.js');
+			ZoomMtg.preLoadWasm();
+
+			ZoomMtg.init({
+				leaveUrl: window.location.href,
+				success: function() {
+					var role = m.role || 0;
+					var mn = String(m.meetingNumber || '').replace(/\D/g, '');
+					ZoomMtg.join({
+						signature: m.signature,
+						sdkKey: m.sdkKey,
+						meetingNumber: mn,
+						userName: m.displayName || 'User',
+						userEmail: '',
+						passWord: m.password || '',
+						success: function(e) {
+							console.log('[Zoom] Join success');
+						},
+						error: function(e) {
+							console.log('[Zoom] Join error:', e);
+							alert('Could not join Zoom meeting: ' + (e.error || 'Unknown error'));
+							closeZoomModal();
+						}
+					});
+				},
+				error: function(e) {
+					console.log('[Zoom] Init error:', e);
+					alert('Could not initialize Zoom: ' + (e.error || 'Unknown error'));
+					closeZoomModal();
+				}
+			});
+		}
+
+		function closeZoomModal() {
+			var modal = document.getElementById('bd_zoom_modal');
+			if (modal) { modal.style.display = 'none'; }
+			zoomModalStarted = false;
+		}
+
 		load();
 	});
 })();
 </script>
+
+<!-- Zoom Meeting Modal -->
+<div id="bd_zoom_modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #000; z-index: 10000; justify-content: center; align-items: center;">
+	<div style="position: relative; width: 100%; height: 100%; display: flex; flex-direction: column;">
+		<button onclick="document.getElementById('bd_zoom_modal').style.display='none'; zoomModalStarted=false;" style="position: absolute; top: 20px; right: 20px; z-index: 10001; padding: 10px 20px; background: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">✕ Close</button>
+		<div id="bd_zoom_container" style="flex: 1; width: 100%;"></div>
+	</div>
+</div>
+
+<!-- Zoom SDK Scripts -->
+<script src="https://source.zoom.us/3.8.10/lib/vendor/react.min.js"></script>
+<script src="https://source.zoom.us/3.8.10/lib/vendor/react-dom.min.js"></script>
+<script src="https://source.zoom.us/3.8.10/lib/vendor/redux.min.js"></script>
+<script src="https://source.zoom.us/3.8.10/lib/vendor/redux-thunk.min.js"></script>
+<script src="https://source.zoom.us/3.8.10/lib/vendor/lodash.min.js"></script>
+<script src="https://source.zoom.us/3.8.10/zoom-meeting-embedded-3.8.10.min.js"></script>
