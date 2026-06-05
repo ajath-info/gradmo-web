@@ -6027,15 +6027,34 @@ $.magnificPopup.open({
         });
     });
 
-    $(document).on('click', '.batchType', function() {
-        var chk = $(this).val();
-        if (chk == 1) {
-            $('.batchPrice').hide();
-            $('#batchPrice').removeClass('require');
+    // Handle Batch Type toggle - show/hide price fields
+    function updateBatchPriceDisplay() {
+        var selectedType = $("input[name='batchType']:checked").val();
+        var $priceFields = $('.batchPrice');
+
+        if (selectedType == 2) {
+            // Paid - SHOW price fields
+            $priceFields.css('display', 'block').removeClass('hide').addClass('show');
+            $('#batchPrice').addClass('require');
+            $('#batchOfferPrice').addClass('require');
         } else {
-            $('.batchPrice').show();
-            $('#batchPrice').addClass('require')
+            // Free - HIDE price fields
+            $priceFields.css('display', 'none').removeClass('show').addClass('hide');
+            $('#batchPrice').removeClass('require');
+            $('#batchOfferPrice').removeClass('require');
         }
+    }
+
+    // Trigger on radio button click
+    $(document).on('click', "input[name='batchType']", function() {
+        updateBatchPriceDisplay();
+    });
+
+    // Trigger on page ready
+    $(function() {
+        setTimeout(function() {
+            updateBatchPriceDisplay();
+        }, 100);
     });
 
     $(document).on('change', '.filter_subject_doubt', function() {

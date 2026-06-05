@@ -136,7 +136,7 @@ Assigned to: Theme Forest
 						prevEl: ".ButtonPrev"
 					},
 					autoplay: {
-						delay: 3000,
+						delay: 7000,
 					},
 					fadeEffect: {
 						crossFade: true

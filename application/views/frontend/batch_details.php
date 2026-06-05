@@ -144,7 +144,6 @@
 		var q = '?batch_id=' + encodeURIComponent(batchId) + '&live_class_id=0';
 		return liveRoomUrl + q + (joinNow ? '&join=1' : '');
 	}
-	var recordedMeetingsUrl = <?php echo json_encode(site_url('batch/recorded-meetings')); ?>;
 	var videoLecturesPageUrl = <?php echo json_encode(site_url('batch/video-lectures')); ?>;
 	var examsPageUrl = <?php echo json_encode(site_url('batch/exams')); ?>;
 	var libraryPageUrl = <?php echo json_encode(site_url('library')); ?>;
@@ -254,11 +253,17 @@
 			var homeworkHref = isTeacher ? (teacherHomeworkUrl + '?batch_id=' + encodeURIComponent(batchId)) : (homeworkPageUrl + '?batch_id=' + encodeURIComponent(batchId));
 			document.getElementById('bd_modules').innerHTML = '<div class="bd-mod-grid">' +
 				modTile('Live classes', (m.live_classes && m.live_classes.is_live) ? 'Live now' : 'Tap to open', 'fas fa-broadcast-tower', liveRoomHref(true)) +
-				modTile('Recorded meetings', 'Watch past Zoom classes', 'fas fa-video', recordedMeetingsUrl + '?batch_id=' + encodeURIComponent(batchId)) +
 				modTile('Video Lectures', (m.video_lectures && m.video_lectures.count != null) ? ('Videos: ' + m.video_lectures.count) : 'No data', 'fas fa-play-circle', videoHref) +
 				modTile('Library', (m.library && m.library.book_count != null) ? ('Books: ' + m.library.book_count) : 'Tap to open', 'fas fa-book', libraryHref) +
 				modTile('Exams', (m.upcoming_exams && m.upcoming_exams.count != null) ? ('Upcoming: ' + m.upcoming_exams.count) : 'No data', 'fas fa-file-alt', examHref) +
-				modTile('Homework', (m.homework && m.homework.today_count != null) ? ('Today: ' + m.homework.today_count) : 'Tap to open', 'fas fa-pencil-alt', homeworkHref) +
+				modTile('Homework', (function () {
+					var h = m.homework || {};
+					var n = h.count != null ? parseInt(h.count, 10) : (h.total_count != null ? parseInt(h.total_count, 10) : NaN);
+					if (!isNaN(n) && n > 0) {
+						return 'Homework: ' + n;
+					}
+					return 'Tap to open';
+				})(), 'fas fa-pencil-alt', homeworkHref) +
 				modTile('Attendance', (m.attendance && m.attendance.marked != null) ? ('Marked: ' + m.attendance.marked) : 'Tap to open', 'fas fa-clipboard-check', attendanceHref) +
 			'</div>';
 			var canEnroll = truthy(b.canEnroll);

@@ -465,3 +465,31 @@
                     </div>
                 </div>
             </form>
+
+<script>
+(function() {
+    // Toggle Batch Price fields based on Batch Type selection
+    function togglePriceFields() {
+        var isPaid = $("input[name='batchType'][value='2']").is(':checked');
+        var $priceFields = $('.batchPrice');
+
+        if (isPaid) {
+            $priceFields.show();
+            $('#batchPrice, #batchOfferPrice').addClass('require');
+        } else {
+            $priceFields.hide();
+            $('#batchPrice, #batchOfferPrice').removeClass('require');
+        }
+    }
+
+    // Bind to radio button change
+    $(document).on('change', "input[name='batchType']", function() {
+        togglePriceFields();
+    });
+
+    // Initialize on document ready
+    $(document).ready(function() {
+        togglePriceFields();
+    });
+})();
+</script>

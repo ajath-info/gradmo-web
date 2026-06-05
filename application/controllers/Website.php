@@ -329,6 +329,16 @@ class Website extends MY_Controller
 				$this->output->set_status_header(403)->set_content_type('application/json')->set_output(json_encode(array('status' => false, 'msg' => 'Not allowed')));
 				return;
 			}
+			$raw = file_get_contents('php://input');
+			$in = json_decode($raw, true);
+			if (! is_array($in)) {
+				$in = array();
+			}
+			$confirmed = !empty($in['confirmed']) || !empty($in['confirm']) || !empty($in['da_confirm']);
+			if (!$confirmed) {
+				$this->output->set_status_header(400)->set_content_type('application/json')->set_output(json_encode(array('status' => false, 'msg' => 'Please confirm that you want to delete your account.')));
+				return;
+			}
 			$token = $this->website_session_access_token();
 			if ($token === '') {
 				$this->output->set_status_header(401)->set_content_type('application/json')->set_output(json_encode(array('status' => false, 'msg' => 'Please login again. Missing API token.')));
@@ -889,7 +899,7 @@ class Website extends MY_Controller
 			$batches = array();
 
 			if ($user_role === 3) {
-				// Teacher: get created batches
+				// Teacher: show created batches (owned by this teacher)
 				$created = $this->db_model->select_data('*', 'batches use index (id)', array('admin_id' => $user_id), '', array('id', 'desc'));
 				if (!empty($created)) {
 					foreach ($created as $b) {
@@ -913,44 +923,45 @@ class Website extends MY_Controller
 					}
 				}
 
-				// Get assigned batches from teach_batch field
+				// Teacher: show assigned batches from teach_batch field
 				$teacher_data = $this->db_model->select_data('teach_batch', 'users', array('id' => $user_id), 1);
 				if (!empty($teacher_data[0]['teach_batch'])) {
 					$batch_ids = array_filter(array_map('intval', explode(',', trim((string) $teacher_data[0]['teach_batch']))));
 					if (!empty($batch_ids)) {
-						$assigned = $this->db_model->select_data('*', 'batches use index (id)', array(), '', array('id', 'desc'));
-						if (!empty($assigned)) {
-							foreach ($assigned as $b) {
-								$batch_id = (int) $b['id'];
-								if (in_array($batch_id, $batch_ids)) {
-									// Skip if already added as created
-									$is_created = false;
-									foreach ($batches as $existing) {
-										if ($existing['id'] === $batch_id) {
-											$is_created = true;
-											break;
-										}
-									}
-									if (!$is_created) {
-										$batch_image = !empty($b['batch_image']) ? base_url('uploads/batch_image/' . $b['batch_image']) : '';
-										$batches[] = array(
-											'id' => $batch_id,
-											'batch_id' => $batch_id,
-											'batch_name' => (string) $b['batch_name'],
-											'batchName' => (string) $b['batch_name'],
-											'start_date' => (string) $b['start_date'],
-											'end_date' => (string) $b['end_date'],
-											'startDate' => (string) $b['start_date'],
-											'endDate' => (string) $b['end_date'],
-											'batch_type' => (int) $b['batch_type'],
-											'batch_price' => (string) $b['batch_price'],
-											'batch_mode' => (string) $b['batch_mode'],
-											'batch_image' => $batch_image,
-											'batchImage' => $batch_image,
-											'ownerType' => 'assigned'
-										);
-									}
+						// Fetch only assigned batches, skip if already added as created
+						foreach ($batch_ids as $batch_id) {
+							// Skip if already added as created
+							$is_created = false;
+							foreach ($batches as $existing) {
+								if ($existing['id'] === $batch_id) {
+									$is_created = true;
+									break;
 								}
+							}
+							if ($is_created) {
+								continue;
+							}
+
+							$assigned = $this->db_model->select_data('*', 'batches use index (id)', array('id' => $batch_id), 1);
+							if (!empty($assigned)) {
+								$b = $assigned[0];
+								$batch_image = !empty($b['batch_image']) ? base_url('uploads/batch_image/' . $b['batch_image']) : '';
+								$batches[] = array(
+									'id' => $batch_id,
+									'batch_id' => $batch_id,
+									'batch_name' => (string) $b['batch_name'],
+									'batchName' => (string) $b['batch_name'],
+									'start_date' => (string) $b['start_date'],
+									'end_date' => (string) $b['end_date'],
+									'startDate' => (string) $b['start_date'],
+									'endDate' => (string) $b['end_date'],
+									'batch_type' => (int) $b['batch_type'],
+									'batch_price' => (string) $b['batch_price'],
+									'batch_mode' => (string) $b['batch_mode'],
+									'batch_image' => $batch_image,
+									'batchImage' => $batch_image,
+									'ownerType' => 'assigned'
+								);
 							}
 						}
 					}
@@ -1625,6 +1636,13 @@ class Website extends MY_Controller
 			$is_institute = $this->website_session_is_institute();
 			$data = $this->frontend_shell_data($is_institute ? 'Institute Exams' : 'Teacher Exams');
 			$data['batch_id'] = (int) $this->input->get('batch_id');
+			$data['batch_name'] = '';
+			if ($data['batch_id'] > 0) {
+				$batch_row = $this->db_model->select_data('batch_name', 'batches use index (id)', array('id' => $data['batch_id']), 1);
+				if (!empty($batch_row[0]['batch_name'])) {
+					$data['batch_name'] = (string) $batch_row[0]['batch_name'];
+				}
+			}
 			$data['api_access_token'] = $this->website_session_access_token();
 			$data['exam_list_api_url'] = site_url('api/batch/exam-manage-list');
 			$data['exam_details_api_url'] = site_url('api/batch/upcoming-exam-details');
@@ -1635,9 +1653,7 @@ class Website extends MY_Controller
 			$data['batch_chapters_api_url'] = site_url('api/batch/batch-chapters');
 			$data['batch_mylist_data_url'] = site_url('batch/mylist-data');
 			$data['exam_builder_role_label'] = $is_institute ? 'Institute' : 'Teacher';
-			$data['legacy_question_manage_url'] = $is_institute ? '' : site_url('teacher/exam-manage');
 			$data['exam_submissions_page_url'] = site_url($is_institute ? 'institute/exam/submissions' : 'teacher/exam/submissions');
-			$data['exam_omr_sheet_api_url'] = site_url('api/batch/exam-omr-sheet');
 			$this->render_frontend_layout('frontend/exam_builder_page', $data);
 		}
 

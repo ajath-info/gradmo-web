@@ -284,6 +284,21 @@ class MY_Controller extends CI_Controller
 	}
 
 	/**
+	 * Map JWT ut to canonical role string (teacher tokens may use "3", institute "4").
+	 */
+	protected function normalize_payload_ut(array $payload)
+	{
+		$ut = strtolower(trim((string) (isset($payload['ut']) ? $payload['ut'] : '')));
+		if ($ut === '3') {
+			return 'teacher';
+		}
+		if ($ut === '4') {
+			return 'institute';
+		}
+		return $ut;
+	}
+
+	/**
 	 * Active payment_gateway_api_credentials row (same selection as api/main/get_defaults_requirements).
 	 *
 	 * @return array<string, mixed>

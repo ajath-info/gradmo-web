@@ -454,12 +454,12 @@ header {
 
 /* Screenshot-matched frontend header */
 header.edu-header-gradmo {
-    background: #4a6fe4;
+    background: #3787FF ;
     box-shadow: 0 2px 8px rgba(22, 40, 105, 0.2);
     border-bottom: 0;
 }
 header.edu-header-gradmo .edu_header_top {
-    background: #4a6fe4;
+    background: #3787FF ;
 }
 header.edu-header-gradmo .edu_logo img.front_logo {
     max-height: 34px;
@@ -1916,8 +1916,6 @@ footer.edu_footer_wrapper.edu-footer-gradmo .edu-footer-gradmo__fluid {
     width: 125px;
     height: 125px;
     margin: 0 auto 14px;
-    border-radius: 16px;
-    background: rgba(255, 255, 255, 0.15);
     display: flex;
     align-items: center;
     justify-content: center;

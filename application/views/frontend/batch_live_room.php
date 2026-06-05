@@ -383,6 +383,17 @@
 			return;
 		}
 
+		// Check time validation - can user join at this time?
+		if (m.canJoin === 0 || m.canJoin === '0') {
+			joinBtn.disabled = true;
+			showAlert(m.timeMessage || 'You cannot join the class at this time.', false);
+			// Still start polling for students so they can join when allowed
+			if (!pageIsTeacherHost && !isHost) {
+				startStudentStatusPolling();
+			}
+			return;
+		}
+
 		// Check if class has been ended
 		if (classEnded) {
 			if (pageIsTeacherHost || isHost) {

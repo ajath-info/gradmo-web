@@ -8,9 +8,6 @@
 		<div class="inst-detail-panel">
 			<div class="inst-panel-head">
 				<h3>Create Exam</h3>
-				<?php if (!empty($legacy_question_manage_url)) { ?>
-				<a class="inst-see-all" href="<?php echo html_escape(isset($legacy_question_manage_url) ? $legacy_question_manage_url : '#'); ?>">Legacy Question Manager</a>
-				<?php } ?>
 			</div>
 			<p class="inst-panel-intro">Create a test for your mobile app and website in two steps: save exam details, then add questions with options and the correct answer.</p>
 
@@ -27,12 +24,16 @@
 						<h4>Assessment</h4>
 					</div>
 					<div class="exb-field-grid">
-						<div class="exb-field">
+						<?php if (!empty($batch_id)) { ?>
+						<input type="hidden" id="exbBatch" value="<?php echo (int) $batch_id; ?>">
+						<?php } else { ?>
+						<div class="exb-field" id="exbBatchField">
 							<label>Batch</label>
 							<select id="exbBatch" class="edu_form_field">
 								<option value="">Select batch</option>
 							</select>
 						</div>
+						<?php } ?>
 						<div class="exb-field">
 							<label>Test Name</label>
 							<input type="text" id="exbName" class="edu_form_field" placeholder="Test Name">
@@ -132,7 +133,6 @@
 		</div>
 	</div>
 </div>
-<script src="<?php echo base_url('assets/js/exam-omr-download.js?v=2'); ?>"></script>
 <style>
 .exb-page .inst-detail-container { max-width: 1180px; }
 .exb-layout { display: grid; gap: 18px; }
@@ -303,6 +303,12 @@
 	color: #64748b;
 	background: #fff;
 }
+.exb-edit:disabled,
+.exb-del:disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+	pointer-events: none;
+}
 </style>
 
 <script>
@@ -311,6 +317,8 @@
 
 	var token = <?php echo json_encode(isset($api_access_token) ? $api_access_token : ''); ?>;
 	var initialBatchId = <?php echo (int) (isset($batch_id) ? $batch_id : 0); ?>;
+	var lockedBatchId = initialBatchId > 0 ? initialBatchId : 0;
+	var initialBatchName = <?php echo json_encode(isset($batch_name) ? $batch_name : ''); ?>;
 	var roleLabel = <?php echo json_encode(isset($exam_builder_role_label) ? $exam_builder_role_label : 'Teacher'); ?>;
 	var batchOptionsUrl = <?php echo json_encode(isset($batch_mylist_data_url) ? $batch_mylist_data_url : ''); ?>;
 	var subjectsUrl = <?php echo json_encode(isset($batch_subjects_api_url) ? $batch_subjects_api_url : ''); ?>;
@@ -321,18 +329,67 @@
 	var editUrl = <?php echo json_encode(isset($exam_edit_api_url) ? $exam_edit_api_url : ''); ?>;
 	var deleteUrl = <?php echo json_encode(isset($exam_delete_api_url) ? $exam_delete_api_url : ''); ?>;
 	var submissionsPageUrl = <?php echo json_encode(isset($exam_submissions_page_url) ? $exam_submissions_page_url : ''); ?>;
-	var omrApiUrl = <?php echo json_encode(isset($exam_omr_sheet_api_url) ? $exam_omr_sheet_api_url : ''); ?>;
-
 	var state = {
 		selectedAnswer: '',
 		questions: [],
 		batchNameMap: {},
+		examLockMap: {},
 		saving: false,
 		currentExamId: 0,
 		currentQuestionEditIndex: -1,
 		defaultDate: '',
 		defaultTime: ''
 	};
+
+	function examRowCanEdit(row) {
+		if (!row) {
+			return true;
+		}
+		if (row.canEdit === false || row.canEdit === 'false' || row.canEdit === 0) {
+			return false;
+		}
+		return true;
+	}
+
+	function examRowCanDelete(row) {
+		if (!row) {
+			return true;
+		}
+		if (row.canDelete === false || row.canDelete === 'false' || row.canDelete === 0) {
+			return false;
+		}
+		return true;
+	}
+
+	function examRowLockReason(row) {
+		if (row && row.lockReason) {
+			return String(row.lockReason);
+		}
+		return 'Edit and delete are disabled after the exam starts or students submit.';
+	}
+
+	function rememberExamLocks(rows) {
+		state.examLockMap = {};
+		if (!Array.isArray(rows)) {
+			return;
+		}
+		for (var i = 0; i < rows.length; i++) {
+			var row = rows[i] || {};
+			var eid = parseInt(row.id || 0, 10);
+			if (eid < 1) {
+				continue;
+			}
+			state.examLockMap[eid] = {
+				canEdit: examRowCanEdit(row),
+				canDelete: examRowCanDelete(row),
+				lockReason: examRowLockReason(row)
+			};
+		}
+	}
+
+	function examLockForId(examId) {
+		return state.examLockMap[parseInt(examId || 0, 10)] || null;
+	}
 
 	var refs = {
 		msg: document.getElementById('exbMsg'),
@@ -450,13 +507,17 @@
 	}
 
 	function postApiJson(url, payload) {
+		var body = payload || {};
+		if (token && !body.access_token) {
+			body.access_token = token;
+		}
 		return fetch(url, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
 				'Authorization': 'Bearer ' + token
 			},
-			body: JSON.stringify(payload || {})
+			body: JSON.stringify(body)
 		}).then(function (r) { return r.json(); });
 	}
 
@@ -488,6 +549,9 @@
 	}
 
 	function currentBatchId() {
+		if (lockedBatchId > 0) {
+			return lockedBatchId;
+		}
 		return parseInt(refs.batch.value || 0, 10) || 0;
 	}
 
@@ -502,7 +566,7 @@
 			mock_sheduled_time: refs.time.value
 		};
 		if (meta.batch_id < 1) {
-			showMessage('Please select a batch.', true);
+			showMessage(lockedBatchId > 0 ? 'Batch is missing from this page link.' : 'Please select a batch.', true);
 			return null;
 		}
 		if (!meta.name) {
@@ -533,7 +597,7 @@
 	}
 
 	function clearMetaFields(preserveBatch) {
-		if (!preserveBatch) {
+		if (!preserveBatch && refs.batch && lockedBatchId < 1) {
 			refs.batch.value = '';
 		}
 		refs.name.value = '';
@@ -694,18 +758,39 @@
 		}
 		return postApiJson(subjectsUrl, { batch_id: batchId }).then(function (res) {
 			var ok = res && (res.status === true || res.status === 'true');
-			var rows = ok && res.data && Array.isArray(res.data.subjects) ? res.data.subjects : [];
+			if (!ok) {
+				showMessage((res && (res.msg || res.message)) || 'Could not load subjects for this batch.', true);
+				refs.subject.innerHTML = '<option value="">Select subject</option>';
+				return;
+			}
+			var rows = res.data && Array.isArray(res.data.subjects) ? res.data.subjects : [];
 			var html = '<option value="">Select subject</option>';
 			for (var i = 0; i < rows.length; i++) {
 				html += '<option value="' + esc(rows[i].subjectId) + '">' + esc(rows[i].subjectName) + '</option>';
 			}
 			refs.subject.innerHTML = html;
+			if (!rows.length) {
+				showMessage('No subjects are configured for this batch yet.', true);
+			}
 		}).catch(function () {
 			refs.subject.innerHTML = '<option value="">Select subject</option>';
+			showMessage('Could not load subjects. Please refresh or log in again.', true);
 		});
 	}
 
 	function loadBatchOptions() {
+		if (lockedBatchId > 0) {
+			if (initialBatchName) {
+				state.batchNameMap[lockedBatchId] = initialBatchName;
+			}
+			if (refs.batch) {
+				refs.batch.value = String(lockedBatchId);
+			}
+			return Promise.resolve();
+		}
+		if (!refs.batch || refs.batch.tagName !== 'SELECT') {
+			return Promise.resolve();
+		}
 		return postWebsiteJson(batchOptionsUrl, { page: 1, limit: 100 }).then(function (res) {
 			var ok = res && (res.status === true || res.status === 'true');
 			var rows = ok && res.data && Array.isArray(res.data.enrolled_batches) ? res.data.enrolled_batches : [];
@@ -721,13 +806,22 @@
 				state.batchNameMap[bid] = name;
 				html += '<option value="' + bid + '"' + (bid === initialBatchId ? ' selected' : '') + '>' + esc(name) + '</option>';
 			}
+			if (initialBatchId > 0 && !state.batchNameMap[initialBatchId]) {
+				var fallbackName = initialBatchName || ('Batch #' + initialBatchId);
+				state.batchNameMap[initialBatchId] = fallbackName;
+				html += '<option value="' + initialBatchId + '" selected>' + esc(fallbackName) + '</option>';
+			}
 			refs.batch.innerHTML = html;
+			if (initialBatchId > 0) {
+				refs.batch.value = String(initialBatchId);
+			}
 		}).catch(function () {
 			showMessage('Could not load batches.', true);
 		});
 	}
 
 	function renderSavedExams(rows) {
+		rememberExamLocks(rows);
 		if (!rows.length) {
 			refs.savedList.innerHTML = '<div class="exb-empty">No exams found for the selected batch.</div>';
 			return;
@@ -735,6 +829,12 @@
 		var html = '';
 		for (var i = 0; i < rows.length; i++) {
 			var row = rows[i];
+			var examId = parseInt(row.id || 0, 10);
+			var canEdit = examRowCanEdit(row);
+			var canDelete = examRowCanDelete(row);
+			var lockTitle = esc(examRowLockReason(row));
+			var editDisabled = canEdit ? '' : ' disabled title="' + lockTitle + '"';
+			var delDisabled = canDelete ? '' : ' disabled title="' + lockTitle + '"';
 			html += '' +
 				'<div class="inst-batch-card">' +
 					'<div class="inst-card-body">' +
@@ -743,9 +843,8 @@
 						'<p class="inst-teacher-card-text">Questions: ' + esc(row.totalQuestion || row.questionCount || 0) + ' | Marks: ' + esc(row.totalMarks || 0) + ' | Duration: ' + esc(row.timeDuration || '-') + ' min</p>' +
 						'<div class="inst-teacher-card-actions">' +
 							'<a class="btn btn-sm btn-success" href="' + esc(submissionsPageUrl + '?exam_id=' + encodeURIComponent(row.id) + '&batch_id=' + encodeURIComponent(currentBatchId())) + '"><i class="fas fa-users"></i> Submissions</a>' +
-							'<button type="button" class="btn btn-sm btn-outline-secondary exb-omr-dl" data-exam-id="' + esc(row.id) + '"><i class="fas fa-download"></i> Download ORM Sheet</button>' +
-							'<button type="button" class="btn btn-sm btn-outline-primary exb-edit" data-id="' + esc(row.id) + '"><i class="fas fa-pen"></i>Edit</button>' +
-							'<button type="button" class="btn btn-sm btn-outline-danger exb-del" data-id="' + esc(row.id) + '"><i class="fas fa-trash-alt"></i>Delete</button>' +
+							'<button type="button" class="btn btn-sm btn-outline-primary exb-edit" data-id="' + esc(row.id) + '"' + editDisabled + '><i class="fas fa-pen"></i>Edit</button>' +
+							'<button type="button" class="btn btn-sm btn-outline-danger exb-del" data-id="' + esc(row.id) + '"' + delDisabled + '><i class="fas fa-trash-alt"></i>Delete</button>' +
 						'</div>' +
 					'</div>' +
 				'</div>';
@@ -754,6 +853,9 @@
 		var editButtons = refs.savedList.querySelectorAll('.exb-edit');
 		Array.prototype.forEach.call(editButtons, function (btn) {
 			btn.addEventListener('click', function () {
+				if (btn.disabled) {
+					return;
+				}
 				var examId = parseInt(btn.getAttribute('data-id') || 0, 10);
 				if (examId > 0) {
 					loadExamDetails(examId);
@@ -763,26 +865,13 @@
 		var deleteButtons = refs.savedList.querySelectorAll('.exb-del');
 		Array.prototype.forEach.call(deleteButtons, function (btn) {
 			btn.addEventListener('click', function () {
+				if (btn.disabled) {
+					return;
+				}
 				var examId = parseInt(btn.getAttribute('data-id') || 0, 10);
 				if (examId > 0) {
 					deleteExam(examId);
 				}
-			});
-		});
-		var omrButtons = refs.savedList.querySelectorAll('.exb-omr-dl');
-		Array.prototype.forEach.call(omrButtons, function (btn) {
-			btn.addEventListener('click', function () {
-				var eid = parseInt(btn.getAttribute('data-exam-id') || 0, 10);
-				if (eid < 1 || typeof downloadExamOmrSheet !== 'function') { return; }
-				var old = btn.textContent;
-				btn.disabled = true;
-				btn.textContent = 'Preparing…';
-				downloadExamOmrSheet({ apiUrl: omrApiUrl, token: token, examId: eid, mode: 'blank' }).catch(function (err) {
-					showMessage(err && err.message ? err.message : 'Could not download ORM sheet.', true);
-				}).then(function () {
-					btn.disabled = false;
-					btn.innerHTML = '<i class="fas fa-download"></i> Download ORM Sheet';
-				});
 			});
 		});
 	}
@@ -818,6 +907,11 @@
 	}
 
 	function loadExamDetails(examId) {
+		var lock = examLockForId(examId);
+		if (lock && !lock.canEdit) {
+			showMessage(lock.lockReason || 'This exam can no longer be edited.', true);
+			return;
+		}
 		setLoader(true);
 		postApiJson(detailsUrl, { exam_id: examId }).then(function (res) {
 			var ok = res && (res.status === true || res.status === 'true');
@@ -826,7 +920,7 @@
 				throw new Error((res && (res.msg || res.message)) || 'Could not load exam');
 			}
 			state.currentExamId = parseInt(exam.id || examId, 10) || examId;
-			if (parseInt(exam.batchId || 0, 10) > 0) {
+			if (parseInt(exam.batchId || 0, 10) > 0 && refs.batch && lockedBatchId < 1) {
 				refs.batch.value = String(parseInt(exam.batchId, 10));
 			}
 			refs.name.value = exam.name || '';
@@ -851,6 +945,7 @@
 	function loadExamList() {
 		var batchId = currentBatchId();
 		if (batchId < 1) {
+			rememberExamLocks([]);
 			renderSavedExams([]);
 			return;
 		}
@@ -868,6 +963,11 @@
 	}
 
 	function deleteExam(examId) {
+		var lock = examLockForId(examId);
+		if (lock && !lock.canDelete) {
+			showMessage(lock.lockReason || 'This exam can no longer be deleted.', true);
+			return;
+		}
 		if (!window.confirm('Delete this exam?')) {
 			return;
 		}
@@ -1060,10 +1160,12 @@
 		});
 	});
 
-	refs.batch.addEventListener('change', function () {
-		loadSubjects().then(loadChapters);
-		loadExamList();
-	});
+	if (refs.batch && refs.batch.tagName === 'SELECT') {
+		refs.batch.addEventListener('change', function () {
+			loadSubjects().then(loadChapters);
+			loadExamList();
+		});
+	}
 	refs.subject.addEventListener('change', loadChapters);
 	refs.openQuestions.addEventListener('click', openQuestionStep);
 	if (refs.cancelEdit) {
@@ -1088,12 +1190,16 @@
 		state.defaultTime = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
 		refs.date.value = state.defaultDate;
 		refs.time.value = state.defaultTime;
+		if (lockedBatchId > 0 && refs.batch) {
+			refs.batch.value = String(lockedBatchId);
+		}
 		renderLocalQuestions();
 		setExamMode(false);
 		setQuestionMode(false);
 		loadBatchOptions().then(function () {
 			return loadSubjects();
 		}).then(function () {
+			syncSelectDisplay(refs.subject);
 			return loadExamList();
 		});
 	});

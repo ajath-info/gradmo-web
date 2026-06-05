@@ -583,6 +583,7 @@ $home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
 				return { title: title, subtitle: subtitle, image: image };
 			});
 		}
+		var PROMO_AUTOPLAY_MS = 7000;
 		var promoState = { page: 0, pages: 0, timer: null, raw: [] };
 		function applyPromoLayout() {
 			var w = promoViewport.offsetWidth;
@@ -690,7 +691,7 @@ $home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
 			promoState.timer = window.setInterval(function () {
 				promoState.page = (promoState.page + 1) % promoState.pages;
 				updatePromoPosition(false);
-			}, 4000);
+			}, PROMO_AUTOPLAY_MS);
 		}
 		function fetchPromos() {
 			if (!token) {

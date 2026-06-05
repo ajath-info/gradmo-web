@@ -195,13 +195,10 @@ class Batch extends MY_Controller
 	}
 
 	/** @var Zoom_live_lib|null */
-	private $zoom_live_lib;
-
 	private function zoom_live()
 	{
-		if ($this->zoom_live_lib === null) {
+		if (!isset($this->zoom_live_lib)) {
 			$this->load->library('zoom_live_lib');
-			$this->zoom_live_lib = $this->zoom_live_lib;
 		}
 		return $this->zoom_live_lib;
 	}
@@ -298,7 +295,7 @@ class Batch extends MY_Controller
 			echo json_encode(array('status' => 'false', 'msg' => 'Invalid batch'));
 			return false;
 		}
-		$ut = strtolower(trim((string) $payload['ut']));
+		$ut = $this->normalize_payload_ut($payload);
 		$uid = (int) $payload['uid'];
 		if ($ut === 'student') {
 			if ($uid < 1 || $this->authorize_student_request($uid, $request_data) === false) {
@@ -351,7 +348,7 @@ class Batch extends MY_Controller
 			echo json_encode(array('status' => 'false', 'msg' => 'Invalid batch'));
 			return false;
 		}
-		$ut = strtolower(trim((string) $payload['ut']));
+		$ut = $this->normalize_payload_ut($payload);
 		$uid = (int) $payload['uid'];
 		if ($ut === 'teacher') {
 			if ($uid < 1) {
@@ -393,6 +390,87 @@ class Batch extends MY_Controller
 		}
 		echo json_encode(array('status' => 'false', 'msg' => 'This action is available for teacher and institute only'));
 		return false;
+	}
+
+	/**
+	 * Whether a teacher may access a batch (batch_subjects, teach_batch, or created the batch).
+	 */
+	private function teacher_has_batch_access($teacher_id, $batch_id)
+	{
+		$teacher_id = (int) $teacher_id;
+		$batch_id = (int) $batch_id;
+		if ($teacher_id < 1 || $batch_id < 1) {
+			return false;
+		}
+		$assigned = $this->db_model->select_data('id', 'batch_subjects', array('teacher_id' => $teacher_id, 'batch_id' => $batch_id), 1);
+		if (!empty($assigned)) {
+			return true;
+		}
+		$batch = $this->db_model->select_data('id,admin_id', 'batches use index (id)', array('id' => $batch_id), 1);
+		if (!empty($batch) && (int) $batch[0]['admin_id'] === $teacher_id) {
+			return true;
+		}
+		$teacher_data = $this->db_model->select_data('teach_batch', 'users', array('id' => $teacher_id), 1);
+		if (!empty($teacher_data[0]['teach_batch'])) {
+			$batch_ids = array_filter(array_map('intval', explode(',', trim((string) $teacher_data[0]['teach_batch']))));
+			if (in_array($batch_id, $batch_ids, true)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Limit subject/chapter lists to batch_subjects rows for this teacher on the batch.
+	 * When false, teacher may still access the batch (e.g. teach_batch) and sees all batch subjects.
+	 */
+	private function teacher_uses_own_batch_subject_scope($teacher_id, $batch_id)
+	{
+		$teacher_id = (int) $teacher_id;
+		$batch_id = (int) $batch_id;
+		if ($teacher_id < 1 || $batch_id < 1) {
+			return false;
+		}
+		$assigned = $this->db_model->select_data('id', 'batch_subjects', array('teacher_id' => $teacher_id, 'batch_id' => $batch_id), 1);
+		return !empty($assigned);
+	}
+
+	/**
+	 * Batch IDs a teacher may access (created, teach_batch, batch_subjects).
+	 *
+	 * @return int[]
+	 */
+	private function teacher_accessible_batch_ids($teacher_id)
+	{
+		$teacher_id = (int) $teacher_id;
+		$batch_ids = array();
+		if ($teacher_id < 1) {
+			return $batch_ids;
+		}
+		$rows = $this->db_model->select_data('batch_id', 'batch_subjects', array('teacher_id' => $teacher_id), '');
+		if (!empty($rows)) {
+			foreach ($rows as $r) {
+				$bid = isset($r['batch_id']) ? (int) $r['batch_id'] : 0;
+				if ($bid > 0) {
+					$batch_ids[] = $bid;
+				}
+			}
+		}
+		$teacher_data = $this->db_model->select_data('teach_batch', 'users', array('id' => $teacher_id), 1);
+		if (!empty($teacher_data[0]['teach_batch'])) {
+			$tb = array_filter(array_map('intval', explode(',', trim((string) $teacher_data[0]['teach_batch']))));
+			$batch_ids = array_merge($batch_ids, $tb);
+		}
+		$created = $this->db_model->select_data('id', 'batches use index (id)', array('admin_id' => $teacher_id), '');
+		if (!empty($created)) {
+			foreach ($created as $b) {
+				$bid = isset($b['id']) ? (int) $b['id'] : 0;
+				if ($bid > 0) {
+					$batch_ids[] = $bid;
+				}
+			}
+		}
+		return array_values(array_unique(array_filter($batch_ids)));
 	}
 
 	/**
@@ -742,10 +820,6 @@ class Batch extends MY_Controller
 			'homeworks use index (id)',
 			array('batch_id' => $batch_id, 'date >=' => $today)
 		);
-		if ($homework_today < 1 && $homework_total > 0) {
-			// Batch details tile should reflect available homework in listing, not only today's rows.
-			$homework_today = $homework_total;
-		}
 
 		$category = $this->db_model->select_data('name', 'batch_category use index (id)', array('id' => $b['cat_id']), 1);
 		$subcategory = $this->db_model->select_data('name', 'batch_subcategory use index (id)', array('id' => $b['sub_cat_id']), 1);
@@ -812,7 +886,9 @@ class Batch extends MY_Controller
 				),
 				'upcoming_exams' => array('count' => $upcoming_exams, 'icon' => 'icofont-exam'),
 				'homework' => array(
+					'count' => $homework_total,
 					'today_count' => $homework_today,
+					'total_count' => $homework_total,
 					'pending_count' => $homework_upcoming,
 					'icon' => 'icofont-file-alt'
 				)
@@ -1542,12 +1618,13 @@ class Batch extends MY_Controller
 		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
 			return;
 		}
+		$filter_by_teacher = ($this->normalize_payload_ut($payload) === 'teacher' && $this->teacher_uses_own_batch_subject_scope($teacher_id, $batch_id));
 		$this->db->distinct();
-		$this->db->select('bs.subject_id as subjectId,s.subject_name as subjectName');
+		$this->db->select('bs.subject_id as subjectId, s.subject_name as subjectName', false);
 		$this->db->from('batch_subjects bs');
 		$this->db->join('subjects s', 's.id = bs.subject_id', 'left');
 		$this->db->where('bs.batch_id', $batch_id);
-		if (strtolower(trim((string) $payload['ut'])) === 'teacher') {
+		if ($filter_by_teacher) {
 			$this->db->where('bs.teacher_id', $teacher_id);
 		}
 		$this->db->order_by('s.subject_name', 'asc');
@@ -1915,13 +1992,15 @@ class Batch extends MY_Controller
 			return;
 		}
 
+		$teacher_uid = (int) $payload['uid'];
+		$filter_by_teacher = ($this->normalize_payload_ut($payload) === 'teacher' && $this->teacher_uses_own_batch_subject_scope($teacher_uid, $batch_id));
 		$chapter_ids = array();
 		$this->db->select('chapter');
 		$this->db->from('batch_subjects');
 		$this->db->where('batch_id', $batch_id);
 		$this->db->where('subject_id', $subject_id);
-		if (strtolower(trim((string) $payload['ut'])) === 'teacher') {
-			$this->db->where('teacher_id', (int) $payload['uid']);
+		if ($filter_by_teacher) {
+			$this->db->where('teacher_id', $teacher_uid);
 		}
 		$rows = $this->db->get()->result_array();
 		foreach ($rows as $row) {
@@ -2401,17 +2480,25 @@ class Batch extends MY_Controller
 			$this->api_json(false, 'exam_id is required');
 			return;
 		}
-		$exam = $this->db_model->select_data('id,batch_id,question_ids', 'exams use index (id)', array('id' => $exam_id, 'status' => 1), 1);
-		if (empty($exam)) {
+		$exam_row = $this->teacher_exam_row_by_id($exam_id);
+		if ($exam_row === false) {
 			$this->api_json(false, 'Exam not found');
 			return;
 		}
-		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : (int) $exam[0]['batch_id'];
+		if (!$this->assert_exam_manage_unlocked($exam_row)) {
+			return;
+		}
+		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : (int) $exam_row['batchId'];
 		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
 			return;
 		}
 		$admin_id = ($payload['ut'] === 'teacher') ? (int) $this->teacher_tenant_admin_id((int) $payload['uid']) : (int) $payload['uid'];
 		$questions = $this->parse_exam_questions_payload($data);
+		$exam = array(array(
+			'id' => $exam_id,
+			'batch_id' => $batch_id,
+			'question_ids' => isset($exam_row['questionIds']) ? $exam_row['questionIds'] : '',
+		));
 		$update = array();
 		foreach (array('name', 'time_duration', 'mock_sheduled_date', 'mock_sheduled_time', 'question_ids') as $f) {
 			if (isset($data[$f])) {
@@ -2460,12 +2547,15 @@ class Batch extends MY_Controller
 			$this->api_json(false, 'exam_id is required');
 			return;
 		}
-		$exam = $this->db_model->select_data('id,batch_id', 'exams use index (id)', array('id' => $exam_id, 'status' => 1), 1);
-		if (empty($exam)) {
+		$exam_row = $this->teacher_exam_row_by_id($exam_id);
+		if ($exam_row === false) {
 			$this->api_json(false, 'Exam not found');
 			return;
 		}
-		if (!$this->assert_batch_access_teacher_or_institute($payload, (int) $exam[0]['batch_id'])) {
+		if (!$this->assert_batch_access_teacher_or_institute($payload, (int) $exam_row['batchId'])) {
+			return;
+		}
+		if (!$this->assert_exam_manage_unlocked($exam_row)) {
 			return;
 		}
 		$this->db_model->update_data_limit('exams', array('status' => 0), array('id' => $exam_id), 1);
@@ -2801,6 +2891,17 @@ class Batch extends MY_Controller
 		$row['teacherImageUrl'] = !empty($row['teacherImage']) ? profile_image_url($row['teacherImage'], 3, 'teacher') : '';
 		$row['isLive'] = (isset($row['endTime']) && (trim((string) $row['endTime']) === '' || $row['endTime'] === '0000-00-00 00:00:00')) ? 1 : 0;
 
+		$sdk = $this->resolve_zoom_meeting_sdk_credentials($batch_id);
+		$sdk_key = $sdk['sdk_key'];
+		$sdk_secret = $sdk['sdk_secret'];
+		$sig_mode = isset($sdk['signature_mode']) ? (string) $sdk['signature_mode'] : 'jwt';
+		$role = $this->zoom_meeting_role_from_payload($payload);
+		$is_teacher_or_institute = ($role === 1);
+		$display_name = $this->zoom_display_name_from_payload($payload);
+		if ($display_name === '') {
+			$display_name = $is_teacher_or_institute ? 'Teacher' : 'Student';
+		}
+
 		if ($type === 2) {
 			$meeting = $this->db_model->select_data('meeting_number as meetingNumber', 'jetsi_setting', array('batch' => $batch_id), 1, array('id', 'desc'));
 			$row['meeting'] = array(
@@ -2861,16 +2962,6 @@ class Batch extends MY_Controller
 			}
 		}
 
-		$sdk = $this->resolve_zoom_meeting_sdk_credentials($batch_id);
-		$sdk_key = $sdk['sdk_key'];
-		$sdk_secret = $sdk['sdk_secret'];
-		$sig_mode = isset($sdk['signature_mode']) ? (string) $sdk['signature_mode'] : 'jwt';
-		$role = $this->zoom_meeting_role_from_payload($payload);
-		$is_teacher_or_institute = ($role === 1);
-		$display_name = $this->zoom_display_name_from_payload($payload);
-		if ($display_name === '') {
-			$display_name = $is_teacher_or_institute ? 'Teacher' : 'Student';
-		}
 		$meeting_number = preg_replace('/\D+/', '', $meeting_number);
 		$signature = ($meeting_number !== '') ? $this->zoom_signature($sdk_key, $sdk_secret, $meeting_number, $role, $sig_mode) : '';
 		$join_ready = ($meeting_number !== '' && $sdk_key !== '' && $sdk_secret !== '' && $signature !== '');
@@ -2908,13 +2999,13 @@ class Batch extends MY_Controller
 			}
 		}
 		if ($join_ready && $sig_mode === 'jwt') {
-			$alt = $this->zoom_signature_legacy($sdk_key, $sdk_secret, $meeting_number, $role);
+			$alt = $this->zoom_signature($sdk_key, $sdk_secret, $meeting_number, $role, 'legacy');
 			if ($alt !== '') {
 				$row['meeting']['signatureAlt'] = $alt;
 				$row['meeting']['signatureAltMode'] = 'legacy';
 			}
 		} elseif ($join_ready && $sig_mode === 'legacy') {
-			$alt = $this->zoom_signature_jwt($sdk_key, $sdk_secret, $meeting_number, $role);
+			$alt = $this->zoom_signature($sdk_key, $sdk_secret, $meeting_number, $role, 'jwt');
 			if ($alt !== '') {
 				$row['meeting']['signatureAlt'] = $alt;
 				$row['meeting']['signatureAltMode'] = 'jwt';
@@ -3020,11 +3111,13 @@ class Batch extends MY_Controller
 			'liveClass' => $row
 		), JSON_UNESCAPED_SLASHES);
 		die;
-		} catch (Exception $e) {
+		} catch (Throwable $e) {
 			$this->output->set_status_header(500);
 			$this->output->set_content_type('application/json')->set_output(json_encode(array(
 				'status' => 'false',
 				'msg' => 'Server error: ' . $e->getMessage(),
+				'file' => $e->getFile(),
+				'line' => $e->getLine(),
 				'data' => array(),
 			), JSON_UNESCAPED_SLASHES));
 		}
@@ -3600,6 +3693,7 @@ class Batch extends MY_Controller
 			$row['examTypeLabel'] = ((int) $row['type'] === 1) ? 'mock_test' : 'practice';
 			$row['formatLabel'] = ((int) $row['format'] === 1) ? 'shuffle' : 'fixed';
 			$row['questionCount'] = isset($row['totalQuestion']) ? (int) $row['totalQuestion'] : 0;
+			$row = array_merge($row, $this->exam_manage_lock_meta($row));
 		}
 		unset($row);
 
@@ -3766,6 +3860,66 @@ class Batch extends MY_Controller
 			$n++;
 		}
 		return $n;
+	}
+
+	/**
+	 * Scheduled start datetime has passed (students may take the exam).
+	 */
+	private function exam_has_started(array $exam_row)
+	{
+		$scheduled_date = isset($exam_row['scheduledDate']) ? trim((string) $exam_row['scheduledDate']) : (isset($exam_row['mock_sheduled_date']) ? trim((string) $exam_row['mock_sheduled_date']) : '');
+		$scheduled_time = isset($exam_row['scheduledTime']) ? trim((string) $exam_row['scheduledTime']) : (isset($exam_row['mock_sheduled_time']) ? trim((string) $exam_row['mock_sheduled_time']) : '');
+		if ($scheduled_date === '' || $scheduled_time === '') {
+			return false;
+		}
+		$start_ts = strtotime($scheduled_date . ' ' . $scheduled_time);
+		return $start_ts !== false && $start_ts <= time();
+	}
+
+	private function exam_submission_count($exam_id, $exam_type)
+	{
+		$exam_id = (int) $exam_id;
+		if ($exam_id < 1) {
+			return 0;
+		}
+		$table = $this->student_exam_result_table($exam_type);
+		return (int) $this->db->where('paper_id', $exam_id)->count_all_results($table);
+	}
+
+	/**
+	 * @return array{hasStarted: bool, submissionCount: int, canEdit: bool, canDelete: bool, lockReason: string}
+	 */
+	private function exam_manage_lock_meta(array $exam_row)
+	{
+		$exam_id = isset($exam_row['id']) ? (int) $exam_row['id'] : 0;
+		$type = isset($exam_row['type']) ? (int) $exam_row['type'] : 1;
+		$submission_count = $this->exam_submission_count($exam_id, $type);
+		$started = $this->exam_has_started($exam_row);
+		$locked = $started || $submission_count > 0;
+		$reason = '';
+		if ($submission_count > 0) {
+			$reason = 'Students have submitted this exam';
+		} elseif ($started) {
+			$reason = 'This exam has already started';
+		}
+		return array(
+			'hasStarted' => $started,
+			'submissionCount' => $submission_count,
+			'canEdit' => !$locked,
+			'canDelete' => !$locked,
+			'lockReason' => $reason,
+		);
+	}
+
+	private function assert_exam_manage_unlocked(array $exam_row)
+	{
+		$meta = $this->exam_manage_lock_meta($exam_row);
+		if (!empty($meta['canEdit'])) {
+			return true;
+		}
+		$msg = !empty($meta['lockReason']) ? (string) $meta['lockReason'] : 'This exam can no longer be changed';
+		$this->api_json(false, $msg . '.');
+		return false;
 	}
 
 	private function student_exam_is_over(array $exam_row)
@@ -4951,11 +5105,22 @@ class Batch extends MY_Controller
 			array('teacher_id' => $teacher_id, 'batch_id' => $batch_id, 'subject_id' => $subject_id),
 			1
 		);
-		if (empty($row)) {
-			echo json_encode(array('status' => 'false', 'msg' => 'You are not assigned to this subject for this batch'));
-			return false;
+		if (!empty($row)) {
+			return true;
 		}
-		return true;
+		if (!$this->teacher_uses_own_batch_subject_scope($teacher_id, $batch_id)) {
+			$batch_row = $this->db_model->select_data(
+				'id',
+				'batch_subjects',
+				array('batch_id' => $batch_id, 'subject_id' => $subject_id),
+				1
+			);
+			if (!empty($batch_row)) {
+				return true;
+			}
+		}
+		echo json_encode(array('status' => 'false', 'msg' => 'You are not assigned to this subject for this batch'));
+		return false;
 	}
 
 	/**
@@ -4971,12 +5136,22 @@ class Batch extends MY_Controller
 			return;
 		}
 
+		$payload_ut = $this->normalize_payload_ut($payload);
+		$teacher_uid = (int) $payload['uid'];
+		$scoped_batch_id = !empty($data['batch_id']) ? (int) $data['batch_id'] : 0;
 		$batch_ids = array();
-		if (!empty($data['batch_id'])) {
-			$batch_ids = array((int) $data['batch_id']);
+		if ($scoped_batch_id > 0) {
+			$batch_ids = array($scoped_batch_id);
+			if ($payload_ut === 'teacher' && !$this->teacher_has_batch_access($teacher_uid, $scoped_batch_id)) {
+				$this->api_json(false, 'You are not assigned to this batch');
+				return;
+			}
+			if ($payload_ut === 'institute' && !$this->assert_batch_access_teacher_or_institute($payload, $scoped_batch_id)) {
+				return;
+			}
 		} else {
-			if ($payload['ut'] === 'student') {
-				$rows = $this->db_model->select_data('batch_id', 'student_batchs', array('student_id' => (int) $payload['uid'], 'status' => 1), '');
+			if ($payload_ut === 'student') {
+				$rows = $this->db_model->select_data('batch_id', 'student_batchs', array('student_id' => $teacher_uid, 'status' => 1), '');
 				if (!empty($rows)) {
 					foreach ($rows as $r) {
 						$bid = isset($r['batch_id']) ? (int) $r['batch_id'] : 0;
@@ -4986,21 +5161,13 @@ class Batch extends MY_Controller
 					}
 				}
 				if (empty($batch_ids)) {
-					$student_row = $this->db_model->select_data('id,batch_id,admin_id', 'students use index (id)', array('id' => (int) $payload['uid']), 1);
+					$student_row = $this->db_model->select_data('id,batch_id,admin_id', 'students use index (id)', array('id' => $teacher_uid), 1);
 					if (!empty($student_row[0]['batch_id'])) {
 						$batch_ids[] = (int) $student_row[0]['batch_id'];
 					}
 				}
-			} elseif ($payload['ut'] === 'teacher') {
-				$rows = $this->db_model->select_data('batch_id', 'batch_subjects', array('teacher_id' => (int) $payload['uid']), '');
-				if (!empty($rows)) {
-					foreach ($rows as $r) {
-						$bid = isset($r['batch_id']) ? (int) $r['batch_id'] : 0;
-						if ($bid > 0) {
-							$batch_ids[] = $bid;
-						}
-					}
-				}
+			} elseif ($payload_ut === 'teacher') {
+				$batch_ids = $this->teacher_accessible_batch_ids($teacher_uid);
 			}
 			$batch_ids = array_values(array_unique(array_filter($batch_ids)));
 		}
@@ -5018,8 +5185,18 @@ class Batch extends MY_Controller
 			die;
 		}
 
-		if ($payload['ut'] === 'student') {
-			$this->mark_homework_notification_viewed((int) $payload['uid']);
+		if ($payload_ut === 'student') {
+			$this->mark_homework_notification_viewed($teacher_uid);
+		}
+
+		// Batch details page: show all homework for the batch. Multi-batch list: only own rows.
+		$limit_homework_to_teacher = false;
+		if ($payload_ut === 'teacher' && $scoped_batch_id < 1) {
+			if (count($batch_ids) === 1) {
+				$limit_homework_to_teacher = $this->teacher_uses_own_batch_subject_scope($teacher_uid, (int) $batch_ids[0]);
+			} else {
+				$limit_homework_to_teacher = true;
+			}
 		}
 
 		$this->db->select('homeworks.id,homeworks.admin_id as adminId,homeworks.teacher_id as teacherId,homeworks.date,homeworks.subject_id as subjectId,homeworks.batch_id as batchId,homeworks.description,homeworks.attachment,homeworks.added_at as addedAt,users.name,users.teach_gender as teachGender,subjects.subject_name as subjectName');
@@ -5027,8 +5204,8 @@ class Batch extends MY_Controller
 		$this->db->join('users', 'users.id = homeworks.teacher_id', 'left');
 		$this->db->join('subjects', 'subjects.id = homeworks.subject_id', 'left');
 		$this->db->where_in('homeworks.batch_id', $batch_ids);
-		if ($payload['ut'] === 'teacher') {
-			$this->db->where('homeworks.teacher_id', (int) $payload['uid']);
+		if ($limit_homework_to_teacher) {
+			$this->db->where('homeworks.teacher_id', $teacher_uid);
 		}
 		if (!empty($data['admin_id'])) {
 			$this->db->where('homeworks.admin_id', (int) $data['admin_id']);
@@ -5040,8 +5217,7 @@ class Batch extends MY_Controller
 			}
 		}
 
-		$count_db = clone $this->db;
-		$total = (int) $count_db->count_all_results();
+		$total = (int) $this->db->count_all_results('', false);
 
 		$this->db->order_by('homeworks.id', 'desc');
 		$this->db->limit($pg['limit'], $pg['offset']);
