@@ -374,40 +374,43 @@
 			initZoomMeeting(meetingData);
 		};
 
+		var bdZoomClient = null;
+		var bdZoomInitialized = false;
+
 		function initZoomMeeting(m) {
-			var ZoomMtg = window.ZoomMtg;
-			if (!ZoomMtg) { alert('Zoom SDK not loaded'); return; }
+			if (!window.ZoomMtgEmbedded || !window.ZoomMtgEmbedded.createClient) {
+				alert('Zoom SDK not loaded. Please try again.');
+				closeZoomModal();
+				return;
+			}
 
-			ZoomMtg.setZoomJSLib('https://source.zoom.us/3.8.10/lib', '/zoom.worker.js');
-			ZoomMtg.preLoadWasm();
+			if (!bdZoomClient) {
+				bdZoomClient = window.ZoomMtgEmbedded.createClient();
+			}
 
-			ZoomMtg.init({
-				leaveUrl: window.location.href,
-				success: function() {
-					var role = m.role || 0;
-					var mn = String(m.meetingNumber || '').replace(/\D/g, '');
-					ZoomMtg.join({
-						signature: m.signature,
-						sdkKey: m.sdkKey,
-						meetingNumber: mn,
-						userName: m.displayName || 'User',
-						userEmail: '',
-						passWord: m.password || '',
-						success: function(e) {
-							console.log('[Zoom] Join success');
-						},
-						error: function(e) {
-							console.log('[Zoom] Join error:', e);
-							alert('Could not join Zoom meeting: ' + (e.error || 'Unknown error'));
-							closeZoomModal();
-						}
-					});
-				},
-				error: function(e) {
-					console.log('[Zoom] Init error:', e);
-					alert('Could not initialize Zoom: ' + (e.error || 'Unknown error'));
-					closeZoomModal();
-				}
+			bdZoomClient.init({
+				zoomAppRoot: document.getElementById('bd_zoom_container'),
+				language: 'en-US',
+				patchJsMedia: true,
+				leaveOnPageUnload: false
+			}).then(function() {
+				bdZoomInitialized = true;
+				var mn = String(m.meetingNumber || '').replace(/\D/g, '');
+				var joinOpts = {
+					sdkKey: m.sdkKey,
+					clientId: m.sdkKey,
+					signature: m.signature,
+					meetingNumber: mn,
+					password: m.password || '',
+					userName: m.displayName || 'User'
+				};
+				return bdZoomClient.join(joinOpts);
+			}).then(function(e) {
+				console.log('[Zoom] Joined successfully');
+			}).catch(function(e) {
+				console.log('[Zoom] Error:', e);
+				alert('Could not join Zoom meeting: ' + (e.message || 'Unknown error'));
+				closeZoomModal();
 			});
 		}
 
