@@ -2985,28 +2985,70 @@ class Batch extends MY_Controller
 			$start_time = (string) $batch_data[0]['start_time'];
 			$end_time = (string) $batch_data[0]['end_time'];
 
-			// Create datetime objects for class timing
-			$class_start_datetime = strtotime($start_date . ' ' . $start_time);
-			$class_end_datetime = strtotime($start_date . ' ' . $end_time);
+			// Parse date and time more robustly to handle various formats
+			$class_start_datetime = false;
+			$class_end_datetime = false;
+
+			// Try parsing date in DD-MM-YYYY or MM-DD-YYYY format
+			$date_formats = array('d-m-Y', 'm-d-Y', 'Y-m-d', 'd/m/Y', 'm/d/Y');
+			$time_formats = array('h:i A', 'H:i', 'g:i A');
+
+			foreach ($date_formats as $date_fmt) {
+				$dt = DateTime::createFromFormat($date_fmt, $start_date);
+				if ($dt) {
+					foreach ($time_formats as $time_fmt) {
+						$tm = DateTime::createFromFormat($time_fmt, $start_time);
+						if ($tm) {
+							$class_start_datetime = strtotime($dt->format('Y-m-d') . ' ' . $tm->format('H:i:s'));
+							break;
+						}
+					}
+					if ($class_start_datetime) { break; }
+				}
+			}
+
+			if ($class_start_datetime === false) {
+				// Fallback to strtotime if parsing fails
+				$class_start_datetime = strtotime($start_date . ' ' . $start_time);
+				$class_end_datetime = strtotime($start_date . ' ' . $end_time);
+			} else {
+				// Parse end time with same date
+				foreach ($date_formats as $date_fmt) {
+					$dt = DateTime::createFromFormat($date_fmt, $start_date);
+					if ($dt) {
+						foreach ($time_formats as $time_fmt) {
+							$tm = DateTime::createFromFormat($time_fmt, $end_time);
+							if ($tm) {
+								$class_end_datetime = strtotime($dt->format('Y-m-d') . ' ' . $tm->format('H:i:s'));
+								break;
+							}
+						}
+						if ($class_end_datetime) { break; }
+					}
+				}
+			}
+
 			$current_time = time();
 			$teacher_early_start = $class_start_datetime - (10 * 60); // 10 minutes before
 
 			// Debug: Log time validation details
-			error_log('[TimeValidation] start_date=' . $start_date . ' start_time=' . $start_time . ' class_start_datetime=' . date('Y-m-d H:i:s', $class_start_datetime) . ' teacher_early_start=' . date('Y-m-d H:i:s', $teacher_early_start) . ' current_time=' . date('Y-m-d H:i:s', $current_time) . ' is_teacher=' . ($is_teacher_or_institute ? '1' : '0'));
+			error_log('[TimeValidation] start_date=' . $start_date . ' start_time=' . $start_time . ' class_start_datetime=' . ($class_start_datetime ? date('Y-m-d H:i:s', $class_start_datetime) : 'FALSE') . ' teacher_early_start=' . ($teacher_early_start ? date('Y-m-d H:i:s', $teacher_early_start) : 'FALSE') . ' current_time=' . date('Y-m-d H:i:s', $current_time) . ' is_teacher=' . ($is_teacher_or_institute ? '1' : '0'));
 
-			if ($is_teacher_or_institute) {
-				// Teachers can start 10 minutes before scheduled time
-				if ($current_time < $teacher_early_start) {
-					$can_join = false;
-					$time_message = 'Class will start at ' . date('h:i A', $class_start_datetime) . '. You can join 10 minutes before.';
-					error_log('[TimeValidation] TEACHER BLOCKED: too early');
-				}
-			} else {
-				// Students can only join if teacher has started OR during class time
-				if ($class_started == 0 && $current_time < $class_start_datetime) {
-					$can_join = false;
-					$time_message = 'Class starts at ' . date('h:i A', $class_start_datetime) . '. Waiting for teacher to start.';
-					error_log('[TimeValidation] STUDENT BLOCKED: class not started and before start time');
+			if ($class_start_datetime && $class_start_datetime !== false) {
+				if ($is_teacher_or_institute) {
+					// Teachers can start 10 minutes before scheduled time
+					if ($current_time < $teacher_early_start) {
+						$can_join = false;
+						$time_message = 'Class will start at ' . date('h:i A', $class_start_datetime) . '. You can join 10 minutes before.';
+						error_log('[TimeValidation] TEACHER BLOCKED: too early');
+					}
+				} else {
+					// Students can only join if teacher has started OR during class time
+					if ($class_started == 0 && $current_time < $class_start_datetime) {
+						$can_join = false;
+						$time_message = 'Class starts at ' . date('h:i A', $class_start_datetime) . '. Waiting for teacher to start.';
+						error_log('[TimeValidation] STUDENT BLOCKED: class not started and before start time');
+					}
 				}
 			}
 		}
