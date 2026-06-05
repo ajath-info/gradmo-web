@@ -2990,8 +2990,9 @@ class Batch extends MY_Controller
 			$class_end_datetime = false;
 
 			// Try parsing date in DD-MM-YYYY or MM-DD-YYYY format
-			$date_formats = array('d-m-Y', 'm-d-Y', 'Y-m-d', 'd/m/Y', 'm/d/Y');
-			$time_formats = array('h:i A', 'H:i', 'g:i A');
+			$date_formats = array('Y-m-d', 'd-m-Y', 'm-d-Y', 'd/m/Y', 'm/d/Y');
+			// Time formats: HH:MM:SS (24-hour), h:i A (12-hour with AM/PM), H:i (24-hour no seconds)
+			$time_formats = array('H:i:s', 'H:i', 'h:i A', 'g:i A');
 
 			foreach ($date_formats as $date_fmt) {
 				$dt = DateTime::createFromFormat($date_fmt, $start_date);
