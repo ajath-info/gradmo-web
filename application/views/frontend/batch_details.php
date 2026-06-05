@@ -197,9 +197,48 @@
 				statusEl.textContent = 'Zoom is linked. Everyone joins only inside your website/app (Live classes).';
 				btnCreate.textContent = 'Zoom already linked';
 				btnCreate.disabled = true;
-				linkLive.href = liveRoomHref(true);
+				linkLive.href = '#';
 				linkLive.textContent = 'Join live class';
 				linkLive.classList.remove('inst-detail-hidden');
+
+				// Add click handler to check time validation before joining
+				linkLive.onclick = function(e) {
+					e.preventDefault();
+					linkLive.disabled = true;
+					linkLive.textContent = 'Checking...';
+
+					// Fetch live class details to check time validation
+					var detailsUrl = <?php echo json_encode(site_url('api/batch/live-class-details')); ?>;
+					var body = { batch_id: batchId, live_class_id: 0 };
+					if (accessToken) { body.access_token = accessToken; }
+
+					fetch(detailsUrl, {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (accessToken || '') },
+						body: JSON.stringify(body)
+					}).then(function(r) { return r.json(); }).then(function(j) {
+						if (ok(j.status) && j.liveClass && j.liveClass.meeting) {
+							var m = j.liveClass.meeting;
+							// Check time validation
+							if (m.canJoin === 0 || m.canJoin === '0') {
+								linkLive.disabled = false;
+								linkLive.textContent = 'Join live class';
+								alert(m.timeMessage || 'You cannot join the class at this time.');
+								return;
+							}
+							// Time validation passed, redirect to live room
+							window.location.href = liveRoomHref(true);
+						} else {
+							linkLive.disabled = false;
+							linkLive.textContent = 'Join live class';
+							alert('Could not load class details. Please try again.');
+						}
+					}).catch(function(e) {
+						linkLive.disabled = false;
+						linkLive.textContent = 'Join live class';
+						alert('Error: ' + (e.message || 'Could not verify class time'));
+					});
+				};
 				return;
 			}
 			statusEl.textContent = 'No Zoom meeting yet. Create one to generate a join link for this batch (Server-to-Server Zoom must be configured on the server).';
