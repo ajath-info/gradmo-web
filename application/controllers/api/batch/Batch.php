@@ -2975,6 +2975,42 @@ class Batch extends MY_Controller
 			}
 		}
 
+		// Check time validation for class joining
+		$can_join = true;
+		$time_message = '';
+		$batch_data = $this->db_model->select_data('start_date, start_time, end_time', 'batches', array('id' => $batch_id), 1);
+
+		if (!empty($batch_data[0])) {
+			$start_date = (string) $batch_data[0]['start_date'];
+			$start_time = (string) $batch_data[0]['start_time'];
+			$end_time = (string) $batch_data[0]['end_time'];
+
+			// Create datetime objects for class timing
+			$class_start_datetime = strtotime($start_date . ' ' . $start_time);
+			$class_end_datetime = strtotime($start_date . ' ' . $end_time);
+			$current_time = time();
+			$teacher_early_start = $class_start_datetime - (10 * 60); // 10 minutes before
+
+			// Debug: Log time validation details
+			error_log('[TimeValidation] start_date=' . $start_date . ' start_time=' . $start_time . ' class_start_datetime=' . date('Y-m-d H:i:s', $class_start_datetime) . ' teacher_early_start=' . date('Y-m-d H:i:s', $teacher_early_start) . ' current_time=' . date('Y-m-d H:i:s', $current_time) . ' is_teacher=' . ($is_teacher_or_institute ? '1' : '0'));
+
+			if ($is_teacher_or_institute) {
+				// Teachers can start 10 minutes before scheduled time
+				if ($current_time < $teacher_early_start) {
+					$can_join = false;
+					$time_message = 'Class will start at ' . date('h:i A', $class_start_datetime) . '. You can join 10 minutes before.';
+					error_log('[TimeValidation] TEACHER BLOCKED: too early');
+				}
+			} else {
+				// Students can only join if teacher has started OR during class time
+				if ($class_started == 0 && $current_time < $class_start_datetime) {
+					$can_join = false;
+					$time_message = 'Class starts at ' . date('h:i A', $class_start_datetime) . '. Waiting for teacher to start.';
+					error_log('[TimeValidation] STUDENT BLOCKED: class not started and before start time');
+				}
+			}
+		}
+
 		$row['meeting'] = array(
 			'type' => 'zoom',
 			'meetingNumber' => $meeting_number,
@@ -2984,9 +3020,11 @@ class Batch extends MY_Controller
 			'signatureMode' => $sig_mode,
 			'role' => $role,
 			'displayName' => $display_name,
-			'joinReady' => $join_ready ? 1 : 0,
+			'joinReady' => $join_ready && $can_join ? 1 : 0,
 			'isHost' => $is_teacher_or_institute ? 1 : 0,
 			'classStarted' => $class_started,
+			'canJoin' => $can_join ? 1 : 0,
+			'timeMessage' => $time_message,
 			'zak' => '',
 		);
 		if ($join_ready && $role === 1 && $this->db->table_exists('batch_zoom_meetings')) {
