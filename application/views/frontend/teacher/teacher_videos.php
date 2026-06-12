@@ -204,6 +204,7 @@
 				</div>
 				<div class="inst-list-filter-actions"><button type="button" class="btn btn-primary" id="tv_add">Save video</button></div>
 			</div>
+			<div id="tv_quota" class="inst-muted small px-2 mb-0 mt-2" style="color:#475569;font-weight:600;"></div>
 			<div id="tv_msg" class="inst-muted small px-2 mb-0 mt-2"></div>
 			<div id="tv_progress" class="inst-upload-progress is-hidden" aria-live="polite">
 				<div class="inst-upload-progress-bar"><span id="tv_progress_fill" class="inst-upload-progress-fill"></span></div>
@@ -255,9 +256,60 @@
 	var progressFill = null;
 	var progressText = null;
 
+	var quotaLimitSeconds = 330 * 3600;
+	var quotaUsedSeconds = 0;
+
 	var modalEl = document.getElementById('tvPlayerModal');
 	var playerBodyEl = document.getElementById('tvPlayerBody');
 	var playerTitleEl = document.getElementById('tvPlayerTitleLabel');
+
+	function fmtHM(seconds) {
+		var s = Math.max(0, Math.round(seconds || 0));
+		var h = Math.floor(s / 3600);
+		var m = Math.floor((s % 3600) / 60);
+		return h + ' h ' + m + ' m';
+	}
+	function renderQuota() {
+		var el = document.getElementById('tv_quota');
+		if (!el) return;
+		var remaining = Math.max(0, quotaLimitSeconds - quotaUsedSeconds);
+		el.textContent = 'Yearly usage: ' + fmtHM(quotaUsedSeconds) + ' / ' + fmtHM(quotaLimitSeconds)
+			+ ' (' + fmtHM(remaining) + ' remaining)';
+		el.style.color = remaining <= 0 ? '#dc2626' : '#475569';
+	}
+	var MAX_VIDEO_SECONDS = 86400; // 24h sanity ceiling for a single lecture
+	function readVideoDuration(file) {
+		return new Promise(function (resolve) {
+			try {
+				var v = document.createElement('video');
+				v.preload = 'metadata';
+				var done = false;
+				function finish(sec) {
+					if (done) return;
+					done = true;
+					try { window.URL.revokeObjectURL(v.src); } catch (e) {}
+					var d = isFinite(sec) && sec > 0 ? Math.round(sec) : 0;
+					if (d > MAX_VIDEO_SECONDS) d = 0; // implausible -> treat as unmeasured
+					resolve(d);
+				}
+				v.onloadedmetadata = function () {
+					// Some MP4/WebM files report Infinity or a bogus value until we seek to the end.
+					if (v.duration === Infinity || isNaN(v.duration) || v.duration > MAX_VIDEO_SECONDS) {
+						v.ontimeupdate = function () {
+							v.ontimeupdate = null;
+							finish(v.duration);
+						};
+						try { v.currentTime = 1e101; } catch (e2) { finish(0); }
+					} else {
+						finish(v.duration);
+					}
+				};
+				v.onerror = function () { finish(0); };
+				window.setTimeout(function () { finish(v.duration); }, 8000); // safety timeout
+				v.src = window.URL.createObjectURL(file);
+			} catch (err) { resolve(0); }
+		});
+	}
 
 	function esc(v) {
 		var d = document.createElement('div');
@@ -568,6 +620,11 @@
 			headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
 			body: JSON.stringify({ access_token: token, batch_id: batchId, page: 1, limit: 200 })
 		}).then(function (r) { return r.json(); }).then(function (j) {
+			if (j.data && typeof j.data.quotaLimitSeconds !== 'undefined') {
+				quotaLimitSeconds = parseInt(j.data.quotaLimitSeconds, 10) || quotaLimitSeconds;
+				quotaUsedSeconds = parseInt(j.data.quotaUsedSeconds, 10) || 0;
+				renderQuota();
+			}
 			var rows = j.data && j.data.videoLectures ? j.data.videoLectures : [];
 			if (!rows.length) {
 				listEl.innerHTML = '<p class="text-muted small px-1 py-3">No videos yet. Add a YouTube URL or upload a file above.</p>';
@@ -593,18 +650,7 @@
 		});
 	}
 
-	function add() {
-		if (addInFlight) return;
-		var fd = new FormData();
-		fd.append('access_token', token);
-		fd.append('batch_id', batchId);
-		fd.append('title', document.getElementById('tv_title').value.trim());
-		fd.append('topic', document.getElementById('tv_topic').value.trim());
-		var s = document.getElementById('tv_subject');
-		fd.append('subject', s && s.value ? s.options[s.selectedIndex].text : '');
-		fd.append('url', document.getElementById('tv_url').value.trim());
-		var f = document.getElementById('tv_file').files[0];
-		if (f) fd.append('video_file', f);
+	function submitAdd(fd) {
 		setAddBusy(true);
 		uploadFormData(addUrl, fd)
 			.then(function (j) {
@@ -623,6 +669,39 @@
 				msg('Could not save video.', true);
 				setAddBusy(false);
 			});
+	}
+
+	function add() {
+		if (addInFlight) return;
+		var fd = new FormData();
+		fd.append('access_token', token);
+		fd.append('batch_id', batchId);
+		fd.append('title', document.getElementById('tv_title').value.trim());
+		fd.append('topic', document.getElementById('tv_topic').value.trim());
+		var s = document.getElementById('tv_subject');
+		fd.append('subject', s && s.value ? s.options[s.selectedIndex].text : '');
+		fd.append('url', document.getElementById('tv_url').value.trim());
+		var f = document.getElementById('tv_file').files[0];
+		if (!f) {
+			submitAdd(fd);
+			return;
+		}
+		fd.append('video_file', f);
+		setAddBusy(true);
+		setProgress(0, 'Reading video duration...');
+		readVideoDuration(f).then(function (dur) {
+			fd.append('duration_seconds', dur || 0);
+			if (dur > 0) {
+				var remaining = Math.max(0, quotaLimitSeconds - quotaUsedSeconds);
+				if (dur > remaining) {
+					setAddBusy(false);
+					msg('This video is ' + fmtHM(dur) + ', but only ' + fmtHM(remaining)
+						+ ' remain of the 330-hour yearly limit for this batch.', true);
+					return;
+				}
+			}
+			submitAdd(fd);
+		});
 	}
 
 	document.addEventListener('DOMContentLoaded', function () {

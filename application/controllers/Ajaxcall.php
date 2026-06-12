@@ -458,6 +458,11 @@ class Ajaxcall extends CI_Controller{
                 //   Show batches created by the teacher (admin_id = their uid)
                   $or_like = "";
                   $cond = array('admin_id'=>$this->session->userdata('uid'));
+              }else if($this->session->userdata('role') == 4){
+                //   Institute login: show batches created by this institute (admin_id) or assigned to it (institute_id).
+                  $or_like = "";
+                  $inst_uid = (int) $this->session->userdata('uid');
+                  $cond = '(admin_id = '.$inst_uid.' OR institute_id = '.$inst_uid.')';
               }else if($this->session->userdata('role') == 'student'){
                   $or_like = "";
                   $cond = array('admin_id'=>$this->session->userdata('admin_id'),'status'=>1);
@@ -600,8 +605,8 @@ class Ajaxcall extends CI_Controller{
                 $user_uid = (int) $this->session->userdata('uid');
                 $user_admin_id = (int) $this->session->userdata('admin_id');
 
-                // Validate user role (only admins and teachers can create/edit batches)
-                if($user_role != 1 && $user_role != 3){
+                // Validate user role (only admins, teachers and institutes can create/edit batches)
+                if($user_role != 1 && $user_role != 3 && $user_role != 4){
                     echo json_encode(array('status' => '0', 'msg' => 'You are not authorized to manage batches.'), JSON_UNESCAPED_SLASHES);
                     return;
                 }
@@ -624,26 +629,36 @@ class Ajaxcall extends CI_Controller{
                         echo json_encode(array('status' => '0', 'msg' => 'This batch does not belong to you.'), JSON_UNESCAPED_SLASHES);
                         return;
                     }
+                    // For institutes: allow edit only if they own the batch
+                    if($user_role == 4 && $batch_data[0]['admin_id'] != $user_uid){
+                        echo json_encode(array('status' => '0', 'msg' => 'You are not authorized to edit this batch.'), JSON_UNESCAPED_SLASHES);
+                        return;
+                    }
                 }
 
-                $institute_id = (int) $this->input->post('institute_id', TRUE);
-                if ($institute_id > 0) {
-                    $check_admin_id = ($user_role == 3) ? $user_admin_id : $user_uid;
+                if($user_role == 4){
+                    // Institute login: it can only assign batches to itself; ignore any posted institute_id.
+                    $institute_id = $user_uid;
+                }else{
+                    $institute_id = (int) $this->input->post('institute_id', TRUE);
+                    if ($institute_id > 0) {
+                        $check_admin_id = ($user_role == 3) ? $user_admin_id : $user_uid;
 
-                    $this->db->reset_query();
-                    $this->db->select('id');
-                    $this->db->from('users');
-                    $this->db->where('id', $institute_id);
-                    $this->db->where('admin_id', $check_admin_id);
-                    $this->db->where('status', 1);
-                    $this->db->group_start();
-                    $this->db->where('role', 4);
-                    $this->db->or_where("LOWER(TRIM(IFNULL(user_type,''))) = 'institute'", null, false);
-                    $this->db->group_end();
-                    $inst_ok = $this->db->get()->row_array();
-                    if (empty($inst_ok)) {
-                        echo json_encode(array('status' => '0', 'msg' => 'Invalid institute selected.'), JSON_UNESCAPED_SLASHES);
-                        return;
+                        $this->db->reset_query();
+                        $this->db->select('id');
+                        $this->db->from('users');
+                        $this->db->where('id', $institute_id);
+                        $this->db->where('admin_id', $check_admin_id);
+                        $this->db->where('status', 1);
+                        $this->db->group_start();
+                        $this->db->where('role', 4);
+                        $this->db->or_where("LOWER(TRIM(IFNULL(user_type,''))) = 'institute'", null, false);
+                        $this->db->group_end();
+                        $inst_ok = $this->db->get()->row_array();
+                        if (empty($inst_ok)) {
+                            echo json_encode(array('status' => '0', 'msg' => 'Invalid institute selected.'), JSON_UNESCAPED_SLASHES);
+                            return;
+                        }
                     }
                 }
                 $bm = strtolower(trim((string) $this->input->post('batch_mode', TRUE)));
@@ -2927,6 +2942,7 @@ class Ajaxcall extends CI_Controller{
                     
                     $data['batch_id'] = json_encode($batch_id);
                     $data['name'] = $data_arr['name'];
+                    $data['last_name'] = isset($data_arr['last_name']) ? $data_arr['last_name'] : '';
                     $data['father_name'] = $data_arr['father_name'];
                     $data['father_designtn'] = $data_arr['father_designtn'];
                     $data['gender'] = $data_arr['gender'];
@@ -3082,6 +3098,7 @@ class Ajaxcall extends CI_Controller{
                     $data['batch_id'] = json_encode($batch_id);
                     // $data['batch_id'] =$batch_id;
                     $data['name'] = $data_arr['name'];
+                    $data['last_name'] = isset($data_arr['last_name']) ? $data_arr['last_name'] : '';
                     $data['father_name'] = $data_arr['father_name'];
                     $data['father_designtn'] = $data_arr['father_designtn'];
                     $data['gender'] = $data_arr['gender'];
@@ -5214,10 +5231,22 @@ function subcategory_table(){
             }else if($role == 3){
                  $cond = array('admin_id'=>$this->session->userdata('admin_id'),'status'=>1);
                  //$cond = "";
+            }else if($role == 4){
+                // Institute login: videos created by this institute (added_by) or assigned to its batches.
+                $inst_uid = (int) $this->session->userdata('uid');
+                $inst_batches = $this->db_model->select_data('id','batches use index (id)','admin_id = '.$inst_uid.' OR institute_id = '.$inst_uid);
+                $ors = array('added_by = '.$inst_uid);
+                if(!empty($inst_batches)){
+                    foreach($inst_batches as $ib){
+                        $bid = (int) $ib['id'];
+                        if($bid > 0){ $ors[] = 'FIND_IN_SET('.$bid.', batch)'; }
+                    }
+                }
+                $cond = '('.implode(' OR ', $ors).')';
             }else if($role == 'student'){
                 $cond = array('batch'=>$this->session->userdata('batch_id'),'admin_id'=>$this->session->userdata('admin_id'));
-                //  $like = array('batch',$this->session->userdata('batch_id'));  
-            }  
+                //  $like = array('batch',$this->session->userdata('batch_id'));
+            }
    
             $videos = $this->db_model->select_data('*','video_lectures use index (id)',$cond,$limit,array('id','desc'),$like,'','',$or_like);
             // print_r($videos);  
@@ -5433,23 +5462,93 @@ function subcategory_table(){
     //         echo $this->lang->line('ltr_not_allowed_msg');
     //     } 
     // }
+ /**
+     * Seconds of uploaded video already used by a batch in its current
+     * rolling 12-month cycle (anchored on batches.start_date).
+     */
+    private function batch_video_used_seconds($batch_id, $exclude_video_id = 0)
+    {
+        $batch = $this->db_model->select_data('start_date', 'batches', array('id' => (int) $batch_id), 1);
+        $start_date = !empty($batch[0]['start_date']) ? (string) $batch[0]['start_date'] : '';
+        $now = new DateTime('now');
+        try {
+            $anchor = ($start_date !== '' && $start_date !== '0000-00-00') ? new DateTime($start_date) : clone $now;
+        } catch (Exception $e) {
+            $anchor = clone $now;
+        }
+        $cycle_start = clone $anchor;
+        if ($cycle_start <= $now) {
+            while (true) {
+                $next = clone $cycle_start;
+                $next->modify('+1 year');
+                if ($next > $now) {
+                    break;
+                }
+                $cycle_start = $next;
+            }
+        }
+        $cycle_end = clone $cycle_start;
+        $cycle_end->modify('+1 year');
+
+        $bid = (int) $batch_id;
+        $this->db->select_sum('duration_seconds', 'total');
+        $this->db->from('video_lectures');
+        $this->db->where('status', 1);
+        $this->db->where('added_at >=', $cycle_start->format('Y-m-d H:i:s'));
+        $this->db->where('added_at <', $cycle_end->format('Y-m-d H:i:s'));
+        if ((int) $exclude_video_id > 0) {
+            $this->db->where('id !=', (int) $exclude_video_id);
+        }
+        $this->db->group_start();
+        $this->db->where('batch', (string) $bid);
+        $this->db->or_where('FIND_IN_SET(' . $bid . ', batch) > 0', null, false);
+        $this->db->group_end();
+        $row = $this->db->get()->row_array();
+        return isset($row['total']) ? (int) $row['total'] : 0;
+    }
+
  function add_video(){
 
         if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
             if(!empty($this->input->post('title',TRUE))){
                 $data_arr = $this->input->post();
-                   
+                $uploaded_video_file = '';
                 if(isset($_FILES['video_file']) && !empty($_FILES['video_file']['name'])){
                         $image = $this->upload_media($_FILES,'uploads/video/','video_file');
-                        
+
                         if(is_array($image)){
-                            $resp = array('status'=>'2', 'msg' => $image['msg']);
+                            echo json_encode(array('status'=>'2', 'msg' => $image['msg']));
                             die();
                         }else{
                             // $data_arr['url'] = base_url('uploads/video/').$image;
                             $data_arr['url'] = 'uploads/video/'.$image;
+                            $uploaded_video_file = 'uploads/video/'.$image;
                         }
                     }
+
+                // Enforce the 330-hour rolling-yearly cap for uploaded files.
+                if($uploaded_video_file !== ''){
+                    $dur = (int) $this->input->post('duration_seconds');
+                    $data_arr['duration_seconds'] = max(0, $dur);
+                    if($dur > 86400){
+                        if(is_file($uploaded_video_file)){ @unlink($uploaded_video_file); }
+                        echo json_encode(array('status'=>'2','msg'=>'Could not reliably read the video length. Please re-select the file and try again.'));
+                        die();
+                    }
+                    if($dur > 0){
+                        $cap = 330 * 3600;
+                        $batch_q = is_array($data_arr['batch']) ? (int) reset($data_arr['batch']) : (int) $data_arr['batch'];
+                        $exclude = !empty($data_arr['id']) ? (int) $data_arr['id'] : 0;
+                        $used = $this->batch_video_used_seconds($batch_q, $exclude);
+                        if(($used + $dur) > $cap){
+                            if(is_file($uploaded_video_file)){ @unlink($uploaded_video_file); }
+                            $remaining = max(0, $cap - $used);
+                            $rh = floor($remaining/3600); $rm = floor(($remaining%3600)/60);
+                            echo json_encode(array('status'=>'2','msg'=>'Upload exceeds the 330-hour yearly limit for this batch. Only '.$rh.' h '.$rm.' m remain in the current cycle.'));
+                            die();
+                        }
+                    }
+                }
 
                 unset($data_arr['video_file']);
                 if($this->session->userdata('role') == 1){
@@ -5664,11 +5763,13 @@ function subcategory_table(){
         $vars = array_merge(array(
             'name' => $name,
             'email' => $email,
-            'link' => base_url('login'),
+            'link' => $verify_link,
             'verify_link' => $verify_link,
         ), $extra);
+        // Per-account-type template, e.g. institute_register / teacher_register / student_register.
+        $purpose = ($user_type !== '') ? $user_type . '_register' : 'register';
         $this->common->send_email(array(
-            'purpose' => 'register',
+            'purpose' => $purpose,
             'user_id' => $user_id,
             'user_type' => $user_type,
             'to_email' => $email,
@@ -5721,6 +5822,20 @@ function subcategory_table(){
             $row['institute_code'] = $row['institude_code'];
         }
         return $row;
+    }
+
+    /**
+     * Reads the Module Access checkboxes (shared with teacher manage) into a JSON
+     * string for the users.access column. Keys mirror add_teacher().
+     */
+    private function collect_module_access_payload()
+    {
+        $keys = array('batch', 'teacher_manager', 'academics', 'live_class', 'notice', 'assignment', 'extraclasses', 'doubtsask', 'video_lecture', 'library_manager', 'question_manager', 'student_leave', 'student_manage', 'exam');
+        $access = array();
+        foreach ($keys as $k) {
+            $access[$k] = $this->input->post($k, TRUE);
+        }
+        return json_encode($access);
     }
 
     /**
@@ -6005,6 +6120,15 @@ function subcategory_table(){
                         }
                         $data_arr['teach_image'] = $image;
                     }
+                    if(isset($_FILES['banner']) && !empty($_FILES['banner']['name'])){
+                        $banner = $this->upload_media($_FILES,'uploads/users/','banner');
+                        if(is_array($banner)){
+                            echo json_encode(array('status'=>'2', 'msg' => $banner['msg']));
+                            return;
+                        }
+                        if ($this->users_column_exists('banner')) { $data_arr['banner'] = $banner; }
+                    }
+                    if ($this->users_column_exists('access')) { $data_arr['access'] = $this->collect_module_access_payload(); }
                     unset($data_arr['institute_id']);
                     $data_arr['role'] = 4;
                     if ($this->users_column_exists('user_type')) {
@@ -6073,6 +6197,17 @@ function subcategory_table(){
                         } elseif ($this->users_column_exists('teach_image')) {
                             $data_arr['teach_image'] = '';
                         }
+                        if(isset($_FILES['banner']) && !empty($_FILES['banner']['name'])){
+                            $banner = $this->upload_media($_FILES,'uploads/users/','banner');
+                            if(is_array($banner)){
+                                echo json_encode(array('status'=>'2', 'msg' => $banner['msg']));
+                                return;
+                            }
+                            if ($this->users_column_exists('banner')) { $data_arr['banner'] = $banner; }
+                        } elseif ($this->users_column_exists('banner')) {
+                            $data_arr['banner'] = '';
+                        }
+                        if ($this->users_column_exists('access')) { $data_arr['access'] = $this->collect_module_access_payload(); }
                         if ($this->users_column_exists('teach_gender')) {
                             unset($data_arr['teach_gender']);
                         }
@@ -6163,11 +6298,30 @@ function subcategory_table(){
                     $like = array('admin_id',$get['admin']); 
                 }
             }
-            if($this->session->userdata('role') == 1 && $super == 1){  
+            if($this->session->userdata('role') == 1 && $super == 1){
                  $cond = array('admin_id'=>$this->session->userdata('uid'),'role'=>3);
                 //  $cond = array('role'=>3);
             }else if($this->session->userdata('role') == 1 && $super == 0){
                 $cond = array('parent_id'=>$this->session->userdata('uid'),'role'=>3);
+            }else if($this->session->userdata('role') == 4){
+                // Institute login: show teachers created by this institute OR enrolled in this institute's batches.
+                $inst_uid = (int) $this->session->userdata('uid');
+                $inst_batches = $this->db_model->select_data('id','batches use index (id)',array('institute_id'=>$inst_uid));
+                $batch_ids = array();
+                if(!empty($inst_batches)){
+                    foreach($inst_batches as $ib){
+                        if((int) $ib['id'] > 0){ $batch_ids[] = (int) $ib['id']; }
+                    }
+                }
+                $ors = array();
+                // teachers created by this institute
+                $ors[] = 'admin_id = '.$inst_uid;
+                $ors[] = 'parent_id = '.$inst_uid;
+                // teachers enrolled in this institute's batches
+                foreach($batch_ids as $bid){
+                    $ors[] = 'FIND_IN_SET('.$bid.', teach_batch)';
+                }
+                $cond = 'role = 3 AND ('.implode(' OR ', $ors).')';
             }else{
                 $cond = array('parent_id'=>$this->session->userdata('admin_id'),'role'=>3);
             }
@@ -6230,7 +6384,7 @@ function subcategory_table(){
         				        </a>
         				    </li>
         				    <li>
-        				        <a href="javascript:void(0);" class="edit_teacher" title="Edit" data-id="'.$teach['id'].'" data-subject="'.implode(",",json_decode($teach['teach_subject'])).'" data-img="'.$teach['teach_image'].'">
+        				        <a href="javascript:void(0);" class="edit_teacher" title="Edit" data-id="'.$teach['id'].'" data-subject="'.implode(",",json_decode($teach['teach_subject'])).'" data-img="'.$teach['teach_image'].'" data-last_name="'.html_escape(isset($teach['last_name']) ? $teach['last_name'] : '').'">
         				            <span class="action_drop_icon">
         				                <i class="fa fa-edit"></i>
         				            </span>
@@ -8181,11 +8335,11 @@ function result_table($type){
                     $action = '<p class="actions_wrap"><a class="edit_template btn_edit" title="Edit" data-id="'.$row['id'].'"><i class="fa fa-edit"></i></a>
                     <a class="deleteData btn_delete" title="Delete" data-id="'.$row['id'].'" data-table="templates"><i class="fa fa-trash"></i></a></p>';
 
-                    // templates.status: 0 = Active, 1 = Inactive
-                    if($row['status'] == '0' || $row['status'] === 0){
-                        $statusDrop = '<div class="admin_tbl_status_wrap"><a class="tbl_status_btn light_sky_bg changeStatusButton" data-id="'.$row['id'].'" data-table="templates" data-status="1" href="javascript:;">'.$this->lang->line('ltr_active').'</a></div>';
+                    // templates.status: 1 = Active, 0 = Inactive
+                    if($row['status'] == '1' || $row['status'] === 1){
+                        $statusDrop = '<div class="admin_tbl_status_wrap"><a class="tbl_status_btn light_sky_bg changeStatusButton" data-id="'.$row['id'].'" data-table="templates" data-status="0" href="javascript:;">'.$this->lang->line('ltr_active').'</a></div>';
                     }else{
-                        $statusDrop = '<div class="admin_tbl_status_wrap"><a class="tbl_status_btn light_red_bg changeStatusButton" data-id="'.$row['id'].'" data-table="templates" data-status="0" href="javascript:;">'.$this->lang->line('ltr_inactive').'</a></div>';
+                        $statusDrop = '<div class="admin_tbl_status_wrap"><a class="tbl_status_btn light_red_bg changeStatusButton" data-id="'.$row['id'].'" data-table="templates" data-status="1" href="javascript:;">'.$this->lang->line('ltr_inactive').'</a></div>';
                     }
 
                     $dataarray[] = array(
@@ -8311,7 +8465,7 @@ function result_table($type){
                 $ins = $this->db_model->update_data_limit('templates',$data_arr,array('id'=>$edit_id),1);
                 $msg = $this->lang->line('ltr_template_updated_msg');
             }else{
-                $data_arr['status'] = '0';
+                $data_arr['status'] = '1'; // new templates are Active by default (1 = Active)
                 $data_arr['created_at'] = date('Y-m-d H:i:s');
                 $ins = $this->db_model->insert_data('templates',$data_arr);
                 $msg = $this->lang->line('ltr_template_added_msg');
@@ -12050,16 +12204,28 @@ function result_table($type){
                     $cond = array('admin_id'=>$this->session->userdata('admin_id'),'subject'=>$get['subject']);
                 }else{
                     
-                    if($role == 1 && $super == 1){  
+                    if($role == 1 && $super == 1){
                          $cond = '';
                     }else if($role == 1 && $super == 1){
                         $cond = '';
                     }else if($role == 3){
                         $cond = array('admin_id'=>$this->session->userdata('admin_id'));
+                    }else if($role == 4){
+                        // Institute login: books created by this institute (added_by) or assigned to its batches.
+                        $inst_uid = (int) $this->session->userdata('uid');
+                        $inst_batches = $this->db_model->select_data('id','batches use index (id)','admin_id = '.$inst_uid.' OR institute_id = '.$inst_uid);
+                        $ors = array('added_by = '.$inst_uid);
+                        if(!empty($inst_batches)){
+                            foreach($inst_batches as $ib){
+                                $bid = (int) $ib['id'];
+                                if($bid > 0){ $ors[] = 'FIND_IN_SET('.$bid.', batch)'; }
+                            }
+                        }
+                        $cond = '('.implode(' OR ', $ors).')';
                     }else if($role == 'student'){
                        $cond = array('batch'=>$_SESSION['batch_id']);
                       //$cond = array('batch'=>$_SESSION['batch_id']);
-                    } 
+                    }
                 }
             }
          

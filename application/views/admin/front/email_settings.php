@@ -46,7 +46,7 @@
             						<label><?php echo html_escape($this->common->languageTranslator('ltr_smtp_encryption'));?><sup>*</sup></label><br>
         							<div class="form-control radio-btn-space">
         								<label><?php echo html_escape($this->common->languageTranslator('ltr_tlc'));?></label>
-            							<input type="radio"  class="smtp_encryption" name="smtp_encryption" <?php if(!empty($smtp_encryption) && $smtp_encryption==='tlc'){ echo 'checked'; } ?> value="tlc">
+            							<input type="radio"  class="smtp_encryption" name="smtp_encryption" <?php if(empty($smtp_encryption) || $smtp_encryption==='tls'){ echo 'checked'; } ?> value="tls">
         								<label><?php echo html_escape($this->common->languageTranslator('ltr_ssl'));?></label>
         								<input type="radio" class="smtp_encryption" <?php if(!empty($smtp_encryption) && $smtp_encryption==='ssl'){ echo 'checked'; } ?> name="smtp_encryption" value="ssl">
         							</div>

@@ -77,6 +77,7 @@ $route['admin/vacancy-manage'] = 'admin_profile/vacancy_manage';
 $route['admin/video-manage'] = 'admin_profile/video_manage';
 $route['admin/enquiry'] = 'admin_profile/enquiry';
 $route['admin/timezone'] = 'admin_profile/timezone';
+$route['admin/test-email'] = 'admin_profile/test_email';
 $route['admin/institute-manage'] = 'admin_profile/institute_manage';
 $route['admin/institute-progress/(:any)'] = 'admin_profile/institute_progress/$1';
 
@@ -416,6 +417,7 @@ $route['api/batch/live-meeting-end'] = 'api/batch/batch/live_meeting_end';
 $route['api/batch/recorded-meeting-list'] = 'api/batch/batch/recorded_meeting_list';
 $route['api/batch/recorded-meeting-details'] = 'api/batch/batch/recorded_meeting_details';
 $route['api/batch/recorded-meeting-sync'] = 'api/batch/batch/recorded_meeting_sync';
+$route['api/batch/upload-recording'] = 'api/batch/batch/upload_recording';
 $route['api/batch/batch-zoom-details'] = 'api/batch/batch/batch_zoom_details';
 $route['api/batch/batch-zoom-create'] = 'api/batch/batch/batch_zoom_create';
 $route['api/batch/batch-zoom-update'] = 'api/batch/batch/batch_zoom_update';

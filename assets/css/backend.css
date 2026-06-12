@@ -666,6 +666,8 @@ header.edu_admin_header {
 .edu_admin_logo .main_logo {
     width: 198px;
     height: 44px;
+    object-fit: contain;
+    object-position: right center;
 }
 .edu_admin_header_right {
     padding: 40px 0 40px 20px;

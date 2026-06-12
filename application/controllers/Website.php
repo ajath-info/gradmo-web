@@ -349,6 +349,22 @@ class Website extends MY_Controller
 			$this->output->set_content_type('application/json')->set_output($body !== '' ? $body : json_encode(array('status' => false, 'msg' => 'Empty response')));
 		}
 
+		/**
+		 * Website logout: clears the web session and returns to login.
+		 * Route: logout -> website/logout
+		 */
+		public function logout()
+		{
+			if ($this->session->userdata('role') === 'student') {
+				$uid = (int) $this->session->userdata('uid');
+				if ($uid > 0) {
+					$this->db_model->update_data_limit('students', array('login_status' => 0), array('id' => $uid), 1);
+				}
+			}
+			$this->session->sess_destroy();
+			redirect(base_url('login'));
+		}
+
 		public function payment_history()
 		{
 			if (! isset($this->session->userdata['role'])) {
@@ -963,6 +979,50 @@ class Website extends MY_Controller
 									'ownerType' => 'assigned'
 								);
 							}
+						}
+					}
+				}
+
+				// Teacher: also show batches where teacher is assigned to subjects (from batch_subjects)
+				$batch_subjects_all = $this->db_model->select_data('batch_id', 'batch_subjects', array('teacher_id' => $user_id), '');
+
+				if (!empty($batch_subjects_all)) {
+					// Get unique batch IDs
+					$unique_batch_ids = array_unique(array_map(function($item) { return (int) $item['batch_id']; }, $batch_subjects_all));
+
+					foreach ($unique_batch_ids as $batch_id) {
+						// Skip if already added as created or assigned
+						$is_existing = false;
+						foreach ($batches as $existing) {
+							if ($existing['id'] === $batch_id) {
+								$is_existing = true;
+								break;
+							}
+						}
+						if ($is_existing) {
+							continue;
+						}
+
+						$assigned = $this->db_model->select_data('*', 'batches use index (id)', array('id' => $batch_id), 1);
+						if (!empty($assigned)) {
+							$b = $assigned[0];
+							$batch_image = !empty($b['batch_image']) ? base_url('uploads/batch_image/' . $b['batch_image']) : '';
+							$batches[] = array(
+								'id' => $batch_id,
+								'batch_id' => $batch_id,
+								'batch_name' => (string) $b['batch_name'],
+								'batchName' => (string) $b['batch_name'],
+								'start_date' => (string) $b['start_date'],
+								'end_date' => (string) $b['end_date'],
+								'startDate' => (string) $b['start_date'],
+								'endDate' => (string) $b['end_date'],
+								'batch_type' => (int) $b['batch_type'],
+								'batch_price' => (string) $b['batch_price'],
+								'batch_mode' => (string) $b['batch_mode'],
+								'batch_image' => $batch_image,
+								'batchImage' => $batch_image,
+								'ownerType' => 'assigned'
+							);
 						}
 					}
 				}

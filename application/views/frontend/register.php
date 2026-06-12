@@ -21,7 +21,15 @@
 											<div class="edu-auth-field">
 												<label class="edu-auth-label" for="reg_name"><?php echo html_escape($this->common->languageTranslator('ltr_name')); ?></label>
 												<div class="edu_field_holder">
-													<input type="text" id="reg_name" class="edu_form_field edu-auth-input" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_name'));?> *" name="name" autocomplete="name">
+													<input type="text" id="reg_name" class="edu_form_field edu-auth-input" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_name'));?> *" name="name" autocomplete="given-name">
+												</div>
+											</div>
+										</div>
+										<div class="col-lg-6 col-md-6 col-sm-12 col-12">
+											<div class="edu-auth-field">
+												<label class="edu-auth-label" for="reg_last_name"><?php echo html_escape($this->common->languageTranslator('ltr_last_name')); ?></label>
+												<div class="edu_field_holder">
+													<input type="text" id="reg_last_name" class="edu_form_field edu-auth-input" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_last_name'));?>" name="last_name" autocomplete="family-name">
 												</div>
 											</div>
 										</div>

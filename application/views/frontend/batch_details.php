@@ -197,50 +197,9 @@
 				statusEl.textContent = 'Zoom is linked. Everyone joins only inside your website/app (Live classes).';
 				btnCreate.textContent = 'Zoom already linked';
 				btnCreate.disabled = true;
-				linkLive.href = '#';
+				linkLive.href = liveRoomHref(true);
 				linkLive.textContent = 'Join live class';
 				linkLive.classList.remove('inst-detail-hidden');
-
-				// Add click handler to check time validation and start Zoom directly
-				linkLive.onclick = function(e) {
-					e.preventDefault();
-					linkLive.disabled = true;
-					linkLive.textContent = 'Loading...';
-
-					// Fetch live class details to check time validation
-					var detailsUrl = <?php echo json_encode(site_url('api/batch/live-class-details')); ?>;
-					var body = { batch_id: batchId, live_class_id: 0 };
-					if (accessToken) { body.access_token = accessToken; }
-
-					fetch(detailsUrl, {
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (accessToken || '') },
-						body: JSON.stringify(body)
-					}).then(function(r) {
-						return r.json();
-					}).then(function(j) {
-						if (ok(j.status) && j.liveClass && j.liveClass.meeting) {
-							var m = j.liveClass.meeting;
-							// Check time validation
-							if (m.canJoin === 0 || m.canJoin === '0') {
-								linkLive.disabled = false;
-								linkLive.textContent = 'Join live class';
-								alert(m.timeMessage || 'You cannot join the class at this time.');
-								return;
-							}
-							// Time validation passed, start Zoom directly
-							window.startZoomDirectly(m);
-						} else {
-							linkLive.disabled = false;
-							linkLive.textContent = 'Join live class';
-							alert('Could not load class details. Please try again.');
-						}
-					}).catch(function(e) {
-						linkLive.disabled = false;
-						linkLive.textContent = 'Join live class';
-						alert('Error: ' + (e.message || 'Could not verify class time'));
-					});
-				};
 				return;
 			}
 			statusEl.textContent = 'No Zoom meeting yet. Create one to generate a join link for this batch (Server-to-Server Zoom must be configured on the server).';
@@ -358,85 +317,7 @@
 			}
 			window.location.href = liveRoomHref(false);
 		});
-
-		// Zoom meeting modal
-		var zoomModalStarted = false;
-		window.startZoomDirectly = function(meetingData) {
-			if (zoomModalStarted) { return; }
-			zoomModalStarted = true;
-
-			// Show Zoom modal
-			var modal = document.getElementById('bd_zoom_modal');
-			if (!modal) { return; }
-			modal.style.display = 'flex';
-
-			// Initialize Zoom
-			initZoomMeeting(meetingData);
-		};
-
-		var bdZoomClient = null;
-		var bdZoomInitialized = false;
-
-		function initZoomMeeting(m) {
-			if (!window.ZoomMtgEmbedded || !window.ZoomMtgEmbedded.createClient) {
-				alert('Zoom SDK not loaded. Please try again.');
-				closeZoomModal();
-				return;
-			}
-
-			if (!bdZoomClient) {
-				bdZoomClient = window.ZoomMtgEmbedded.createClient();
-			}
-
-			bdZoomClient.init({
-				zoomAppRoot: document.getElementById('bd_zoom_container'),
-				language: 'en-US',
-				patchJsMedia: true,
-				leaveOnPageUnload: false
-			}).then(function() {
-				bdZoomInitialized = true;
-				var mn = String(m.meetingNumber || '').replace(/\D/g, '');
-				var joinOpts = {
-					sdkKey: m.sdkKey,
-					clientId: m.sdkKey,
-					signature: m.signature,
-					meetingNumber: mn,
-					password: m.password || '',
-					userName: m.displayName || 'User'
-				};
-				return bdZoomClient.join(joinOpts);
-			}).then(function(e) {
-				console.log('[Zoom] Joined successfully');
-			}).catch(function(e) {
-				console.log('[Zoom] Error:', e);
-				alert('Could not join Zoom meeting: ' + (e.message || 'Unknown error'));
-				closeZoomModal();
-			});
-		}
-
-		function closeZoomModal() {
-			var modal = document.getElementById('bd_zoom_modal');
-			if (modal) { modal.style.display = 'none'; }
-			zoomModalStarted = false;
-		}
-
 		load();
 	});
 })();
 </script>
-
-<!-- Zoom Meeting Modal -->
-<div id="bd_zoom_modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #000; z-index: 10000; justify-content: center; align-items: center;">
-	<div style="position: relative; width: 100%; height: 100%; display: flex; flex-direction: column;">
-		<button onclick="document.getElementById('bd_zoom_modal').style.display='none'; zoomModalStarted=false;" style="position: absolute; top: 20px; right: 20px; z-index: 10001; padding: 10px 20px; background: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">✕ Close</button>
-		<div id="bd_zoom_container" style="flex: 1; width: 100%;"></div>
-	</div>
-</div>
-
-<!-- Zoom SDK Scripts -->
-<script src="https://source.zoom.us/3.8.10/lib/vendor/react.min.js"></script>
-<script src="https://source.zoom.us/3.8.10/lib/vendor/react-dom.min.js"></script>
-<script src="https://source.zoom.us/3.8.10/lib/vendor/redux.min.js"></script>
-<script src="https://source.zoom.us/3.8.10/lib/vendor/redux-thunk.min.js"></script>
-<script src="https://source.zoom.us/3.8.10/lib/vendor/lodash.min.js"></script>
-<script src="https://source.zoom.us/3.8.10/zoom-meeting-embedded-3.8.10.min.js"></script>

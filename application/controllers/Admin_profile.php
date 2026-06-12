@@ -289,7 +289,10 @@ class Admin_profile extends CI_Controller {
 		}else{
 			$header['title']=$this->lang->line('ltr_add_batch');
 		}
-		if($this->session->userdata('role') == 1 && $this->session->userdata('super_admin') == 1){
+		if($this->session->userdata('role') == 4){
+            // Institute login: categories/subcategories/subjects belong to the parent admin.
+            $cond = array('admin_id'=>$this->session->userdata('admin_id'),'status'=>'1');
+        }else if($this->session->userdata('role') == 1 && $this->session->userdata('super_admin') == 1){
              $cond = array('admin_id'=>$this->session->userdata('uid'),'status'=>'1');
         }else{
             $cond = array('admin_id'=>$this->session->userdata('uid'),'status'=>'1');
@@ -499,8 +502,7 @@ class Admin_profile extends CI_Controller {
 
 	function teacher_manage(){
 		$header['title']=$this->lang->line('ltr_teacher_manager');
-		$data['subject'] = $this->db_model->select_data('id,subject_name','subjects use index (id)',array('admin_id'=>$this->session->userdata('uid')),'',array('id','desc'));
-		
+		$data['subject'] = $this->db_model->select_data('id,subject_name','subjects use index (id)','','',array('id','desc'));
 		$data['batch'] = $this->db_model->select_data('id,batch_name','batches  use index (id)',array('admin_id'=>$this->session->userdata('uid')),'',array('id','desc'));
 		$data['teacher_data'] = $this->db_model->countAll('users',array('role'=>3));
 		$data['all_user'] = $this->db_model->select_data('id,name,role,super_admin','users use index (id)',array('admin_id'=>1 , 'role'=>1));
@@ -1388,8 +1390,69 @@ class Admin_profile extends CI_Controller {
             return true;
 
         }
-        
-        //new update 
+
+        /**
+         * Diagnostic route: send a test email using the saved SMTP settings and
+         * print the full SMTP conversation so failures are visible.
+         * URL: admin/test-email  (optionally ?to=someone@example.com)
+         */
+        public function test_email(){
+            header('Content-Type: text/plain; charset=utf-8');
+
+            $frommail = $this->general_settings('smtp_mail');
+            $frompwd  = $this->general_settings('smtp_pwd');
+            $to       = $this->input->get('to', TRUE);
+            if(empty($to)){
+                $to = $frommail; // default: send to the configured sender address
+            }
+            $titleRow = $this->db_model->select_data('site_title','site_details','',1,array('id','desc'));
+            $title    = !empty($titleRow) ? $titleRow[0]['site_title'] : 'Test';
+
+            echo "=== SMTP Test Email ===\n";
+            echo "Protocol   : ".$this->general_settings('server_type')."\n";
+            echo "Host       : ".$this->general_settings('smtp_host')."\n";
+            echo "Port       : ".$this->general_settings('smtp_port')."\n";
+            echo "Encryption : ".$this->general_settings('smtp_encryption')."\n";
+            echo "From       : ".$frommail."\n";
+            echo "Password   : ".(empty($frompwd) ? '(EMPTY!)' : str_repeat('*', strlen($frompwd)).' ('.strlen($frompwd).' chars)')."\n";
+            echo "To         : ".$to."\n";
+            echo "=======================\n\n";
+
+            if(empty($frommail) || empty($frompwd)){
+                echo "RESULT: ABORTED - smtp_mail or smtp_pwd is empty in general settings.\n";
+                return;
+            }
+
+            $this->load->library('email');
+            $config = array(
+                'protocol'     => $this->general_settings('server_type'),
+                'smtp_host'    => $this->general_settings('smtp_host'),
+                'smtp_port'    => $this->general_settings('smtp_port'),
+                'smtp_user'    => $frommail,
+                'smtp_pass'    => $frompwd,
+                'smtp_crypto'  => $this->general_settings('smtp_encryption'),
+                'smtp_timeout' => 15,
+                'charset'      => 'utf-8',
+                'mailtype'     => 'html',
+                'newline'      => "\r\n",
+                'crlf'         => "\r\n",
+            );
+            $this->email->clear(TRUE);
+            $this->email->initialize($config);
+            $this->email->from($frommail, $title);
+            $this->email->to($to);
+            $this->email->subject('Test email from '.$title.' - '.date('Y-m-d H:i:s'));
+            $this->email->message('<p>This is a <b>test email</b> sent at '.date('Y-m-d H:i:s').' to verify SMTP settings.</p>');
+
+            // Pass FALSE so the debug buffer is preserved for print_debugger().
+            $ok = $this->email->send(FALSE);
+
+            echo "RESULT: ".($ok ? 'SUCCESS - email accepted by the SMTP server.' : 'FAILED - see the SMTP debug log below.')."\n\n";
+            echo "----- SMTP debugger -----\n";
+            echo $this->email->print_debugger(array('headers'));
+        }
+
+        //new update
         
         function book_manage(){
 			$header['title']=$this->lang->line('ltr_book_manage');

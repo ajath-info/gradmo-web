@@ -330,8 +330,8 @@ if ( ! is_array($cur_arr)) {
 <div class="edu_header_sidebar">
     <header class="edu_left_header">
         <div class="edu_admin_logo">
-            <a href="<?php echo base_url().'admin/dashboard';?>"><img src="<?php echo html_escape($this->common->siteLogo); ?>" class="logoRelativeCls main_logo" alt="Logo"></a>
-            <a href="#"><img src="<?php echo html_escape($this->common->siteminiLogo); ?>" class="mini_logo" alt="Minilogo"></a>
+            <a href="<?php echo base_url().'admin/dashboard';?>"><img src="<?php echo html_escape($this->common->siteminiLogo); ?>" class="logoRelativeCls main_logo" alt="Logo"></a>
+            <a href="<?php echo base_url().'admin/dashboard';?>"><img src="<?php echo html_escape($this->common->siteminiLogo); ?>" class="mini_logo" alt="Minilogo"></a>
             <div class="edu_header_close responsive_btn">
                 <span></span>
                 <span></span>
@@ -1161,7 +1161,7 @@ if ( ! is_array($cur_arr)) {
        
         <div class="edu_admin">
             <div class="edu_admin_inner">
-                <?php if($this->session->userdata('role') == '1'){  ?> 
+                <?php if($this->session->userdata('role') == '1' || $this->session->userdata('role') == '4'){  ?>
                     <a class="edu_admin_bar" href="javascript:void(0);"> <span class="icofont-user-alt-4"></span><?php echo (isset($this->session->userdata['name']))?$this->session->userdata['name']:'';?>
                         <svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
                             viewBox="0 0 451.847 451.847" style="enable-background:new 0 0 451.847 451.847;"
@@ -1175,7 +1175,7 @@ if ( ! is_array($cur_arr)) {
                     </a>
                 <?php } ?>
                 <div class="edu_admin_option">
-                    <?php if($this->session->userdata('role') == '1'){  ?> 
+                    <?php if($this->session->userdata('role') == '1' || $this->session->userdata('role') == '4'){  ?>
                         <a href="<?php echo base_url(); ?>admin/change-password"><i class="icofont-user"></i><?php echo html_escape($this->common->languageTranslator('ltr_change_password'));?></a>
                     <?php } ?>
                     <a href="javascript:void(0);" title="Logout" class="cnfmlogOutBtn"><i class="icofont-logout"></i><span><?php echo html_escape($this->common->languageTranslator('ltr_logout'));?></span></a>

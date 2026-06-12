@@ -31,7 +31,7 @@ $lang['ltr_payment_history'] = "Payment History";
 $lang['ltr_teacher_manager'] = "Teacher Manager";
 $lang['ltr_extra_classes'] = "Extra Classes";
 $lang['ltr_manage_teachers'] = "Manage Teachers";
-$lang['ltr_manage_institutes'] = "Manage Institutes";
+$lang['ltr_manage_institutes'] = "Institutes Manager";
 $lang['ltr_manage_teacher_leave'] = "Manage Teacher's Leave";
 $lang['ltr_exam'] = "Exam";
 $lang['ltr_paper_manager'] = "Paper Manager";
@@ -222,6 +222,7 @@ $lang['ltr_video_no_data_student'] ='No video lecture is available to show.';
 $lang['ltr_video_no_data_teacher'] ='You have not added any Video yet, feel free to add video lectures by clicking on "Add Video" button.';
 //Enquiry-manage
 $lang['ltr_name'] ="Name";
+$lang['ltr_last_name'] ="Last Name";
 $lang['ltr_email'] ="Email";
 $lang['ltr_mobile'] ="Mobile";
 $lang['ltr_message'] ="Message";

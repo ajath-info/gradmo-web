@@ -17,13 +17,19 @@
                         </div>
                     </div>
                     <div class="col-lg-6 col-md-6 col-sm-12 col-12 edu_bottom_20">
-                        <div class="form-group"> 
+                        <div class="form-group">
                             <label><?php echo html_escape($this->common->languageTranslator('ltr_name'));?><sup>*</sup></label>
                             <input type="text" class="form-control require alphaField" name="name" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_name'));?>" value="<?php echo !empty($student_data)?$student_data[0]['name']:'';?>">
                         </div>
                     </div>
                     <div class="col-lg-6 col-md-6 col-sm-12 col-12 edu_bottom_20">
-                        <div class="form-group"> 
+                        <div class="form-group">
+                            <label><?php echo html_escape($this->common->languageTranslator('ltr_last_name'));?></label>
+                            <input type="text" class="form-control alphaField" name="last_name" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_last_name'));?>" value="<?php echo !empty($student_data) && isset($student_data[0]['last_name'])?$student_data[0]['last_name']:'';?>">
+                        </div>
+                    </div>
+                    <div class="col-lg-6 col-md-6 col-sm-12 col-12 edu_bottom_20">
+                        <div class="form-group">
                             <label><?php echo html_escape($this->common->languageTranslator('ltr_father_name'));?></label>
                            <input type="text" class="form-control alphaField" name="father_name" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_father_name'));?>" value="<?php echo !empty($student_data)?$student_data[0]['father_name']:'';?>">
                         </div>

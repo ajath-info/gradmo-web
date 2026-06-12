@@ -123,10 +123,11 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 				$template_for = 'email';
 			}
 
+			// templates.status: 1 = Active, 0 = Inactive (only active templates are sent).
 			$template = $this->CI->db_model->select_data(
 				'*',
 				'templates',
-				array('purpose' => $purpose, 'template_for' => $template_for, 'status' => '0'),
+				array('purpose' => $purpose, 'template_for' => $template_for, 'status' => '1'),
 				1,
 				array('id', 'desc')
 			);
@@ -134,7 +135,7 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 				$template = $this->CI->db_model->select_data(
 					'*',
 					'templates',
-					array('purpose' => $purpose, 'template_for' => 'email', 'status' => '0'),
+					array('purpose' => $purpose, 'template_for' => 'email', 'status' => '1'),
 					1,
 					array('id', 'desc')
 				);
@@ -253,7 +254,8 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 			$text = (string) $text;
 			foreach ($vars as $key => $value) {
 				$safe = (string) $value;
-				$text = str_replace(array('{{' . $key . '}}', '{' . $key . '}'), $safe, $text);
+				// Case-insensitive so template authors can use {{NAME}}, {{name}} or {name}.
+				$text = str_ireplace(array('{{' . $key . '}}', '{' . $key . '}'), $safe, $text);
 			}
 			return $text;
 		}

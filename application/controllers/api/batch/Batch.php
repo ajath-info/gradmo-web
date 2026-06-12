@@ -27,7 +27,7 @@ class Batch extends MY_Controller
 		return array_merge($data, $this->input->post(), $this->input->get());
 	}
 
-	private function build_slider_banners()
+	private function build_slider_banners($institute_id = '')
 	{
 		$banners = array();
 		$row = $this->db_model->select_data('slider_details', 'frontend_details', array('id' => 1), 1);
@@ -39,6 +39,25 @@ class Batch extends MY_Controller
 			return $banners;
 		}
 		$count = count($sliders['slider_img']);
+
+		// Institute banner (when an institute context is given) goes first in the list.
+		if ($institute_id !== '') {
+			$institute_row = $this->db_model->select_data('banner', 'users', array('id' => $institute_id), 1);
+			$institute_banner = (is_array($institute_row) && isset($institute_row[0]) && is_array($institute_row[0]) && isset($institute_row[0]['banner']))
+				? trim((string) $institute_row[0]['banner'])
+				: '';
+			if ($institute_banner !== '') {
+				$institute_banner_url = base_url('uploads/users/') . $institute_banner;
+				$banners[] = array(
+					'id' => 0,
+					'image_url' => $institute_banner_url,
+					'heading' => '',
+					'subheading' => '',
+					'description' => ''
+				);
+			}
+		}
+
 		for ($i = 0; $i < $count; $i++) {
 			$img = isset($sliders['slider_img'][$i]) ? $sliders['slider_img'][$i] : '';
 			if ($img === '') {
@@ -52,6 +71,8 @@ class Batch extends MY_Controller
 				'description' => isset($sliders['slider_desc'][$i]) ? $sliders['slider_desc'][$i] : ''
 			);
 		}
+
+
 		return $banners;
 	}
 
@@ -641,8 +662,8 @@ class Batch extends MY_Controller
 		if ($payload === false) {
 			return;
 		}
-
-		$banners = $this->build_slider_banners();
+		$institute_id = isset($data['institute_id']) ? (int) $data['institute_id'] : '';
+		$banners = $this->build_slider_banners($institute_id);
 		$pg = $this->parse_api_list_pagination($data, 20, 100);
 		$total = is_array($banners) ? count($banners) : 0;
 		$banners_page = is_array($banners) ? array_slice($banners, $pg['offset'], $pg['limit']) : array();
@@ -2272,6 +2293,69 @@ class Batch extends MY_Controller
 		));
 	}
 
+	/**
+	 * Yearly video upload quota for a batch.
+	 * The "year" is a rolling 12-month cycle anchored on the batch start_date.
+	 * Only uploaded files carry duration_seconds (> 0); URL/YouTube lectures are 0 and uncounted.
+	 *
+	 * @param int $batch_id
+	 * @param int $exclude_video_id  Video lecture id to exclude from the used total (used on edit).
+	 * @return array{used:int,limit:int,cycle_start:string,cycle_end:string}
+	 */
+	private function batch_video_quota($batch_id, $exclude_video_id = 0)
+	{
+		$limit = 330 * 3600; // 330 hours in seconds
+
+		$batch = $this->db_model->select_data('start_date', 'batches use index (id)', array('id' => (int) $batch_id), 1);
+		$start_date = !empty($batch[0]['start_date']) ? (string) $batch[0]['start_date'] : '';
+
+		$now = new DateTime('now');
+		try {
+			$anchor = ($start_date !== '' && $start_date !== '0000-00-00') ? new DateTime($start_date) : clone $now;
+		} catch (Exception $e) {
+			$anchor = clone $now;
+		}
+		// Walk the anchor forward in 12-month steps until it covers "now".
+		$cycle_start = clone $anchor;
+		if ($cycle_start <= $now) {
+			while (true) {
+				$next = clone $cycle_start;
+				$next->modify('+1 year');
+				if ($next > $now) {
+					break;
+				}
+				$cycle_start = $next;
+			}
+		}
+		$cycle_end = clone $cycle_start;
+		$cycle_end->modify('+1 year');
+
+		$cs = $cycle_start->format('Y-m-d H:i:s');
+		$ce = $cycle_end->format('Y-m-d H:i:s');
+
+		$this->db->select_sum('duration_seconds', 'total');
+		$this->db->from('video_lectures');
+		$this->db->where('status', 1);
+		$this->db->where('added_at >=', $cs);
+		$this->db->where('added_at <', $ce);
+		if ((int) $exclude_video_id > 0) {
+			$this->db->where('id !=', (int) $exclude_video_id);
+		}
+		$this->apply_text_batch_filter('batch', $batch_id);
+		$row = $this->db->get()->row_array();
+		$used = isset($row['total']) ? (int) $row['total'] : 0;
+
+		return array('used' => $used, 'limit' => $limit, 'cycle_start' => $cs, 'cycle_end' => $ce);
+	}
+
+	private function format_hours_minutes($seconds)
+	{
+		$seconds = max(0, (int) $seconds);
+		$h = intdiv($seconds, 3600);
+		$m = intdiv($seconds % 3600, 60);
+		return $h . ' h ' . $m . ' m';
+	}
+
 	public function video_lecture_add()
 	{
 		$data = $this->read_request_data();
@@ -2289,6 +2373,8 @@ class Batch extends MY_Controller
 			return;
 		}
 		$url = isset($data['url']) ? trim((string) $data['url']) : '';
+		$duration_seconds = 0;
+		$uploaded_full_path = '';
 		if ($url === '' && !empty($_FILES['video_file']['name'])) {
 			$config['upload_path'] = './uploads/video/';
 			if (!is_dir($config['upload_path'])) {
@@ -2303,11 +2389,39 @@ class Batch extends MY_Controller
 			}
 			$ud = $this->upload->data();
 			$url = base_url('uploads/video/') . $ud['file_name'];
+			$uploaded_full_path = isset($ud['full_path']) ? $ud['full_path'] : '';
+			// Duration (seconds) measured client-side; only uploaded files count toward the cap.
+			$duration_seconds = isset($data['duration_seconds']) ? max(0, (int) $data['duration_seconds']) : 0;
 		}
 		if ($url === '') {
 			$this->api_json(false, 'url or video_file is required');
 			return;
 		}
+
+		// Reject implausible durations (browser metadata bug / tampering): a single lecture > 24h.
+		if ($duration_seconds > 86400) {
+			if ($uploaded_full_path !== '' && is_file($uploaded_full_path)) {
+				@unlink($uploaded_full_path);
+			}
+			$this->api_json(false, 'Could not reliably read the video length. Please re-select the file and try again.');
+			return;
+		}
+
+		// Enforce the 330-hour rolling-yearly cap for uploaded files.
+		if ($duration_seconds > 0) {
+			$quota = $this->batch_video_quota($batch_id);
+			if (($quota['used'] + $duration_seconds) > $quota['limit']) {
+				if ($uploaded_full_path !== '' && is_file($uploaded_full_path)) {
+					@unlink($uploaded_full_path);
+				}
+				$remaining = max(0, $quota['limit'] - $quota['used']);
+				$this->api_json(false, 'Upload exceeds the 330-hour yearly limit for this batch. This video is '
+					. $this->format_hours_minutes($duration_seconds) . ', but only '
+					. $this->format_hours_minutes($remaining) . ' remain in the current cycle.');
+				return;
+			}
+		}
+
 		$batch = $this->db_model->select_data('admin_id', 'batches use index (id)', array('id' => $batch_id), 1);
 		$admin_id = !empty($batch[0]['admin_id']) ? (int) $batch[0]['admin_id'] : 0;
 		$insert = $this->security->xss_clean(array(
@@ -2318,6 +2432,7 @@ class Batch extends MY_Controller
 			'subject' => isset($data['subject']) ? trim((string) $data['subject']) : '',
 			'description' => isset($data['description']) ? trim((string) $data['description']) : '',
 			'url' => $url,
+			'duration_seconds' => $duration_seconds,
 			'video_type' => isset($data['video_type']) ? (int) $data['video_type'] : 1,
 			'preview_type' => isset($data['preview_type']) ? (int) $data['preview_type'] : 1,
 			'status' => 1,
@@ -2374,7 +2489,30 @@ class Batch extends MY_Controller
 				return;
 			}
 			$ud = $this->upload->data();
+			$duration_seconds = isset($data['duration_seconds']) ? max(0, (int) $data['duration_seconds']) : 0;
+			if ($duration_seconds > 86400) {
+				if (!empty($ud['full_path']) && is_file($ud['full_path'])) {
+					@unlink($ud['full_path']);
+				}
+				$this->api_json(false, 'Could not reliably read the video length. Please re-select the file and try again.');
+				return;
+			}
+			if ($duration_seconds > 0) {
+				// Exclude this lecture's own current duration from the used total before checking.
+				$quota = $this->batch_video_quota($batch_id, $video_id);
+				if (($quota['used'] + $duration_seconds) > $quota['limit']) {
+					if (!empty($ud['full_path']) && is_file($ud['full_path'])) {
+						@unlink($ud['full_path']);
+					}
+					$remaining = max(0, $quota['limit'] - $quota['used']);
+					$this->api_json(false, 'Upload exceeds the 330-hour yearly limit for this batch. This video is '
+						. $this->format_hours_minutes($duration_seconds) . ', but only '
+						. $this->format_hours_minutes($remaining) . ' remain in the current cycle.');
+					return;
+				}
+			}
 			$update['url'] = base_url('uploads/video/') . $ud['file_name'];
+			$update['duration_seconds'] = $duration_seconds;
 		}
 		if (empty($update)) {
 			$this->api_json(false, 'No changes provided');
@@ -3503,7 +3641,7 @@ class Batch extends MY_Controller
 		}
 		$total = (int) $this->db->count_all_results();
 
-		$this->db->select('id,admin_id as adminId,title,batch,topic,subject,description,url,video_type as videoType,preview_type as previewType,added_by as addedBy,added_at as addedAt');
+		$this->db->select('id,admin_id as adminId,title,batch,topic,subject,description,url,duration_seconds as durationSeconds,video_type as videoType,preview_type as previewType,added_by as addedBy,added_at as addedAt');
 		$this->db->from('video_lectures');
 		$this->db->where('status', 1);
 		if ($batch_id > 0) {
@@ -3523,6 +3661,14 @@ class Batch extends MY_Controller
 		$this->db->limit($limit, $offset);
 		$list = $this->db->get()->result_array();
 
+		$quota_used = 0;
+		$quota_limit = 330 * 3600;
+		if ($batch_id > 0) {
+			$quota = $this->batch_video_quota($batch_id);
+			$quota_used = $quota['used'];
+			$quota_limit = $quota['limit'];
+		}
+
 		echo json_encode(array(
 			'status' => 'true',
 			'message' => 'Success',
@@ -3530,6 +3676,8 @@ class Batch extends MY_Controller
 				'batch_id' => $batch_id,
 				'accessibleBatchIds' => $batch_id > 0 ? array($batch_id) : array_values($accessible_batch_ids),
 				'videoLectures' => !empty($list) ? $list : array(),
+				'quotaUsedSeconds' => $quota_used,
+				'quotaLimitSeconds' => $quota_limit,
 				'pagination' => $this->build_api_list_pagination_meta($page, $limit, $total),
 			)
 		), JSON_UNESCAPED_SLASHES);
@@ -5426,7 +5574,7 @@ class Batch extends MY_Controller
 		}
 		$config = array(
 			'upload_path' => $path,
-			'allowed_types' => 'pdf',
+			'allowed_types' => 'pdf|doc|docx|jpg|jpeg|png|gif|webp',
 			'max_size' => 15360,
 		);
 		if (!isset($this->upload)) {
@@ -5500,11 +5648,11 @@ class Batch extends MY_Controller
 			$file_name = $res;
 		}
 		if ($desc === '' && $file_name === '') {
-			echo json_encode(array('status' => 'false', 'msg' => 'Enter a description and/or upload a PDF'));
+			echo json_encode(array('status' => 'false', 'msg' => 'Enter a description and/or upload a file'));
 			return;
 		}
 		if ($desc === '') {
-			$desc = 'See attached PDF.';
+			$desc = 'See attached file.';
 		}
 		$insert = $this->security->xss_clean(array(
 			'admin_id' => $admin_id,
@@ -5607,10 +5755,10 @@ class Batch extends MY_Controller
 			if ($d === '') {
 				$has_file = !empty($update['attachment']) || $old_attachment !== '';
 				if (!$has_file) {
-					echo json_encode(array('status' => 'false', 'msg' => 'description cannot be empty unless a PDF is attached'));
+					echo json_encode(array('status' => 'false', 'msg' => 'description cannot be empty unless a file is attached'));
 					return;
 				}
-				$update['description'] = 'See attached PDF.';
+				$update['description'] = 'See attached file.';
 			} else {
 				$update['description'] = $d;
 			}
@@ -6252,7 +6400,77 @@ class Batch extends MY_Controller
 			return;
 		}
 		$this->zoom_log($batch_id, 'create', 201, 'created', $data, $d, $payload);
+		// Email the join link to every active student of this batch (best-effort; never blocks the response on failure).
+		$invite_start = !empty($ins['start_time']) ? $ins['start_time'] : (isset($data['start_time']) ? trim((string) $data['start_time']) : '');
+		@$this->send_batch_meeting_invite($batch_id, $ins['join_url'], array('start_time' => $invite_start));
 		$this->api_json(true, 'Zoom meeting created. Students and teachers join only from Live classes in your app or website.', array('zoomMeetingId' => $mid));
+	}
+
+	/**
+	 * Email the Zoom join link to every active student of a batch (one personalized mail each).
+	 * Uses the `zoom_class_invitation` template. Returns the number of emails sent.
+	 */
+	private function send_batch_meeting_invite($batch_id, $join_url, array $extra = array())
+	{
+		$batch_id = (int) $batch_id;
+		$join_url = trim((string) $join_url);
+		if ($batch_id < 1 || $join_url === '') {
+			return 0;
+		}
+
+		$batch = $this->db_model->select_data('id,batch_name,institute_id', 'batches use index (id)', array('id' => $batch_id), 1);
+		if (empty($batch[0])) {
+			return 0;
+		}
+		$batch_name = isset($batch[0]['batch_name']) ? $batch[0]['batch_name'] : '';
+
+		$institute_name = '';
+		if (!empty($batch[0]['institute_id'])) {
+			$inst = $this->db_model->select_data('name', 'users use index (id)', array('id' => $batch[0]['institute_id']), 1);
+			$institute_name = !empty($inst[0]['name']) ? $inst[0]['name'] : '';
+		}
+
+		$teacher_name = isset($extra['teacher_name']) ? trim((string) $extra['teacher_name']) : '';
+		if ($teacher_name === '') {
+			$t = $this->db_model->select_data('name', 'users use index (id)', 'role = 3 AND FIND_IN_SET(' . $batch_id . ', teach_batch)', 1);
+			if (!empty($t[0]['name'])) {
+				$teacher_name = $t[0]['name'];
+			}
+		}
+
+		// The class is paid and only plays inside our website, so we never email the raw Zoom
+		// join link. Instead we send the website "Live classes" page for this batch; the student
+		// logs in there and joins from inside the app where access is gated.
+		$class_page_url = base_url('batch/live-classes?batch_id=' . $batch_id);
+
+		$students = $this->db_model->select_data('id,name,email', 'students use index (id)', array('batch_id' => $batch_id, 'status' => 1));
+		$sent = 0;
+		foreach ((array) $students as $stu) {
+			$to = isset($stu['email']) ? trim((string) $stu['email']) : '';
+			if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
+				continue;
+			}
+			$res = $this->common->send_email(array(
+				'purpose' => 'zoom_class_invitation',
+				'to_email' => $to,
+				'dynamic_var' => array(
+					'STUDENT_NAME' => isset($stu['name']) ? $stu['name'] : '',
+					'TEACHER_NAME' => $teacher_name,
+					'BATCH_NAME' => $batch_name,
+					'CLASS_START_TIME' => isset($extra['start_time']) ? $extra['start_time'] : '',
+					'CLASS_LINK' => $class_page_url,
+					// Backward-compat: existing templates use {{ZOOM_LINK}}. Point it at the website
+					// join page (NOT the raw Zoom URL) so the paid link is never exposed.
+					'ZOOM_LINK' => $class_page_url,
+					'INSTITUTE_NAME' => $institute_name,
+					'CURRENT_YEAR' => date('Y'),
+				),
+			));
+			if (!empty($res['status'])) {
+				$sent++;
+			}
+		}
+		return $sent;
 	}
 
 	/**
@@ -6776,6 +6994,96 @@ class Batch extends MY_Controller
 		$this->api_json(true, 'Recordings synced from Zoom', array(
 			'batchId' => $batch_id,
 			'insertedOrUpdated' => isset($sync['inserted']) ? (int) $sync['inserted'] : 0,
+		));
+	}
+
+	/**
+	 * POST api/batch/upload-recording — teacher uploads local recorded video file
+	 * Params: batch_id (required), file (required), title (optional), description (optional)
+	 */
+	public function upload_recording()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+		if (empty($data['batch_id'])) {
+			$this->api_json(false, 'batch_id is required');
+			return;
+		}
+		$batch_id = (int) $data['batch_id'];
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+
+		// Check if file was uploaded
+		if (!isset($_FILES['recording_file']) || $_FILES['recording_file']['error'] !== UPLOAD_ERR_OK) {
+			$this->api_json(false, 'No file uploaded or upload error');
+			return;
+		}
+
+		$file = $_FILES['recording_file'];
+		$allowed_types = array('video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska', 'video/webm');
+
+		if (!in_array($file['type'], $allowed_types)) {
+			$this->api_json(false, 'Invalid file type. Allowed: MP4, MOV, AVI, MKV, WebM');
+			return;
+		}
+
+		$max_size = 2000 * 1024 * 1024; // 2GB
+		if ($file['size'] > $max_size) {
+			$this->api_json(false, 'File too large. Max: 2GB');
+			return;
+		}
+
+		// Create upload directory if not exists
+		$upload_dir = './uploads/recordings/';
+		if (!is_dir($upload_dir)) {
+			@mkdir($upload_dir, 0777, true);
+		}
+
+		// Generate unique filename
+		$timestamp = date('Y-m-d_H-i-s');
+		$random = substr(md5(uniqid()), 0, 8);
+		$file_ext = pathinfo($file['name'], PATHINFO_EXTENSION);
+		$filename = 'recording_' . $batch_id . '_' . $timestamp . '_' . $random . '.' . $file_ext;
+		$filepath = $upload_dir . $filename;
+
+		// Move uploaded file
+		if (!move_uploaded_file($file['tmp_name'], $filepath)) {
+			$this->api_json(false, 'Failed to save file');
+			return;
+		}
+
+		// Save to database
+		$title = isset($data['title']) ? trim((string) $data['title']) : '';
+		if ($title === '') {
+			$title = 'Recording - ' . date('M d, Y H:i');
+		}
+		$description = isset($data['description']) ? trim((string) $data['description']) : '';
+
+		$recording_data = array(
+			'batch_id' => $batch_id,
+			'zoom_meeting_id' => 'local_' . $batch_id,  // Mark as local upload
+			'zoom_file_id' => $filename,
+			'playback_url' => base_url('uploads/recordings/' . $filename),
+			'file_type' => $file['type'],
+			'file_size' => (int) $file['size'],
+			'recording_start' => date('Y-m-d H:i:s'),
+			'recording_end' => date('Y-m-d H:i:s'),
+			'title' => $title,
+			'status' => 'completed',
+			'created_at' => date('Y-m-d H:i:s'),
+		);
+
+		@$this->db->insert('batch_zoom_recordings', $recording_data);
+
+		$this->api_json(true, 'Recording uploaded successfully', array(
+			'batchId' => $batch_id,
+			'filename' => $filename,
+			'url' => base_url('uploads/recordings/' . $filename),
+			'title' => $title,
 		));
 	}
 

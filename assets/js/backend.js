@@ -2002,6 +2002,10 @@ $(document).on('click','.genrateMeetingId',function (){
             formdata.append('preview_type', $.trim($('input[name=preview_type]').val()));
             formdata.append('id', $.trim($('input[name=id]').val()));
 
+            var vfEl = $('.video_file')[0];
+            var videoFile = (vfEl && vfEl.files) ? vfEl.files[0] : null;
+
+            function postVideo() {
             $.ajax({
                 xhr: function() {
                     var xhr = new window.XMLHttpRequest();
@@ -2051,7 +2055,7 @@ $(document).on('click','.genrateMeetingId',function (){
                             }, 300);
                         }
                     } else {
-                        toastr.error(ltr_something_msg);
+                        toastr.error(resp['msg'] ? resp['msg'] : ltr_something_msg);
                     }
                     // 	$('#add_video_popup').find('.mfp-close').trigger('click');
                     // 	$('.edu_preloader').fadeOut();
@@ -2061,6 +2065,37 @@ $(document).on('click','.genrateMeetingId',function (){
                     // $('.edu_preloader').fadeOut();
                 }
             });
+            }
+
+            if (videoFile) {
+                var MAX_VIDEO_SECONDS = 86400; // 24h sanity ceiling
+                var vid = document.createElement('video');
+                vid.preload = 'metadata';
+                var durDone = false;
+                function durFinish(sec) {
+                    if (durDone) return;
+                    durDone = true;
+                    try { window.URL.revokeObjectURL(vid.src); } catch (e) {}
+                    var d = isFinite(sec) && sec > 0 ? Math.round(sec) : 0;
+                    if (d > MAX_VIDEO_SECONDS) d = 0;
+                    formdata.append('duration_seconds', d);
+                    postVideo();
+                }
+                vid.onloadedmetadata = function() {
+                    // Some MP4/WebM files report Infinity or a bogus value until we seek to the end.
+                    if (vid.duration === Infinity || isNaN(vid.duration) || vid.duration > MAX_VIDEO_SECONDS) {
+                        vid.ontimeupdate = function() { vid.ontimeupdate = null; durFinish(vid.duration); };
+                        try { vid.currentTime = 1e101; } catch (e2) { durFinish(0); }
+                    } else {
+                        durFinish(vid.duration);
+                    }
+                };
+                vid.onerror = function() { durFinish(0); };
+                window.setTimeout(function() { durFinish(vid.duration); }, 8000);
+                vid.src = window.URL.createObjectURL(videoFile);
+            } else {
+                postVideo();
+            }
         }
     });
 
@@ -2190,6 +2225,7 @@ $(document).on('click','.genrateMeetingId',function (){
                 $('#input_feilds_teacher').find('[name="name"]').val($(this).closest('tr').find('td:eq(2)').text());
             }
 
+            $('#input_feilds_teacher').find('[name="last_name"]').val($(this).attr('data-last_name') || '');
             $('#input_feilds_teacher').find('[name="email"]').val($(this).closest('tr').find('td:eq(3)').text()).attr('readonly', 'readonly');
             $('#input_feilds_teacher').find('[name="teach_education"]').val($(this).closest('tr').find('td:eq(4)').text());
             $('#input_feilds_teacher').find('[name="teach_gender"]').val($(this).closest('tr').find('td:eq(5)').text()).trigger('change');
@@ -2485,11 +2521,13 @@ $(document).on('click','.genrateMeetingId',function (){
                 var row = data[0];
                 var $f = $('#input_feilds_institute');
                 $f.find('[name="teach_image"]').val('');
+                $f.find('[name="banner"]').removeClass('require error').val('');
                 $f.find('#PopupTitle').html('Edit Institute');
                 var $instBtn = $f.find('.addNewInstitute');
                 var updTxt = $instBtn.attr('data-btn-update') || 'Update Institute';
                 $instBtn.attr('data-id', row['id']).text(updTxt);
                 $f.find('[name="name"]').val(row['name'] || '');
+                $f.find('[name="last_name"]').val(row['last_name'] || '');
                 $f.find('[name="email"]').val(row['email'] || '').removeAttr('readonly');
                 $f.find('[name="contact_no"]').val(row['contact_no'] || '');
                 $f.find('[name="institute_code"]').val(row['institute_code'] || '');
@@ -2501,6 +2539,21 @@ $(document).on('click','.genrateMeetingId',function (){
                 $f.find('[name="long"]').val(row['long'] || row['longitude'] || '');
                 $f.find('[name="password"]').removeClass('require').closest('.form-group').find('label sup').addClass('hide');
                 $f.find('.fileNameShow').html(row['teach_image'] || '');
+                $f.find('.bannerNameShow').html(row['banner'] || '');
+                $f.find('.adminAccessControlDiv input[type="checkbox"]').prop('checked', false);
+                var instAccess = {};
+                if (row['access']) {
+                    try {
+                        instAccess = typeof row['access'] === 'object' ? row['access'] : JSON.parse(row['access']);
+                    } catch (e) {
+                        instAccess = {};
+                    }
+                }
+                $.each(instAccess, function(key, val) {
+                    if (val == 1 || val === '1') {
+                        $f.find('.adminAccessControlDiv input[name="' + key + '"]').prop('checked', true);
+                    }
+                });
                 instituteApplyLocationNamesForEdit(row, function() {
                     if (typeof onReady === 'function') {
                         onReady();
@@ -2534,6 +2587,12 @@ $(document).on('click','.genrateMeetingId',function (){
     });
     $(document).on('change', '#input_feilds_institute #institute_sel_city', function() {
         instituteSyncLocationHidden();
+    });
+
+    $(document).on('change', '#input_feilds_institute [name="banner"]', function(e) {
+        if (e.target.files && e.target.files[0]) {
+            $(this).closest('.form-group').find('p.bannerNameShow').html(e.target.files[0].name);
+        }
     });
 
     $(document).on('click', '.addInstitutePop, .edit_institute', function(e) {
@@ -2575,7 +2634,10 @@ $(document).on('click','.genrateMeetingId',function (){
         $addBtn.attr('data-id', '').text($addBtn.attr('data-btn-add') || 'Add Institute');
         $f.find('[name="password"]').addClass('require').closest('.form-group').find('label sup').removeClass('hide');
         $f.find('[name="email"]').removeAttr('readonly');
+        $f.find('[name="banner"]').addClass('require').removeClass('error');
         $f.find('.fileNameShow').html('');
+        $f.find('.bannerNameShow').html('');
+        $f.find('.adminAccessControlDiv input[type="checkbox"]').prop('checked', false);
         $.magnificPopup.open({
             items: { src: '#input_feilds_institute' },
             type: 'inline'
@@ -5578,17 +5640,19 @@ $.magnificPopup.open({
         var ctx1 = document.getElementById('practice_paper').getContext('2d');
         window.myPie = new Chart(ctx1, practice_config);
     }
-    if (Array.isArray(mock_config)) {
-        for (var gr = 0; gr < graph_count; gr++) {
-            if (document.getElementById('mock_paper_' + gr) != null) {
-                var ctx2 = document.getElementById('mock_paper_' + gr).getContext('2d');
-                window.myPie = new Chart(ctx2, mock_config[gr]);
+    if (typeof mock_config !== 'undefined') {
+        if (Array.isArray(mock_config)) {
+            for (var gr = 0; gr < graph_count; gr++) {
+                if (document.getElementById('mock_paper_' + gr) != null) {
+                    var ctx2 = document.getElementById('mock_paper_' + gr).getContext('2d');
+                    window.myPie = new Chart(ctx2, mock_config[gr]);
+                }
             }
-        }
-    } else {
-        if (document.getElementById('mock_paper') != null) {
-            var ctx2 = document.getElementById('mock_paper').getContext('2d');
-            window.myPie = new Chart(ctx2, mock_config);
+        } else {
+            if (document.getElementById('mock_paper') != null) {
+                var ctx2 = document.getElementById('mock_paper').getContext('2d');
+                window.myPie = new Chart(ctx2, mock_config);
+            }
         }
     }
 

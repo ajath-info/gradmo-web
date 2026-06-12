@@ -123,6 +123,33 @@
 		<div id="rmPlayerBody" class="rm-player-body"></div>
 	</div>
 </div>
+
+<!-- Upload Recording Modal -->
+<div id="rmUploadModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9998; align-items: center; justify-content: center;">
+	<div style="background: #fff; border-radius: 14px; padding: 24px; max-width: 500px; width: 90%;">
+		<h3 style="margin: 0 0 16px; font-size: 1.1rem;">Upload Recording</h3>
+		<form id="rmUploadForm" enctype="multipart/form-data">
+			<div style="margin-bottom: 16px;">
+				<label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.9rem;">Recording Title (optional)</label>
+				<input type="text" id="rmUploadTitle" placeholder="e.g., Class Recording - June 5" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 0.95rem; box-sizing: border-box;">
+			</div>
+			<div style="margin-bottom: 16px;">
+				<label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.9rem;">Video File (MP4, MOV, AVI, MKV, WebM) *</label>
+				<input type="file" id="rmUploadFile" accept="video/*" required style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 0.95rem; box-sizing: border-box;">
+				<small style="color: #666; display: block; margin-top: 4px;">Max size: 2GB</small>
+			</div>
+			<div style="margin-bottom: 20px;">
+				<label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.9rem;">Description (optional)</label>
+				<textarea id="rmUploadDesc" placeholder="Add notes about this recording..." style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 0.95rem; box-sizing: border-box; min-height: 80px; font-family: inherit;"></textarea>
+			</div>
+			<div style="display: flex; gap: 10px; justify-content: flex-end;">
+				<button type="button" id="rmUploadCancel" class="btn btn-outline-secondary btn-sm">Cancel</button>
+				<button type="submit" id="rmUploadSubmit" class="btn btn-success btn-sm">Upload</button>
+			</div>
+		</form>
+	</div>
+</div>
+
 <script>
 (function () {
 	var batchId = <?php echo (int) (isset($batch_id) ? $batch_id : 0); ?>;

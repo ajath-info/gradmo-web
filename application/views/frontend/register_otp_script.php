@@ -42,6 +42,8 @@
 
 		document.getElementById('reg_send_otp_btn').addEventListener('click', function () {
 			var name = (document.getElementById('reg_name').value || '').trim();
+			var lastNameEl = document.getElementById('reg_last_name');
+			var lastName = lastNameEl ? (lastNameEl.value || '').trim() : '';
 			var email = (document.getElementById('reg_email').value || '').trim();
 			var mob = (document.getElementById('reg_mobile').value || '').trim().replace(/\D/g, '');
 			var password = document.getElementById('reg_password').value || '';
@@ -61,6 +63,7 @@
 				headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
 				body: JSON.stringify({
 					name: name,
+					last_name: lastName,
 					email: email,
 					mobile: mob,
 					password: password,

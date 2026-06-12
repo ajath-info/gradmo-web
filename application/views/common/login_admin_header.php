@@ -64,7 +64,7 @@
 		var base_url = "<?php echo base_url();?>";
 		var site_logo = "<?php echo base_url();?>assets/images/favicon.png";
         var ltr_status_msg = "<?php echo html_escape($this->common->languageTranslator('ltr_status_msg')); ?>";
-		var ltr_matching_msg = "<?php echo html_escape($this->common->languageTranslator('ltr_matching_msg')); ?>";
+		var ltr_matching_msg = "<?php echo html_escape($this->common->languageTranslator('ltr_matching_msg')); ?> bbbb";
 		var ltr_select_chapter ="<?php echo html_escape($this->common->languageTranslator('ltr_select_chapter')); ?>";
 		var ltr_select_subject ="<?php echo html_escape($this->common->languageTranslator('ltr_select_subject')); ?>";
 		var ltr_subject ="<?php echo html_escape($this->common->languageTranslator('ltr_subject')); ?>";

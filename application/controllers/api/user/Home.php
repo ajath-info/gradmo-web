@@ -364,6 +364,11 @@ class Home extends MY_Controller {
 	            echo json_encode(['status' => 'false', 'msg' => 'Invalid password']);
 	            return;
 	        }
+            // Deleted accounts (delete=1) cannot log in.
+            if (isset($student['delete']) && (string) $student['delete'] === '1') {
+                echo json_encode(['status' => 'false', 'msg' => 'This account has been deleted']);
+                return;
+            }
             if ($student['status'] == 0) {
 	            echo json_encode(['status' => 'false', 'msg' => 'Student is not active']);
 	            return;
@@ -404,6 +409,11 @@ class Home extends MY_Controller {
 	        // VERIFY PASSWORD
 	        if (!$this->is_valid_password($password, isset($user['password']) ? $user['password'] : '')) {
 	            echo json_encode(['status' => 'false', 'msg' => 'Invalid password']);
+	            return;
+	        }
+	        // Deleted accounts (delete=1) cannot log in.
+	        if (isset($user['delete']) && (string) $user['delete'] === '1') {
+	            echo json_encode(['status' => 'false', 'msg' => 'This account has been deleted']);
 	            return;
 	        }
 
@@ -525,6 +535,8 @@ class Home extends MY_Controller {
 	    // 		 COMMON DATA
 	    // ==============================
 	    $name        = trim((string) $data['name']);
+	    // last_name (keys are lower-cased by normalize_multi_user_registration_data).
+	    $last_name   = isset($data['last_name']) ? trim((string) $data['last_name']) : (isset($data['lastname']) ? trim((string) $data['lastname']) : '');
 	    $password    = trim((string) $data['password']);
 	    
 	    $device_id   = $data['device_id'] ?? '';
@@ -558,6 +570,7 @@ class Home extends MY_Controller {
 	            $studentData = [
 	                'admin_id'        => $admin_id,
 	                'name'            => $name,
+	                'last_name'       => $last_name,
 	                'email'           => $email,
 	                'added_by'        => 'student',
 	                'status'          => 1,
@@ -587,6 +600,7 @@ class Home extends MY_Controller {
 	            'userType'     => 'student',
 	            'studentId'    => $student['id'],
 	            'name'         => $student['name'],
+	            'last_name'    => isset($student['last_name']) ? $student['last_name'] : '',
 	            'email'        => $student['email'],
 	            'mobile'       => $student['contact_no'],
 	            'device_id'    => $student['device_id'],
@@ -606,6 +620,7 @@ class Home extends MY_Controller {
 
 	            $userData = [
 	                'name'         => $name,
+	                'last_name'    => $last_name,
 	                'email'        => $email,
 	                'mobile'       => $mobile,
 	                'user_type'    => $user_type,
@@ -632,6 +647,7 @@ class Home extends MY_Controller {
 	            'userType' => $user['user_type'],
 	            'userId'   => $user['id'],
 	            'name'     => $user['name'],
+	            'last_name' => isset($user['last_name']) ? $user['last_name'] : '',
 	            'email'    => $user['email'],
 	            'mobile'   => $user['mobile'],
 	            'image'    => profile_image_url($user['image'], isset($user['role']) ? $user['role'] : 0, isset($user['user_type']) ? $user['user_type'] : ''),
@@ -653,11 +669,12 @@ class Home extends MY_Controller {
 
 	    $this->db->trans_complete();
 
+	    // Self-registration: never email the password (only admin/institute-created
+	    // accounts receive their password by email, via the *_register templates).
 	    $register_vars = array(
 	        'name' => $name,
 	        'email' => $email,
 	        'mobile' => $mobile,
-	        'password' => $password,
 	        'link' => base_url('login'),
 	        'otp' => (string) $otp,
 	    );
@@ -1250,7 +1267,7 @@ public function otherBatchData($data){
         $data_arr = array();
 
         $fields = array(
-            'name', 'email', 'address', 'country',
+            'name', 'last_name', 'email', 'address', 'country',
             'state', 'city', 'pincode', 'school_college_name', 'grade', 'is_complete',
         );
 
@@ -1404,6 +1421,7 @@ public function otherBatchData($data){
 
         $map = array(
             'name' => 'name',
+            'last_name' => 'last_name',
             'email' => 'email',
             'mobile' => 'mobile',
             'address' => 'address',
@@ -4974,46 +4992,49 @@ public function otherBatchData($data){
     
     function deleteAccount(){
         $data = $_REQUEST;
-        $payload = $this->require_auth_payload(array('student'), is_array($data) ? $data : null);
+        // All three account types can delete their own account:
+        // student -> students table, teacher/institute -> users table.
+        $payload = $this->require_auth_payload(array('student', 'teacher', 'institute'), is_array($data) ? $data : null);
         if ($payload === false) {
             return;
         }
 
-        $student_id = (int) $payload['uid'];
-        if ($student_id > 0) {
-            if ($this->authorize_student_request($student_id, is_array($data) ? $data : null) === false) {
-                return;
+        $uid = (int) $payload['uid'];
+        $user_type = $this->normalize_payload_ut($payload); // '3'->teacher, '4'->institute, else as-is
+        if ($uid < 1) {
+            echo json_encode(array('status' => false, 'message' => 'Invalid token user'), JSON_UNESCAPED_SLASHES);
+            die;
+        }
+
+        // Students live in `students`; teachers and institutes live in `users`.
+        // Deletion is tracked by the dedicated `delete` flag (0 = active, 1 = deleted),
+        // separate from `status` (admin active/inactive). `delete` is a reserved word.
+        $table = ($user_type === 'student') ? 'students' : 'users';
+        $row = $this->db_model->select_data('name,email', $table . ' use index (id)', array('id' => $uid), 1);
+        $check = $this->db_model->update_data_limit($table, array('delete' => '1'), array('id' => $uid), 1);
+
+        if($check){
+            if (!empty($row[0])) {
+                $this->common->send_email(array(
+                    'purpose' => 'account_delete',
+                    'user_id' => $uid,
+                    'user_type' => $user_type,
+                    'to_email' => $row[0]['email'],
+                    'dynamic_var' => array(
+                        'name' => $row[0]['name'],
+                        'link' => base_url('login'),
+                    ),
+                ));
             }
-            $student_row = $this->db_model->select_data('name,email', 'students use index (id)', array('id' => $student_id), 1);
-            $check = $this->db_model->update_data_limit('students use index (id)',array('status'=>0,),array('id'=>$student_id),1);
-            if($check){
-                if (!empty($student_row[0])) {
-                    $this->common->send_email(array(
-                        'purpose' => 'account_delete',
-                        'user_id' => $student_id,
-                        'user_type' => 'student',
-                        'to_email' => $student_row[0]['email'],
-                        'dynamic_var' => array(
-                            'name' => $student_row[0]['name'],
-                            'link' => base_url('login'),
-                        ),
-                    ));
-                }
-               $arr = array(
-                   'status'=>true,
-                   'message'=>$this->lang->line('ltr_accountDelete')
-                   );
-            }else{
-               $arr = array(
-                   'status'=>false,
-                   'message'=>$this->lang->line('ltr_something_msg')
-                   );
-            }
+            $arr = array(
+                'status'=>true,
+                'message'=>$this->lang->line('ltr_accountDelete')
+            );
         }else{
-             $arr = array(
-                 'status'=>false,
-                 'message'=>'Invalid token user'
-             );
+            $arr = array(
+                'status'=>false,
+                'message'=>$this->lang->line('ltr_something_msg')
+            );
         }
         echo json_encode($arr,JSON_UNESCAPED_SLASHES);
         die;
@@ -5246,6 +5267,8 @@ public function otherBatchData($data){
 			'studentId'    => (int) $student['id'],
 			'adminId'      => (int) $student['admin_id'],
 			'name'         => $student['name'],
+			'lastName'     => isset($student['last_name']) ? $student['last_name'] : '',
+			'last_name'    => isset($student['last_name']) ? $student['last_name'] : '',
 			'email'        => $student['email'],
 			'mobile'       => $student['contact_no'],
 			'contactNo'    => $student['contact_no'],
@@ -5311,6 +5334,8 @@ public function otherBatchData($data){
 			'userId'       => (int) $user['id'],
 			'adminId'      => $admin_id,
 			'name'         => isset($user['name']) ? $user['name'] : '',
+			'lastName'     => isset($user['last_name']) ? $user['last_name'] : '',
+			'last_name'    => isset($user['last_name']) ? $user['last_name'] : '',
 			'email'        => isset($user['email']) ? $user['email'] : '',
 			'mobile'       => $mobile,
 			'contactNo'    => $mobile,

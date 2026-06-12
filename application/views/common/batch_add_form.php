@@ -46,6 +46,11 @@
     					</div>
     				</div>
     				
+                    <?php if($this->session->userdata('role') == 4){
+    					// Institute login: it can only assign batches to itself, so post its own id and hide the selector.
+    					?>
+    					<input type="hidden" id="institute_id" name="institute_id" value="<?php echo (int) $this->session->userdata('uid'); ?>">
+    				<?php }else{ ?>
                     <div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
     					<div class="form-group">
     						<label>Institute <span class="text-muted">(optional)</span></label>
@@ -59,6 +64,7 @@
     						</select>
     					</div>
     				</div>
+    				<?php } ?>
     				<div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
     					<div class="form-group">
     						<label>Batch mode (Online / Offline) <sup>*</sup></label>
@@ -467,29 +473,41 @@
             </form>
 
 <script>
-(function() {
-    // Toggle Batch Price fields based on Batch Type selection
-    function togglePriceFields() {
-        var isPaid = $("input[name='batchType'][value='2']").is(':checked');
-        var $priceFields = $('.batchPrice');
-
-        if (isPaid) {
-            $priceFields.show();
-            $('#batchPrice, #batchOfferPrice').addClass('require');
-        } else {
-            $priceFields.hide();
-            $('#batchPrice, #batchOfferPrice').removeClass('require');
-        }
+// Wait for jQuery to load, then initialize batch price toggle
+function initBatchPriceToggle() {
+    if (typeof jQuery === 'undefined') {
+        // jQuery not ready yet, try again in 100ms
+        setTimeout(initBatchPriceToggle, 100);
+        return;
     }
 
-    // Bind to radio button change
-    $(document).on('change', "input[name='batchType']", function() {
-        togglePriceFields();
-    });
+    (function($) {
+        // Toggle Batch Price fields based on Batch Type selection
+        function togglePriceFields() {
+            var isPaid = $("input[name='batchType'][value='2']").is(':checked');
+            var $priceFields = $('.batchPrice');
 
-    // Initialize on document ready
-    $(document).ready(function() {
-        togglePriceFields();
-    });
-})();
+            if (isPaid) {
+                $priceFields.show();
+                $('#batchPrice, #batchOfferPrice').addClass('require');
+            } else {
+                $priceFields.hide();
+                $('#batchPrice, #batchOfferPrice').removeClass('require');
+            }
+        }
+
+        // Bind to radio button change
+        $(document).on('change', "input[name='batchType']", function() {
+            togglePriceFields();
+        });
+
+        // Initialize on document ready
+        $(function() {
+            togglePriceFields();
+        });
+    })(jQuery);
+}
+
+// Start the initialization
+initBatchPriceToggle();
 </script>

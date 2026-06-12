@@ -18,7 +18,7 @@
     		</div>
 		</div>
 			<?php 
-			if(!empty($teacher_data) && $teacher_data>=1){
+			if(!empty($teacher_data) && $teacher_data>=1){ 
 			?>
 	    <div class="edu_main_wrapper edu_table_wrapper">		
 			<div class="edu_admin_informationdiv sectionHolder dropdown_height">
@@ -51,7 +51,7 @@
 			     echo '<section class="edu_admin_content">
                         <div class="edu_admin_right sectionHolder edu_add_users">
                             <div class="edu_admin_informationdiv edu_main_wrapper">
-                                <div class="eac_text eac_page_re">'.html_escape($this->common->languageTranslator('ltr_teacher_no_data')).'</div>
+                                <div class="eac_text eac_page_re">'.html_escape($this->common->languageTranslator('ltr_teacher_no_data')).'jjjjjjjjj</div>
                             </div>
                         </div>
                     </section>';
@@ -70,6 +70,12 @@
                         <div class="form-group">
                             <label><?php echo html_escape($this->common->languageTranslator('ltr_name'));?><sup>*</sup></label>
                             <input type="text" class="form-control require alphaField" name="name" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_name'));?>">
+                        </div>
+                    </div>
+                    <div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
+                        <div class="form-group">
+                            <label><?php echo html_escape($this->common->languageTranslator('ltr_last_name'));?></label>
+                            <input type="text" class="form-control alphaField" name="last_name" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_last_name'));?>">
                         </div>
                     </div>
                     <div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">

@@ -362,6 +362,8 @@ class Zoom_rest_client
 			'settings' => array(
 				'join_before_host' => true,
 				'waiting_room' => false,
+				'auto_recording' => 'cloud',  // Enable automatic cloud recording
+				'approval_type' => 0,          // No approval needed
 			),
 		);
 		if ($agenda !== '') {
