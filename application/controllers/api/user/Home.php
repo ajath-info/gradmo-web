@@ -364,8 +364,8 @@ class Home extends MY_Controller {
 	            echo json_encode(['status' => 'false', 'msg' => 'Invalid password']);
 	            return;
 	        }
-            // Deleted accounts (delete=1) cannot log in.
-            if (isset($student['delete']) && (string) $student['delete'] === '1') {
+            // Deleted accounts (deleted=1) cannot log in.
+            if (isset($student['deleted']) && (string) $student['deleted'] === '1') {
                 echo json_encode(['status' => 'false', 'msg' => 'This account has been deleted']);
                 return;
             }
@@ -411,8 +411,8 @@ class Home extends MY_Controller {
 	            echo json_encode(['status' => 'false', 'msg' => 'Invalid password']);
 	            return;
 	        }
-	        // Deleted accounts (delete=1) cannot log in.
-	        if (isset($user['delete']) && (string) $user['delete'] === '1') {
+	        // Deleted accounts (deleted=1) cannot log in.
+	        if (isset($user['deleted']) && (string) $user['deleted'] === '1') {
 	            echo json_encode(['status' => 'false', 'msg' => 'This account has been deleted']);
 	            return;
 	        }
@@ -5007,11 +5007,11 @@ public function otherBatchData($data){
         }
 
         // Students live in `students`; teachers and institutes live in `users`.
-        // Deletion is tracked by the dedicated `delete` flag (0 = active, 1 = deleted),
-        // separate from `status` (admin active/inactive). `delete` is a reserved word.
+        // Deletion is tracked by the dedicated `deleted` flag (0 = active, 1 = deleted),
+        // separate from `status` (admin active/inactive).
         $table = ($user_type === 'student') ? 'students' : 'users';
         $row = $this->db_model->select_data('name,email', $table . ' use index (id)', array('id' => $uid), 1);
-        $check = $this->db_model->update_data_limit($table, array('delete' => '1'), array('id' => $uid), 1);
+        $check = $this->db_model->update_data_limit($table, array('deleted' => '1'), array('id' => $uid), 1);
 
         if($check){
             if (!empty($row[0])) {
