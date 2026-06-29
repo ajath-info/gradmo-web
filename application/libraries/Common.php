@@ -104,7 +104,8 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 		/**
 		 * Send email using `templates` row by purpose.
 		 *
-		 * $arr['purpose']     — templates.purpose (required), e.g. register, forgot_password
+		 * $arr['purpose']     — templates.purpose (required), e.g. register, forgot_password, reset_password, password_changed
+		 * $arr['purpose_fallbacks'] — optional extra purpose keys if primary template is missing
 		 * $arr['user_id']     — optional; used to resolve email/name if to_email omitted
 		 * $arr['user_type']   — student|teacher|institute (optional with user_id)
 		 * $arr['to_email']    — override recipient
@@ -124,26 +125,19 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 			}
 
 			// templates.status: 1 = Active, 0 = Inactive (only active templates are sent).
-			$template = $this->CI->db_model->select_data(
-				'*',
-				'templates',
-				array('purpose' => $purpose, 'template_for' => $template_for, 'status' => '1'),
-				1,
-				array('id', 'desc')
-			);
-			if (empty($template[0]) && $template_for !== 'email') {
-				$template = $this->CI->db_model->select_data(
-					'*',
-					'templates',
-					array('purpose' => $purpose, 'template_for' => 'email', 'status' => '1'),
-					1,
-					array('id', 'desc')
-				);
+			$fallback_purposes = array();
+			if (!empty($arr['purpose_fallbacks']) && is_array($arr['purpose_fallbacks'])) {
+				foreach ($arr['purpose_fallbacks'] as $fp) {
+					$fp = trim((string) $fp);
+					if ($fp !== '' && $fp !== $purpose) {
+						$fallback_purposes[] = $fp;
+					}
+				}
 			}
-			if (empty($template[0])) {
+			$row = $this->email_find_template($purpose, $template_for, $fallback_purposes);
+			if (empty($row)) {
 				return array('status' => false, 'msg' => 'Email template not found or inactive: ' . $purpose);
 			}
-			$row = $template[0];
 
 			$userMeta = $this->email_resolve_user(
 				isset($arr['user_id']) ? (int) $arr['user_id'] : 0,
@@ -165,6 +159,10 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 				'link' => base_url('login'),
 				'year' => date('Y'),
 			);
+			if (!isset($arr['dynamic_var']) || !is_array($arr['dynamic_var'])) {
+				$arr['dynamic_var'] = array();
+			}
+			$arr['dynamic_var']['CURRENT_YEAR'] = date('Y');
 			if (!empty($userMeta)) {
 				$vars = array_merge($vars, $userMeta);
 			}
@@ -173,6 +171,13 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 					$vars[$k] = is_scalar($v) || $v === null ? (string) $v : '';
 				}
 			}
+			if (!empty($vars['name'])) {
+				$vars['NAME'] = $vars['name'];
+				$vars['USER_NAME'] = $vars['name'];
+			}
+			$vars['SITE_NAME'] = isset($vars['site_name']) ? $vars['site_name'] : $this->siteTitle;
+			$vars['LOGIN_LINK'] = isset($vars['link']) ? $vars['link'] : base_url('login');
+			$vars['SUPPORT_EMAIL'] = isset($vars['support_email']) ? $vars['support_email'] : $this->siteOwnerEmail;
 
 			$subject = $this->email_apply_vars(isset($row['title']) ? $row['title'] : $purpose, $vars);
 			$description = $this->email_apply_vars(isset($row['description']) ? $row['description'] : '', $vars);
@@ -191,6 +196,11 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 				$body = '<p><img src="' . $img_url . '" alt="" style="max-width:200px;"></p>' . $body;
 			}
 
+			// Optional caller-supplied HTML appended to the rendered template (e.g. an admin note).
+			if (!empty($arr['append_html'])) {
+				$body .= (string) $arr['append_html'];
+			}
+
 			$sent = $this->email_dispatch($to_email, $subject, $body);
 			return array(
 				'status' => $sent ? true : false,
@@ -198,6 +208,84 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 				'to' => $to_email,
 				'subject' => $subject,
 			);
+		}
+
+		/**
+		 * Resolve an active templates row: exact purpose, then LIKE %purpose%, then optional fallbacks.
+		 *
+		 * @param string $purpose
+		 * @param string $template_for
+		 * @param array  $fallback_purposes
+		 * @return array|null
+		 */
+		private function email_find_template($purpose, $template_for = 'email', array $fallback_purposes = array())
+		{
+			$purpose = trim((string) $purpose);
+			$template_for = trim((string) $template_for);
+			if ($template_for === '') {
+				$template_for = 'email';
+			}
+			if ($purpose === '') {
+				return null;
+			}
+
+			$candidates = array($purpose);
+			foreach ($fallback_purposes as $fp) {
+				$fp = trim((string) $fp);
+				if ($fp !== '' && !in_array($fp, $candidates, true)) {
+					$candidates[] = $fp;
+				}
+			}
+
+			foreach ($candidates as $candidate) {
+				$row = $this->email_find_template_once($candidate, $template_for, true);
+				if (!empty($row)) {
+					return $row;
+				}
+				$row = $this->email_find_template_once($candidate, $template_for, false);
+				if (!empty($row)) {
+					return $row;
+				}
+			}
+
+			if ($template_for !== 'email') {
+				return $this->email_find_template($purpose, 'email', $fallback_purposes);
+			}
+
+			return null;
+		}
+
+		/**
+		 * @param string $purpose
+		 * @param string $template_for
+		 * @param bool   $exact
+		 * @return array|null
+		 */
+		private function email_find_template_once($purpose, $template_for, $exact = true)
+		{
+			if ($exact) {
+				$rows = $this->CI->db_model->select_data(
+					'*',
+					'templates',
+					array('purpose' => $purpose, 'template_for' => $template_for, 'status' => '1'),
+					1,
+					array('id', 'desc')
+				);
+				return !empty($rows[0]) ? $rows[0] : null;
+			}
+
+			$this->CI->db->from('templates');
+			$this->CI->db->where('status', '1');
+			$this->CI->db->where('template_for', $template_for);
+			$this->CI->db->like('purpose', $purpose, 'both');
+			$this->CI->db->order_by('id', 'desc');
+			$this->CI->db->limit(1);
+			$query = $this->CI->db->get();
+			if ($query->num_rows() > 0) {
+				return $query->row_array();
+			}
+
+			return null;
 		}
 
 		private function email_resolve_user($user_id, $user_type = '')
@@ -279,13 +367,26 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 				'mailtype' => 'html',
 				'smtp_crypto' => $this->general_settings('smtp_encryption'),
 				'newline' => "\r\n",
+				// Reuse one SMTP connection across sends. Without this, CI opens+QUITs a new
+				// connection per email and Gmail drops it (errno=32 "Broken pipe") in bulk loops.
+				'smtp_keepalive' => true,
+				'smtp_timeout' => 30,
+				// Do NOT word-wrap: long URLs (e.g. reset links) must not get a space/line-break
+				// inserted, which would corrupt the token when clicked.
+				'wordwrap' => false,
 			);
 			$this->CI->email->clear(true);
 			$this->CI->email->initialize($config);
 			$this->CI->email->from($frommail, $this->siteTitle);
 			$this->CI->email->to($to_email);
+			$this->CI->email->reply_to($frommail, $this->siteTitle);
 			$this->CI->email->subject($subject);
 			$this->CI->email->message($body);
+			// Plain-text alternative for the HTML body — HTML-only mail scores higher as spam.
+			$alt = trim(preg_replace('/\s+/', ' ', strip_tags(str_ireplace(array('<br>', '<br/>', '<br />', '</p>', '</div>', '</tr>'), "\n", $body))));
+			if ($alt !== '') {
+				$this->CI->email->set_alt_message($alt);
+			}
 
 			return (bool) @$this->CI->email->send();
 		}
@@ -319,7 +420,10 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 		public function email_verify_token_parse($token)
 		{
-			$token = trim((string) $token);
+			// Email clients may wrap long links and inject spaces/newlines (often arriving as %20)
+			// into the token. Decode percent-encoding first, then strip ALL whitespace.
+			// base64url never contains whitespace, so this is safe.
+			$token = preg_replace('/\s+/', '', rawurldecode((string) $token));
 			if ($token === '') {
 				return false;
 			}
@@ -432,5 +536,261 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 				'msg' => 'Your email has been verified successfully. You can now log in.',
 			);
 		}
+	
+
+
+
+public function email_already_sent(
+    $purpose,
+    $user_id,
+    $user_type,
+    $batch_id,
+    $period
+)
+{
+    return $this->CI->db
+        ->where('purpose', $purpose)
+        ->where('user_id', $user_id)
+        ->where('user_type', $user_type)
+        ->where('batch_id', $batch_id)
+        ->where('period_key', $period)
+        ->count_all_results('email_notification_logs') > 0;
+}
+
+		public function email_log_sent( $purpose, $user_id, $user_type, $batch_id, $period, $email) {
+
+			return $this->CI->db->insert(
+				'email_notification_logs',
+				array(
+					'purpose'    => $purpose,
+					'user_id'    => $user_id,
+					'user_type'  => $user_type,
+					'batch_id'   => $batch_id,
+					'period_key' => $period,
+					'email'      => $email,
+					'sent_at'    => date('Y-m-d H:i:s')
+				)
+			);
+		}
+
+		/**
+		 * Application-fee rules for a STUDENT paying for a batch. Returns a breakdown in RUPEES:
+		 *   - first_time     (no prior enrollment anywhere)      => flat 499 (first batch fee free)
+		 *   - same_institute (already enrolled at this institute) => 99 + batch fee
+		 *   - new_institute  (enrolled before, but not here)     => 499 + batch fee
+		 * "institute" = batches.institute_id; "already enrolled" = any student_batchs row at that
+		 * institute (paid online, admin-added, or free) for a batch OTHER than the one being bought.
+		 *
+		 * @return array{scenario:string,application_fee:float,batch_fee:float,total:float,institute_id:int}|null
+		 */
+		public function compute_application_fee($student_id, $batch_id)
+		{
+			$student_id = (int) $student_id;
+			$batch_id = (int) $batch_id;
+			if ($student_id < 1 || $batch_id < 1) {
+				return null;
+			}
+			$batch = $this->CI->db_model->select_data('id,institute_id,batch_price,batch_offer_price', 'batches use index (id)', array('id' => $batch_id), 1);
+			if (empty($batch[0])) {
+				return null;
+			}
+			$institute_id = isset($batch[0]['institute_id']) ? (int) $batch[0]['institute_id'] : 0;
+			$offer = isset($batch[0]['batch_offer_price']) ? (float) $batch[0]['batch_offer_price'] : 0.0;
+			$price = isset($batch[0]['batch_price']) ? (float) $batch[0]['batch_price'] : 0.0;
+			// Batch fee = batch_price - batch_offer_price (offer price is a discount off the regular price).
+			$batch_fee = max(0.0, $price - $offer);
+
+			// Free institute (users.paid = '0'): batch fee AND application/subscription fee are 0.
+			if ($institute_id > 0 && $this->CI->db->field_exists('paid', 'users')) {
+				$inst = $this->CI->db_model->select_data('paid', 'users use index (id)', array('id' => $institute_id), 1);
+				if (!empty($inst) && isset($inst[0]['paid']) && (string) $inst[0]['paid'] === '0') {
+					return array('scenario' => 'free_institute', 'application_fee' => 0.0, 'batch_fee' => 0.0, 'total' => 0.0, 'institute_id' => $institute_id);
+				}
+			}
+
+			// Fee amounts (rupees). Change here if they ever differ.
+			$FEE_FIRST = 499.0;          // first ever enrollment — flat, first batch fee free
+			$FEE_NEW_INSTITUTE = 499.0;  // first batch at an institute the student hasn't joined
+			$FEE_SAME_INSTITUTE = 99.0;  // additional batch at an institute already joined
+
+			// Institutes the student has already ENROLLED at (any student_batchs row), excluding the
+			// batch currently being purchased.
+			$this->CI->db->reset_query();
+			$this->CI->db->select('b.institute_id AS institute_id', false)
+				->from('student_batchs sb')
+				->join('batches b', 'b.id = sb.batch_id', 'left')
+				->where('sb.student_id', $student_id)
+				->where('sb.batch_id !=', $batch_id);
+			$rows = $this->CI->db->get()->result_array();
+
+			$has_prior = !empty($rows);
+			$joined_institutes = array();
+			foreach ((array) $rows as $r) {
+				$joined_institutes[(int) $r['institute_id']] = true;
+			}
+
+			if (!$has_prior) {
+				return array('scenario' => 'first_time', 'application_fee' => $FEE_FIRST, 'batch_fee' => 0.0, 'total' => $FEE_FIRST, 'institute_id' => $institute_id);
+			}
+			if ($institute_id > 0 && isset($joined_institutes[$institute_id])) {
+				return array('scenario' => 'same_institute', 'application_fee' => $FEE_SAME_INSTITUTE, 'batch_fee' => $batch_fee, 'total' => $FEE_SAME_INSTITUTE + $batch_fee, 'institute_id' => $institute_id);
+			}
+			return array('scenario' => 'new_institute', 'application_fee' => $FEE_NEW_INSTITUTE, 'batch_fee' => $batch_fee, 'total' => $FEE_NEW_INSTITUTE + $batch_fee, 'institute_id' => $institute_id);
+		}
+
+	
+
+
+		/**
+		 * Send a transactional SMS via MSG91. Credentials come from general_settings:
+		 *   msg91_authkey      — MSG91 auth key (required)
+		 *   msg91_sender       — 6-char sender / DLT header (required for India)
+		 *   msg91_route        — route id (default 4 = transactional)
+		 *   msg91_country      — country code (default 91)
+		 *   msg91_template_id  — optional DLT Flow template id; if set, the Flow API is used and the
+		 *                        whole message is passed as the single variable {#var#}/var1.
+		 *
+		 * @param string $mobile   recipient number (10-digit, or with country code)
+		 * @param string $message
+		 * @return array{ok:bool,http_code:int,response:string,error:string}
+		 */
+		public function send_sms($mobile, $message)
+		{
+			$mobile = preg_replace('/\D+/', '', (string) $mobile);
+			$message = trim((string) $message);
+			$authkey = trim((string) $this->general_settings('msg91_authkey'));
+			$sender = trim((string) $this->general_settings('msg91_sender'));
+			$route = trim((string) $this->general_settings('msg91_route'));
+			$country = trim((string) $this->general_settings('msg91_country'));
+			$template_id = trim((string) $this->general_settings('msg91_template_id'));
+			if ($route === '') { $route = '4'; }
+			if ($country === '') { $country = '91'; }
+
+			if ($authkey === '') {
+				return array('ok' => false, 'http_code' => 0, 'response' => '', 'error' => 'MSG91 auth key is not configured.');
+			}
+			if ($mobile === '' || $message === '') {
+				return array('ok' => false, 'http_code' => 0, 'response' => '', 'error' => 'Mobile and message are required.');
+			}
+			// Normalise to country-code + 10 digits (MSG91 expects e.g. 9198XXXXXXXX).
+			if (strlen($mobile) === 10) {
+				$mobile = $country . $mobile;
+			}
+
+			if ($template_id !== '') {
+				// MSG91 v5 Flow API (DLT). Template must expose a single variable named "var1".
+				$url = 'https://control.msg91.com/api/v5/flow/';
+				$payload = json_encode(array(
+					'template_id' => $template_id,
+					'sender' => $sender,
+					'short_url' => '0',
+					'recipients' => array(array('mobiles' => $mobile, 'var1' => $message)),
+				), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+				$headers = array('authkey: ' . $authkey, 'Content-Type: application/json', 'accept: application/json');
+				$ch = curl_init();
+				curl_setopt($ch, CURLOPT_URL, $url);
+				curl_setopt($ch, CURLOPT_POST, true);
+				curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+			} else {
+				// Legacy text API (no DLT template); works for non-DLT / international accounts.
+				$url = 'https://api.msg91.com/api/sendhttp.php?' . http_build_query(array(
+					'authkey' => $authkey,
+					'mobiles' => $mobile,
+					'message' => $message,
+					'sender' => $sender,
+					'route' => $route,
+					'country' => $country,
+				));
+				$headers = array();
+				$ch = curl_init();
+				curl_setopt($ch, CURLOPT_URL, $url);
+			}
+
+			curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+			curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+			curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+			curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+			if (!empty($headers)) {
+				curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+			}
+			$result = curl_exec($ch);
+			$err = $result === false ? curl_error($ch) : '';
+			$http_code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+			curl_close($ch);
+
+			$ok = $result !== false && $http_code >= 200 && $http_code < 300 && stripos((string) $result, 'error') === false;
+			return array('ok' => $ok, 'http_code' => $http_code, 'response' => (string) $result, 'error' => $err);
+		}
+
+		/**
+		 * Low-level FCM (legacy HTTP) sender. Server key comes from general_settings.firebase_key.
+		 *
+		 * @param string|array $tokens one device token or a list of tokens
+		 * @param string       $title
+		 * @param string       $message
+		 * @param array        $data    extra data payload
+		 * @return array{ok:bool,http_code:int,response:string,request:string,error:string}
+		 */
+		public function sendPushNotification($tokens, $title, $message, $data = array())
+		{
+			$tokens = is_array($tokens) ? array_values(array_filter(array_map('strval', $tokens))) : (array) $tokens;
+			$serverKey = trim((string) $this->general_settings('firebase_key'));
+
+			if ($serverKey === '') {
+				return array('ok' => false, 'http_code' => 0, 'response' => '', 'request' => '', 'error' => 'Firebase key is not configured.');
+			}
+			if (empty($tokens)) {
+				return array('ok' => false, 'http_code' => 0, 'response' => '', 'request' => '', 'error' => 'No device tokens.');
+			}
+
+			$payload = array(
+				'registration_ids' => $tokens,
+				'notification'     => array('title' => $title, 'body' => $message),
+				'data'             => $data,
+				'priority'         => 'high',
+			);
+			$body = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+			$ch = curl_init();
+			curl_setopt($ch, CURLOPT_URL, 'https://fcm.googleapis.com/fcm/send');
+			curl_setopt($ch, CURLOPT_POST, true);
+			curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+				'Authorization: key=' . $serverKey,
+				'Content-Type: application/json',
+			));
+			curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+			curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+			curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+			curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+			curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+
+			$result = curl_exec($ch);
+			$err = $result === false ? curl_error($ch) : '';
+			$http_code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+			curl_close($ch);
+
+			// FCM legacy returns {"success":N,"failure":M,...}; treat success>0 as ok.
+			$ok = false;
+			if ($result !== false && $http_code >= 200 && $http_code < 300) {
+				$decoded = json_decode((string) $result, true);
+				$ok = !is_array($decoded) || (isset($decoded['success']) ? (int) $decoded['success'] > 0 : true);
+			}
+
+			return array(
+				'ok'        => $ok,
+				'http_code' => $http_code,
+				'response'  => (string) $result,
+				'request'   => $body,
+				'error'     => $err,
+			);
+		}
+
+	
+	
 	}
+
+
+	
+
+
 ?>

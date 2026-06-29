@@ -100,32 +100,19 @@ class Website extends MY_Controller
 			$data['Allfacilities'] = $this->db_model->select_data('*','facilities use index (id)',array('status'=>'1'),6);
 			$data['courses'] = $this->db_model->select_data('course_name','courses use index (id)',array('status'=>'1','admin_id'=>'1'),5);
 			$data['facilities'] = $this->db_model->select_data('title','facilities use index (id)',array('status'=>'1'),5);
-			$batches = $this->db_model->select_data('*','batches use index (id)',array('status'=>'1','admin_id'=>'1'),3,array('id','DESC'));
-			$data['site_Details'] = $this->db_model->select_data('*','site_details',array('id'=>'1'),1);
 			$data['currency_decimal'] =$this->general_settings('currency_decimal_code');
-			if(!empty($batches)){
-				$batch_ids = array();
-				foreach ($batches as $value) {
-					$batch_ids[] = isset($value['id']) ? (int) $value['id'] : 0;
+			// Curated home batches + site details come from the shared API (website + mobile share one backend).
+			$data['batches'] = '';
+			$data['site_Details'] = array();
+			list($hc_code, $hc_body) = $this->website_proxy_post_json(site_url('api/main/home-content'), array());
+			$hc = json_decode($hc_body, true);
+			if (is_array($hc) && isset($hc['data'])) {
+				if (!empty($hc['data']['batches']) && is_array($hc['data']['batches'])) {
+					$data['batches'] = $hc['data']['batches'];
 				}
-				$teacher_map = $this->home_batch_instructor_map($batch_ids);
-				foreach($batches as $key =>$value){
-					$batches[$key]['description'] = $this->readMoreWord($value['description'], 150);
-					$batch_id = isset($value['id']) ? (int) $value['id'] : 0;
-					$start_time = isset($value['start_time']) ? trim((string) $value['start_time']) : '';
-					$end_time = isset($value['end_time']) ? trim((string) $value['end_time']) : '';
-					$from = ($start_time !== '' && strtotime($start_time)) ? date('g:i A', strtotime($start_time)) : '';
-					$to = ($end_time !== '' && strtotime($end_time)) ? date('g:i A', strtotime($end_time)) : '';
-					$schedule = '';
-					if ($from !== '' || $to !== '') {
-						$schedule = $from . (($from !== '' && $to !== '') ? ' - ' : '') . $to;
-					}
-					$batches[$key]['instructor'] = isset($teacher_map[$batch_id]) ? $teacher_map[$batch_id] : '';
-					$batches[$key]['schedule'] = $schedule;
+				if (!empty($hc['data']['siteDetails']) && is_array($hc['data']['siteDetails'])) {
+					$data['site_Details'] = $hc['data']['siteDetails'];
 				}
-				$data['batches']= $batches;
-			}else{
-				$data['batches'] =''; 
 			}
 			$data['home_institute_api_url'] = site_url('api/institute/listing');
 			$data['home_institute_details_url'] = site_url('institute/details');
@@ -170,6 +157,19 @@ class Website extends MY_Controller
 			$this->render_frontend_layout('frontend/verify_account', $data);
 		}
 
+		public function reset_password_page($token = '')
+		{
+			$data = $this->frontend_shell_data('Reset password');
+			$data['load_auth_form_assets'] = true;
+			// Validate the reset token up front so an expired/invalid link shows a clear message.
+			$parsed = $this->common->email_verify_token_parse($token);
+			$data['reset_token_valid'] = ($parsed !== false);
+			$data['reset_token'] = (string) $token;
+			$data['set_new_password_url'] = site_url('api/user/set-new-password');
+			$data['login_url'] = base_url('login');
+			$this->render_frontend_layout('frontend/reset_password_form', $data);
+		}
+
 		public function update_profile()
 		{
 			if (! isset($this->session->userdata['role'])) {
@@ -177,10 +177,11 @@ class Website extends MY_Controller
 				return;
 			}
 			$data = $this->frontend_shell_data('Update Profile');
-			$uid = (int) $this->session->userdata('uid');
 			$role = (string) $this->session->userdata('role');
+			// Profile prefill comes from the shared API (website + mobile share one backend).
 			$profile = array(
 				'name' => (string) $this->session->userdata('name'),
+				'last_name' => '',
 				'email' => (string) $this->session->userdata('email'),
 				'mobile' => (string) $this->session->userdata('mobile'),
 				'address' => '',
@@ -190,41 +191,14 @@ class Website extends MY_Controller
 				'pincode' => '',
 				'school_college_name' => '',
 				'grade' => '',
-				'show_grade_field' => true,
+				'show_grade_field' => ($role === 'student'),
 			);
-			if ($uid > 0) {
-				if ($role === 'student') {
-					$rows = $this->db_model->select_data('*', 'students use index (id)', array('id' => $uid), 1);
-					if (! empty($rows) && is_array($rows[0])) {
-						$row = $rows[0];
-						$profile['name'] = isset($row['name']) ? (string) $row['name'] : $profile['name'];
-						$profile['email'] = isset($row['email']) ? (string) $row['email'] : $profile['email'];
-						$profile['mobile'] = isset($row['contact_no']) && $row['contact_no'] !== '' ? (string) $row['contact_no'] : (isset($row['mobile']) ? (string) $row['mobile'] : $profile['mobile']);
-						$profile['address'] = isset($row['address']) ? (string) $row['address'] : '';
-						$profile['country'] = isset($row['country']) ? (string) $row['country'] : '';
-						$profile['state'] = isset($row['state']) ? (string) $row['state'] : '';
-						$profile['city'] = isset($row['city']) ? (string) $row['city'] : '';
-						$profile['pincode'] = isset($row['pincode']) ? (string) $row['pincode'] : '';
-						$profile['school_college_name'] = isset($row['school_college_name']) ? (string) $row['school_college_name'] : '';
-						$profile['grade'] = isset($row['grade']) ? (string) $row['grade'] : '';
-					}
-					$profile['show_grade_field'] = true;
-				} else {
-					$rows = $this->db_model->select_data('name,email,mobile,address,country,state,city,pincode,teach_education', 'users use index (id)', array('id' => $uid), 1);
-					if (! empty($rows) && is_array($rows[0])) {
-						$row = $rows[0];
-						$profile['name'] = isset($row['name']) ? (string) $row['name'] : $profile['name'];
-						$profile['email'] = isset($row['email']) ? (string) $row['email'] : $profile['email'];
-						$profile['mobile'] = isset($row['mobile']) ? (string) $row['mobile'] : $profile['mobile'];
-						$profile['address'] = isset($row['address']) ? (string) $row['address'] : '';
-						$profile['country'] = isset($row['country']) ? (string) $row['country'] : '';
-						$profile['state'] = isset($row['state']) ? (string) $row['state'] : '';
-						$profile['city'] = isset($row['city']) ? (string) $row['city'] : '';
-						$profile['pincode'] = isset($row['pincode']) ? (string) $row['pincode'] : '';
-						$profile['school_college_name'] = isset($row['teach_education']) ? (string) $row['teach_education'] : '';
-						$profile['grade'] = '';
-					}
-					$profile['show_grade_field'] = false;
+			$token = $this->website_session_access_token();
+			if ($token !== '') {
+				list($pf_code, $pf_body) = $this->website_proxy_post_json(site_url('api/user/profile'), array(), array('Authorization: Bearer ' . $token));
+				$pf = json_decode($pf_body, true);
+				if (is_array($pf) && !empty($pf['data']['profile']) && is_array($pf['data']['profile'])) {
+					$profile = array_merge($profile, $pf['data']['profile']);
 				}
 			}
 			$data['profile'] = $profile;
@@ -233,7 +207,19 @@ class Website extends MY_Controller
 
 		public function update_password()
 		{
-			$data = $this->frontend_shell_data('Update Password');
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$data = $this->frontend_shell_data('Change Password');
+			// Logged-in user changes their own password via the shared API (browser-direct).
+			$data['change_password_url'] = site_url('api/user/change-password');
+			$data['api_access_token'] = $this->website_session_access_token();
+			$data['login_url'] = base_url('login');
 			$this->render_frontend_layout('frontend/update_password', $data);
 		}
 
@@ -355,11 +341,16 @@ class Website extends MY_Controller
 		 */
 		public function logout()
 		{
-			if ($this->session->userdata('role') === 'student') {
-				$uid = (int) $this->session->userdata('uid');
-				if ($uid > 0) {
-					$this->db_model->update_data_limit('students', array('login_status' => 0), array('id' => $uid), 1);
-				}
+			$uid = (int) $this->session->userdata('uid');
+			if ($uid > 0) {
+				// Single-session: clear login_status (blocks any token) and reset app_token_iat.
+				$table = ($this->session->userdata('role') === 'student') ? 'students' : 'users';
+				$this->db_model->update_data_limit(
+					$table,
+					array('login_status' => 0, 'app_token_iat' => 0),
+					array('id' => $uid),
+					1
+				);
 			}
 			$this->session->sess_destroy();
 			redirect(base_url('login'));
@@ -371,8 +362,14 @@ class Website extends MY_Controller
 				redirect(base_url('login'));
 				return;
 			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
 			$data = $this->frontend_shell_data($this->common->languageTranslator('ltr_payment_history'));
-			$data['payment_history_data_url'] = site_url('payment-history-data');
+			// Call the shared API directly from the browser (like batch list), with the session token.
+			$data['payment_history_data_url'] = site_url('api/user/payment-history');
+			$data['api_access_token'] = $this->website_session_access_token();
 			$this->render_frontend_layout('frontend/payment_history', $data);
 		}
 
@@ -818,10 +815,41 @@ class Website extends MY_Controller
 				redirect(base_url('login'));
 				return;
 			}
-			$data = $this->frontend_shell_data('Batches');
-			$data['batch_list_data_url'] = site_url('batch/list-data');
+			// One page for both "all" and "my" batches (like institute listing/mylist).
+			// list flag: ?list=my|all wins; else 'my' on the batch/mylist route; default 'all'. Never blank.
+			$list_flag = trim((string) $this->input->get('list'));
+			if ($list_flag === '') {
+				$list_flag = ($this->uri->segment(2) === 'mylist') ? 'my' : 'all';
+			}
+			$is_my = ($list_flag === 'my');
+			$data = $this->frontend_shell_data($is_my ? 'My batches' : 'Batches');
+			// Call the shared API directly from the browser (like batch/details), with the session token.
+			$data['batch_list_data_url'] = site_url('api/batch/batch-list');
+			$data['api_access_token'] = $this->website_session_access_token();
 			$data['batch_details_base'] = site_url('batch/details');
+			$data['is_teacher'] = (int) $this->session->userdata('role') === 3;
+			$data['list_flag'] = $list_flag;
 			$this->render_frontend_layout('frontend/batch_list', $data);
+		}
+
+		public function global_search()
+		{
+			if (! isset($this->session->userdata['role'])) {
+				redirect(base_url('login'));
+				return;
+			}
+			if ($this->website_session_access_token() === '') {
+				redirect(base_url('login'));
+				return;
+			}
+			$data = $this->frontend_shell_data('Search');
+			// Call the shared api/main/global-search directly from the browser with the session token.
+			$data['global_search_url'] = site_url('api/main/global-search');
+			$data['api_access_token'] = $this->website_session_access_token();
+			$data['batch_details_base'] = site_url('batch/details');
+			$data['institute_details_base'] = site_url('institute/details');
+			$data['search_key'] = isset($_GET['key']) ? trim((string) $_GET['key']) : '';
+			$this->render_frontend_layout('frontend/global_search', $data);
 		}
 
 		public function batch_list_data()
@@ -852,30 +880,15 @@ class Website extends MY_Controller
 			if ($payload['limit'] > 100) {
 				$payload['limit'] = 100;
 			}
-			if (isset($in['list']) && trim((string) $in['list']) !== '') {
-				$payload['list'] = trim((string) $in['list']);
-			}
+			// This page is the "all active batches" listing, so default to list=all
+			// (the shared api/batch/batch-list uses list=All for all batches).
+			$payload['list'] = (isset($in['list']) && trim((string) $in['list']) !== '') ? trim((string) $in['list']) : 'all';
 			list($code, $body) = $this->website_proxy_post_json(site_url('api/batch/batch-list'), $payload, array('Authorization: Bearer ' . $token));
 			$this->output->set_status_header((int) $code > 0 ? $code : 200);
 			$this->output->set_content_type('application/json')->set_output($body !== '' ? $body : json_encode(array('status' => 'false', 'msg' => 'Empty response')));
 		}
 
-		public function batch_mylist()
-		{
-			if (! isset($this->session->userdata['role'])) {
-				redirect(base_url('login'));
-				return;
-			}
-			if ($this->website_session_access_token() === '') {
-				redirect(base_url('login'));
-				return;
-			}
-			$data = $this->frontend_shell_data('My batches');
-			$data['batch_mylist_data_url'] = site_url('batch/mylist-data');
-			$data['batch_details_base'] = site_url('batch/details');
-			$data['is_teacher'] = (int) $this->session->userdata('role') === 3;
-			$this->render_frontend_layout('frontend/batch_mylist', $data);
-		}
+		// batch/mylist now routes to batch_list() with list_flag = 'my' (single shared page + view).
 
 		public function batch_mylist_data()
 		{
@@ -905,173 +918,13 @@ class Website extends MY_Controller
 			if ($payload['limit'] > 100) {
 				$payload['limit'] = 100;
 			}
-
-			// For teachers: show created + assigned batches
-			$user_role = (int) $this->session->userdata('role');
-
-			// Directly query batches using db_model instead of complex API
-			$user_id = (int) $this->session->userdata('uid');
-			$admin_id = (int) $this->session->userdata('admin_id');
-			$batches = array();
-
-			if ($user_role === 3) {
-				// Teacher: show created batches (owned by this teacher)
-				$created = $this->db_model->select_data('*', 'batches use index (id)', array('admin_id' => $user_id), '', array('id', 'desc'));
-				if (!empty($created)) {
-					foreach ($created as $b) {
-						$batch_image = !empty($b['batch_image']) ? base_url('uploads/batch_image/' . $b['batch_image']) : '';
-						$batches[] = array(
-							'id' => (int) $b['id'],
-							'batch_id' => (int) $b['id'],
-							'batch_name' => (string) $b['batch_name'],
-							'batchName' => (string) $b['batch_name'],
-							'start_date' => (string) $b['start_date'],
-							'end_date' => (string) $b['end_date'],
-							'startDate' => (string) $b['start_date'],
-							'endDate' => (string) $b['end_date'],
-							'batch_type' => (int) $b['batch_type'],
-							'batch_price' => (string) $b['batch_price'],
-							'batch_mode' => (string) $b['batch_mode'],
-							'batch_image' => $batch_image,
-							'batchImage' => $batch_image,
-							'ownerType' => 'created'
-						);
-					}
-				}
-
-				// Teacher: show assigned batches from teach_batch field
-				$teacher_data = $this->db_model->select_data('teach_batch', 'users', array('id' => $user_id), 1);
-				if (!empty($teacher_data[0]['teach_batch'])) {
-					$batch_ids = array_filter(array_map('intval', explode(',', trim((string) $teacher_data[0]['teach_batch']))));
-					if (!empty($batch_ids)) {
-						// Fetch only assigned batches, skip if already added as created
-						foreach ($batch_ids as $batch_id) {
-							// Skip if already added as created
-							$is_created = false;
-							foreach ($batches as $existing) {
-								if ($existing['id'] === $batch_id) {
-									$is_created = true;
-									break;
-								}
-							}
-							if ($is_created) {
-								continue;
-							}
-
-							$assigned = $this->db_model->select_data('*', 'batches use index (id)', array('id' => $batch_id), 1);
-							if (!empty($assigned)) {
-								$b = $assigned[0];
-								$batch_image = !empty($b['batch_image']) ? base_url('uploads/batch_image/' . $b['batch_image']) : '';
-								$batches[] = array(
-									'id' => $batch_id,
-									'batch_id' => $batch_id,
-									'batch_name' => (string) $b['batch_name'],
-									'batchName' => (string) $b['batch_name'],
-									'start_date' => (string) $b['start_date'],
-									'end_date' => (string) $b['end_date'],
-									'startDate' => (string) $b['start_date'],
-									'endDate' => (string) $b['end_date'],
-									'batch_type' => (int) $b['batch_type'],
-									'batch_price' => (string) $b['batch_price'],
-									'batch_mode' => (string) $b['batch_mode'],
-									'batch_image' => $batch_image,
-									'batchImage' => $batch_image,
-									'ownerType' => 'assigned'
-								);
-							}
-						}
-					}
-				}
-
-				// Teacher: also show batches where teacher is assigned to subjects (from batch_subjects)
-				$batch_subjects_all = $this->db_model->select_data('batch_id', 'batch_subjects', array('teacher_id' => $user_id), '');
-
-				if (!empty($batch_subjects_all)) {
-					// Get unique batch IDs
-					$unique_batch_ids = array_unique(array_map(function($item) { return (int) $item['batch_id']; }, $batch_subjects_all));
-
-					foreach ($unique_batch_ids as $batch_id) {
-						// Skip if already added as created or assigned
-						$is_existing = false;
-						foreach ($batches as $existing) {
-							if ($existing['id'] === $batch_id) {
-								$is_existing = true;
-								break;
-							}
-						}
-						if ($is_existing) {
-							continue;
-						}
-
-						$assigned = $this->db_model->select_data('*', 'batches use index (id)', array('id' => $batch_id), 1);
-						if (!empty($assigned)) {
-							$b = $assigned[0];
-							$batch_image = !empty($b['batch_image']) ? base_url('uploads/batch_image/' . $b['batch_image']) : '';
-							$batches[] = array(
-								'id' => $batch_id,
-								'batch_id' => $batch_id,
-								'batch_name' => (string) $b['batch_name'],
-								'batchName' => (string) $b['batch_name'],
-								'start_date' => (string) $b['start_date'],
-								'end_date' => (string) $b['end_date'],
-								'startDate' => (string) $b['start_date'],
-								'endDate' => (string) $b['end_date'],
-								'batch_type' => (int) $b['batch_type'],
-								'batch_price' => (string) $b['batch_price'],
-								'batch_mode' => (string) $b['batch_mode'],
-								'batch_image' => $batch_image,
-								'batchImage' => $batch_image,
-								'ownerType' => 'assigned'
-							);
-						}
-					}
-				}
-			} else {
-				// Student: get enrolled batches
-				$this->db->select('batches.id, batches.batch_name, batches.start_date, batches.end_date, batches.batch_type, batches.batch_price, batches.batch_mode, batches.batch_image');
-				$this->db->from('batches');
-				$this->db->join('student_batchs', 'student_batchs.batch_id = batches.id', 'inner');
-				$this->db->where('student_batchs.student_id', $user_id);
-				$this->db->where('batches.status', 1);
-				$this->db->order_by('batches.id', 'DESC');
-				$result = $this->db->get()->result_array();
-				if (!empty($result)) {
-					foreach ($result as $b) {
-						$batch_image = !empty($b['batch_image']) ? base_url('uploads/batch_image/' . $b['batch_image']) : '';
-						$batches[] = array(
-							'id' => (int) $b['id'],
-							'batch_id' => (int) $b['id'],
-							'batch_name' => (string) $b['batch_name'],
-							'batchName' => (string) $b['batch_name'],
-							'start_date' => (string) $b['start_date'],
-							'end_date' => (string) $b['end_date'],
-							'startDate' => (string) $b['start_date'],
-							'endDate' => (string) $b['end_date'],
-							'batch_type' => (int) $b['batch_type'],
-							'batch_price' => (string) $b['batch_price'],
-							'batch_mode' => (string) $b['batch_mode'],
-							'batch_image' => $batch_image,
-							'batchImage' => $batch_image
-						);
-					}
-				}
-			}
-
-			// Format response
-			$response = array(
-				'status' => 'true',
-				'msg' => 'Batches retrieved',
-				'data' => array(
-					'enrolled_batches' => $batches,
-					'pagination' => array('totalPages' => 1)
-				)
-			);
-
-			$this->output->set_status_header(200);
-			$this->output->set_content_type('application/json')->set_output(json_encode($response, JSON_UNESCAPED_SLASHES));
-			return;
+			// "My batches" now uses the SAME shared API as the mobile app (api/batch/batch-list):
+			// students get enrolled batches, teachers get created/assigned. list != 'All' = the "my" flow.
+			$payload['list'] = (isset($in['list']) && trim((string) $in['list']) !== '') ? trim((string) $in['list']) : 'my';
+			list($code, $body) = $this->website_proxy_post_json(site_url('api/batch/batch-list'), $payload, array('Authorization: Bearer ' . $token));
+			$this->output->set_status_header((int) $code > 0 ? $code : 200);
+			$this->output->set_content_type('application/json')->set_output($body !== '' ? $body : json_encode(array('status' => 'false', 'msg' => 'Empty response')));
 		}
-
 		public function teacher_create_batch($batch_id = '')
 		{
 			if (! isset($this->session->userdata['role'])) {
@@ -1103,15 +956,71 @@ class Website extends MY_Controller
 			$data['batch_id'] = '';
 			$data['batch_fecherd'] = array();
 
+			$token = $this->website_session_access_token();
+
 			if (!empty($batch_id)) {
 				$batch_id = (int) $batch_id;
 				$data['batch_id'] = $batch_id;
-				$data['batch_data'] = $this->db_model->select_data('*', 'batches use index (id)', array('id' => $batch_id, 'admin_id' => $user_id));
-				if (empty($data['batch_data'])) {
+				// Edit prefill via the shared API (teacher-batch-edit does the ownership check).
+				list($be_code, $be_body) = $this->website_proxy_post_json(site_url('api/batch/teacher-batch-edit'), array('batchId' => $batch_id), array('Authorization: Bearer ' . $token));
+				$be = json_decode($be_body, true);
+				$ok = is_array($be) && isset($be['status']) && in_array((string) $be['status'], array('true', '1'), true) && !empty($be['data']);
+				if (!$ok) {
 					redirect(base_url('batch/mylist'));
 					return;
 				}
-				$data['batch_fecherd'] = $this->db_model->select_data('*', 'batch_fecherd', array('batch_id' => $batch_id));
+				$bd = $be['data'];
+				// Remap the API's camelCase response into the raw row the shared form expects.
+				$data['batch_data'] = array(array(
+					'id' => $batch_id,
+					'batch_name' => isset($bd['batchName']) ? $bd['batchName'] : '',
+					'cat_id' => isset($bd['categoryId']) ? $bd['categoryId'] : '',
+					'sub_cat_id' => isset($bd['subcategoryId']) ? $bd['subcategoryId'] : '',
+					'institute_id' => isset($bd['instituteId']) ? $bd['instituteId'] : '',
+					'batch_mode' => isset($bd['batchMode']) ? $bd['batchMode'] : '',
+					'start_date' => isset($bd['startDate']) ? $bd['startDate'] : '',
+					'end_date' => isset($bd['endDate']) ? $bd['endDate'] : '',
+					'start_time' => isset($bd['startTime']) ? $bd['startTime'] : '',
+					'end_time' => isset($bd['endTime']) ? $bd['endTime'] : '',
+					'batch_type' => isset($bd['batchType']) ? $bd['batchType'] : '',
+					'batch_price' => isset($bd['batchPrice']) ? $bd['batchPrice'] : '',
+					'batch_offer_price' => isset($bd['batchOfferPrice']) ? $bd['batchOfferPrice'] : '',
+					'pay_mode' => isset($bd['payMode']) ? $bd['payMode'] : '',
+					'description' => isset($bd['description']) ? $bd['description'] : '',
+				));
+				$fecherd = array();
+				if (!empty($bd['benefits']) && is_array($bd['benefits'])) {
+					foreach ($bd['benefits'] as $bn) {
+						$features = isset($bn['features']) && is_array($bn['features']) ? array_values($bn['features']) : array();
+						$fecherd[] = array(
+							'id' => isset($bn['id']) ? $bn['id'] : '',
+							'batch_specification_heading' => isset($bn['heading']) ? $bn['heading'] : '',
+							'batch_fecherd' => json_encode($features),
+						);
+					}
+				}
+				$data['batch_fecherd'] = $fecherd;
+
+				// Subject prefill from the same API response (remapped to the shared form's raw shape).
+				// The shared form uses $batch_subjects_prefill when set (teacher flow); admin keeps its own DB read.
+				$subjects_prefill = array();
+				if (!empty($bd['subjects']) && is_array($bd['subjects'])) {
+					foreach ($bd['subjects'] as $sb) {
+						$chapter_ids = isset($sb['chapterIds']) && is_array($sb['chapterIds']) ? array_values($sb['chapterIds']) : array();
+						$subjects_prefill[] = array(
+							'id' => isset($sb['id']) ? $sb['id'] : '',
+							'subject_id' => isset($sb['subjectId']) ? $sb['subjectId'] : '',
+							'subject_name' => isset($sb['subjectName']) ? $sb['subjectName'] : '',
+							'teacher_id' => isset($sb['teacherId']) ? $sb['teacherId'] : '',
+							'chapter' => json_encode($chapter_ids),
+							'sub_start_date' => isset($sb['startDate']) ? $sb['startDate'] : '',
+							'sub_end_date' => isset($sb['endDate']) ? $sb['endDate'] : '',
+							'sub_start_time' => isset($sb['startTime']) ? $sb['startTime'] : '',
+							'sub_end_time' => isset($sb['endTime']) ? $sb['endTime'] : '',
+						);
+					}
+				}
+				$data['batch_subjects_prefill'] = $subjects_prefill;
 			}
 
 			$currency_rows = $this->db_model->select_data('*', 'general_settings', array('key_text' => 'currency_decimal_code'));
@@ -1121,17 +1030,13 @@ class Website extends MY_Controller
 			$data['category_data'] = array();
 			$data['subcat_data'] = array();
 
-			$this->db->reset_query();
-			$this->db->select('id,name');
-			$this->db->from('users');
-			$this->db->where('admin_id', $user_admin_id);
-			$this->db->where('status', 1);
-			$this->db->group_start();
-			$this->db->where('role', 4);
-			$this->db->or_where("LOWER(TRIM(IFNULL(user_type,''))) = 'institute'", null, false);
-			$this->db->group_end();
-			$this->db->order_by('id', 'desc');
-			$data['institute_list'] = $this->db->get()->result_array();
+			// Institute dropdown options come from the shared API (teacher-batch-form-options).
+			$data['institute_list'] = array();
+			list($fo_code, $fo_body) = $this->website_proxy_post_json(site_url('api/batch/teacher-batch-form-options'), array(), array('Authorization: Bearer ' . $token));
+			$fo = json_decode($fo_body, true);
+			if (is_array($fo) && !empty($fo['data']['institutes']) && is_array($fo['data']['institutes'])) {
+				$data['institute_list'] = $fo['data']['institutes'];
+			}
 
 			$this->render_frontend_layout('frontend/teacher_create_batch', $data);
 		}
@@ -1152,7 +1057,6 @@ class Website extends MY_Controller
 			}
 
 			$user_role = (int) $this->session->userdata('role');
-			$user_id = (int) $this->session->userdata('uid');
 			$batch_id = (int) $in['batch_id'];
 
 			// Only teachers can delete batches via frontend
@@ -1161,26 +1065,18 @@ class Website extends MY_Controller
 				return;
 			}
 
-			// Verify batch belongs to teacher
-			$batch_data = $this->db_model->select_data('admin_id', 'batches use index (id)', array('id' => $batch_id), 1);
-			if (empty($batch_data) || (int) $batch_data[0]['admin_id'] !== $user_id) {
-				$this->output->set_status_header(403)->set_content_type('application/json')->set_output(json_encode(array('status' => 'false', 'msg' => 'This batch does not belong to you')));
+			$token = $this->website_session_access_token();
+			if ($token === '') {
+				$this->output->set_status_header(401)->set_content_type('application/json')->set_output(json_encode(array('status' => 'false', 'msg' => 'Please login again.')));
 				return;
 			}
 
-			// Delete related data
-			$this->db_model->delete_data('batch_subjects', array('batch_id' => $batch_id));
-			$this->db_model->delete_data('batch_fecherd', array('batch_id' => $batch_id));
-			$this->db_model->delete_data('student_batchs', array('batch_id' => $batch_id));
-
-			// Delete the batch
-			$result = $this->db_model->delete_data('batches', array('id' => $batch_id));
-
-			if ($result) {
-				$this->output->set_status_header(200)->set_content_type('application/json')->set_output(json_encode(array('status' => 'true', 'msg' => 'Batch deleted successfully')));
-			} else {
-				$this->output->set_status_header(500)->set_content_type('application/json')->set_output(json_encode(array('status' => 'false', 'msg' => 'Failed to delete batch')));
-			}
+			// Ownership check + cascade delete (batch_subjects, batch_fecherd, student_batchs, batches)
+			// all live in the shared API so the backend logic stays in one place (website + mobile).
+			$payload = array('batchId' => $batch_id);
+			list($code, $body) = $this->website_proxy_post_json(site_url('api/batch/teacher-delete-batch'), $payload, array('Authorization: Bearer ' . $token));
+			$this->output->set_status_header((int) $code > 0 ? $code : 200);
+			$this->output->set_content_type('application/json')->set_output($body !== '' ? $body : json_encode(array('status' => 'false', 'msg' => 'Empty response')));
 		}
 
 		public function batch_details()
@@ -1225,6 +1121,14 @@ class Website extends MY_Controller
 			$data = $this->frontend_shell_data('Payment plan');
 			$data['batch_id'] = $batch_id;
 			$data['batch_uid'] = (int) $this->session->userdata('uid');
+			// Application-fee breakdown (499/99 rules) so the page shows what the server will charge.
+			$data['application_fee'] = null;
+			if ($batch_id > 0 && (string) $this->session->userdata('role') === 'student') {
+				$data['application_fee'] = $this->common->compute_application_fee((int) $this->session->userdata('uid'), $batch_id);
+			}
+			// Free institute (users.paid = 0): no payment — the page shows an Enroll button instead.
+			$data['is_free_institute'] = $batch_id > 0 ? $this->website_batch_institute_is_free($batch_id) : false;
+			$data['batch_free_enroll_url'] = site_url('batch/free-enroll');
 			$data['batch_details_data_url'] = site_url('api/batch/batch-details');
 			$data['batch_plans_data_url'] = site_url('api/plan/plans');
 			$data['batch_promo_codes_data_url'] = site_url('api/plan/promo-codes');
@@ -1267,6 +1171,106 @@ class Website extends MY_Controller
 			$data['order_id'] = (string) $this->input->get('order_id');
 			$data['amount'] = (string) $this->input->get('amount');
 			$this->render_frontend_layout('frontend/batch_payment_success', $data);
+		}
+
+		/** True when the batch's owning institute is free (users.paid = '0'). */
+		private function website_batch_institute_is_free($batch_id)
+		{
+			$brow = $this->db_model->select_data('institute_id,admin_id', 'batches use index (id)', array('id' => (int) $batch_id), 1);
+			if (empty($brow[0])) {
+				return false;
+			}
+			$iid = !empty($brow[0]['institute_id']) ? (int) $brow[0]['institute_id'] : (int) $brow[0]['admin_id'];
+			return $this->institute_is_free($iid);
+		}
+
+		/**
+		 * POST batch/free-enroll — enroll the logged-in student into a FREE-institute batch without
+		 * payment. Mirrors the paid flow's enrollment (student_batchs + students.batch_id + email)
+		 * but does no Razorpay step. Rejected for non-free institutes (so it can't bypass paid ones).
+		 */
+		public function batch_free_enroll()
+		{
+			header('Content-Type: application/json');
+			if (! isset($this->session->userdata['role']) || $this->website_session_access_token() === '') {
+				echo json_encode(array('status' => 'false', 'msg' => 'Please log in again.'));
+				return;
+			}
+			if ((string) $this->session->userdata('role') !== 'student') {
+				echo json_encode(array('status' => 'false', 'msg' => 'Only students can enroll.'));
+				return;
+			}
+			$student_id = (int) $this->session->userdata('uid');
+			$body = json_decode((string) file_get_contents('php://input'), true);
+			if (! is_array($body)) {
+				$body = array();
+			}
+			$batch_id = (int) (isset($body['batch_id']) ? $body['batch_id'] : $this->input->post('batch_id'));
+			if ($student_id < 1 || $batch_id < 1) {
+				echo json_encode(array('status' => 'false', 'msg' => $this->lang->line('ltr_missing_parameters_msg')));
+				return;
+			}
+
+			// Security: only allow free enrollment when the institute is actually free.
+			if (! $this->website_batch_institute_is_free($batch_id)) {
+				echo json_encode(array('status' => 'false', 'msg' => 'This batch requires payment.'));
+				return;
+			}
+
+			$batch = $this->db_model->select_data('id,batch_name,admin_id,institute_id', 'batches use index (id)', array('id' => $batch_id), 1);
+			if (empty($batch[0])) {
+				echo json_encode(array('status' => 'false', 'msg' => $this->lang->line('ltr_no_record_msg')));
+				return;
+			}
+			$admin_id = (int) $batch[0]['admin_id'];
+
+			// Enrollment must be ACTIVE (batch-details treats student_batchs.status === 1 as enrolled).
+			$exists = $this->db_model->select_data('id,status', 'student_batchs', array('student_id' => $student_id, 'batch_id' => $batch_id), 1);
+			$newly_enrolled = empty($exists);
+			if (! empty($exists)) {
+				// Re-activate an existing inactive row.
+				if ((int) $exists[0]['status'] !== 1) {
+					$this->db_model->update_data_limit('student_batchs', array('status' => 1), array('id' => (int) $exists[0]['id']), 1);
+				}
+			} else {
+				$this->db_model->insert_data('student_batchs', array(
+					'student_id' => $student_id,
+					'batch_id' => $batch_id,
+					'added_by' => 'student',
+					'admin_id' => $admin_id,
+					'status' => 1,
+				));
+			}
+			if ($newly_enrolled) {
+				$this->db_model->update_data_limit('students use index (id)', array('batch_id' => $batch_id, 'status' => 1), array('id' => $student_id), 1);
+				$srow = $this->db_model->select_data('admin_id', 'students use index (id)', array('id' => $student_id), 1);
+				if (! empty($srow) && (int) $srow[0]['admin_id'] === 0 && $admin_id > 0) {
+					$this->db_model->update_data_limit('students use index (id)', array('admin_id' => $admin_id), array('id' => $student_id), 1);
+				}
+
+				// Enrollment email (best-effort).
+				$stu = $this->db_model->select_data('name,email,enrollment_id', 'students use index (id)', array('id' => $student_id), 1);
+				if (! empty($stu[0]['email'])) {
+					@$this->common->send_email(array(
+						'purpose' => 'enrolled_batch',
+						'user_id' => $student_id,
+						'user_type' => 'student',
+						'to_email' => $stu[0]['email'],
+						'dynamic_var' => array(
+							'name' => isset($stu[0]['name']) ? $stu[0]['name'] : '',
+							'batch_name' => isset($batch[0]['batch_name']) ? $batch[0]['batch_name'] : '',
+							'enrollment_id' => isset($stu[0]['enrollment_id']) ? $stu[0]['enrollment_id'] : '',
+							'link' => base_url('login'),
+						),
+					));
+				}
+			}
+
+			echo json_encode(array(
+				'status' => 'true',
+				'msg' => $this->lang->line('ltr_batch_change_msg'),
+				'redirect' => site_url('batch/live-classes?batch_id=' . $batch_id),
+			));
 		}
 
 		public function batch_live_classes()
@@ -1698,9 +1702,12 @@ class Website extends MY_Controller
 			$data['batch_id'] = (int) $this->input->get('batch_id');
 			$data['batch_name'] = '';
 			if ($data['batch_id'] > 0) {
-				$batch_row = $this->db_model->select_data('batch_name', 'batches use index (id)', array('id' => $data['batch_id']), 1);
-				if (!empty($batch_row[0]['batch_name'])) {
-					$data['batch_name'] = (string) $batch_row[0]['batch_name'];
+				// Batch name (page heading) comes from the shared API, not a direct DB read.
+				$token = $this->website_session_access_token();
+				list($code, $body) = $this->website_proxy_post_json(site_url('api/batch/batch-details'), array('batch_id' => $data['batch_id']), array('Authorization: Bearer ' . $token));
+				$decoded = json_decode($body, true);
+				if (is_array($decoded) && !empty($decoded['data']['batch_details']['batchName'])) {
+					$data['batch_name'] = (string) $decoded['data']['batch_details']['batchName'];
 				}
 			}
 			$data['api_access_token'] = $this->website_session_access_token();
@@ -1773,12 +1780,20 @@ class Website extends MY_Controller
 				return;
 			}
 			$data = $this->frontend_shell_data('Institutes');
-			$data['institute_listing_data_url'] = site_url('institute/listing-data');
+			// Call the shared API directly from the browser (like batch list), with the session token.
+			$data['institute_listing_data_url'] = site_url('api/institute/listing');
+			$data['api_access_token'] = $this->website_session_access_token();
 			$data['institute_details_url'] = site_url('institute/details');
 			$data['institute_city_list_url'] = site_url('api/institute/city-list');
 			$data['batch_id'] = (int) $this->input->get('batch_id');
 			$data['show_institute_reviews_link'] = $this->website_session_is_institute();
 			$data['institute_reviews_list_url'] = site_url('institute/reviews-list');
+			// list flag: ?list=my|all wins; else 'my' on the institute/mylist route; default 'all'. Never blank.
+			$list_flag = trim((string) $this->input->get('list'));
+			if ($list_flag === '') {
+				$list_flag = ($this->uri->segment(2) === 'mylist') ? 'my' : 'all';
+			}
+			$data['list_flag'] = $list_flag;
 			$this->render_frontend_layout('frontend/institute_listing', $data);
 		}
 
@@ -1809,7 +1824,9 @@ class Website extends MY_Controller
 			}
 			$data = $this->frontend_shell_data('Institute details');
 			$data['institute_id'] = $id;
-			$data['institute_details_data_url'] = site_url('institute/details-data');
+			// Call the shared API directly from the browser (like batch details), with the session token.
+			$data['institute_details_data_url'] = site_url('api/institute/details');
+			$data['api_access_token'] = $this->website_session_access_token();
 			$data['add_review_url'] = site_url('institute/add-review');
 			$data['web_logged_in'] = isset($this->session->userdata['role']) && $this->website_session_access_token() !== '';
 			$this->render_frontend_layout('frontend/institute_details', $data);

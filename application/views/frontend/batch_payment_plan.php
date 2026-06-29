@@ -46,11 +46,16 @@
 	var orderUrl = <?php echo json_encode(isset($batch_create_order_url) ? $batch_create_order_url : ''); ?>;
 	var verifyUrl = <?php echo json_encode(isset($batch_verify_payment_url) ? $batch_verify_payment_url : ''); ?>;
 	var successUrl = <?php echo json_encode(isset($batch_payment_success_url) ? $batch_payment_success_url : ''); ?>;
+	// Free institute (users.paid = 0): no payment — show an Enroll button that enrolls directly.
+	var isFreeInstitute = <?php echo (isset($is_free_institute) && $is_free_institute) ? 'true' : 'false'; ?>;
+	var freeEnrollUrl = <?php echo json_encode(isset($batch_free_enroll_url) ? $batch_free_enroll_url : ''); ?>;
 	var selected = null;
 	var promos = [];
 	var appliedPromo = null;
 	var monthlyTuition = 0;
 	var lastOrderId = '';
+	// Application-fee breakdown (499/99 rules) from the server; when present it governs the price.
+	var appFee = <?php echo json_encode(isset($application_fee) && is_array($application_fee) ? $application_fee : null); ?>;
 	function ok(s) { return s === true || s === 'true' || s === 1 || s === '1'; }
 	function truthy(v) { return v === true || v === 'true' || v === 1 || v === '1'; }
 	function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
@@ -83,6 +88,16 @@
 		return Number(appliedPromo.discountValue || 0);
 	}
 	function totals() {
+		// Application-fee rules take priority over plan/tuition pricing when available.
+		if (appFee && Number(appFee.total) > 0) {
+			return {
+				enrollment: Number(appFee.application_fee || 0), // application fee (499 / 99)
+				tuition: Number(appFee.batch_fee || 0),          // batch fee (0 for first time)
+				disc: 0,
+				pay: Number(appFee.total),
+				months: 1
+			};
+		}
 		var months = planMonths();
 		var enrollment = baseAmount();
 		var tuition = monthlyTuition * months;
@@ -197,7 +212,42 @@
 			rz.open();
 		}).catch(function () { document.getElementById('bp_msg').textContent = 'Payment request failed.'; });
 	}
+	function freeEnroll() {
+		var btn = document.getElementById('bp_pay');
+		btn.disabled = true;
+		btn.textContent = 'Enrolling...';
+		post(freeEnrollUrl, { batch_id: batchId }).then(function (v) {
+			if (!ok(v.status)) {
+				document.getElementById('bp_msg').textContent = v.msg || 'Could not enroll.';
+				btn.disabled = false;
+				btn.textContent = 'Enroll Now';
+				return;
+			}
+			window.location.href = v.redirect || (successUrl + '?batch_id=' + encodeURIComponent(batchId) + '&amount=0');
+		}).catch(function () {
+			document.getElementById('bp_msg').textContent = 'Network error.';
+			btn.disabled = false;
+			btn.textContent = 'Enroll Now';
+		});
+	}
+	function setupFreeInstitute() {
+		var plansEl = document.getElementById('bp_plans');
+		if (plansEl) { plansEl.style.display = 'none'; }
+		var codeWrap = document.querySelector('.bp-code-wrap');
+		if (codeWrap) { codeWrap.style.display = 'none'; }
+		document.getElementById('bp_monthly_fee').textContent = 'Rs 0.00/mo';
+		document.getElementById('bp_subtotal_multi').textContent = money(0);
+		document.getElementById('bp_enrollment_fee').textContent = money(0);
+		document.getElementById('bp_grand').textContent = money(0);
+		document.getElementById('bp_payfor').textContent = money(0);
+		document.getElementById('bp_msg').textContent = 'This institute is free — no payment required.';
+		var btn = document.getElementById('bp_pay');
+		btn.textContent = 'Enroll Now';
+		btn.disabled = false;
+		btn.addEventListener('click', freeEnroll);
+	}
 	document.addEventListener('DOMContentLoaded', function () {
+		if (isFreeInstitute) { setupFreeInstitute(); return; }
 		var detailsPromise = (prefetchDetails && Object.keys(prefetchDetails).length)
 			? Promise.resolve({ status: 'true', data: prefetchDetails })
 			: post(detailsUrl, { batch_id: batchId });
@@ -225,7 +275,8 @@
 			}
 			var offer = Number(bd.batch_offer_price || 0);
 			var regular = Number(bd.batch_price || 0);
-			monthlyTuition = offer > 0 ? offer : regular;
+			// Batch fee = batch_price - batch_offer_price (offer price is a discount off the regular price).
+			monthlyTuition = Math.max(0, regular - offer);
 			var plans = (res[0].data && res[0].data.plans) ? res[0].data.plans : [];
 			var payRows = (ok(res[3].status) && res[3].paymentData) ? res[3].paymentData : [];
 			var decision = choosePlanByHistory(plans, payRows);

@@ -2,108 +2,527 @@
 defined('BASEPATH') OR exit('No direct script access allowed');
 
 /**
- * Central place to persist in-app notifications for students (table `notifications`).
- * Fan-out: one row per enrolled student in `student_batchs` (status = 1).
+ * Central notification fan-out (push + in-app), MASTER/DETAIL model.
  *
- * Use from controllers after business actions (homework, live class, attendance, etc.).
- * Listing remains {@see Main::notifications_list}; push/FCM can be layered on top later.
+ * Every notification event writes exactly ONE master row in `notifications` and ONE row per
+ * recipient in `push_notifications_details` (which also carries the per-recipient `read` flag).
+ *   - single recipient  => 1 `notifications` + 1 `push_notifications_details`
+ *   - multiple recipients => 1 `notifications` + N `push_notifications_details`
+ *
+ * `notifications` has NO `student_id`: the recipient list lives entirely in the detail table.
+ * FCM is sent to recipients that have a device token; a detail row is written for every
+ * recipient regardless (so it appears in their in-app list and read-state can be tracked).
+ *
+ * All public method signatures are kept stable so existing callers keep working.
  */
 class Notification_service
 {
 	/** @var CI_Controller */
 	protected $CI;
 
+	/** push_notifications_details.user_type codes. */
+	const UT_STUDENT = 1;
+	const UT_TEACHER = 2;
+	const UT_INSTITUTE = 3;
+
 	public function __construct()
 	{
 		$this->CI = &get_instance();
 		$this->CI->load->model('db_model');
+		$this->CI->load->library('common');
 	}
 
 	/**
-	 * @param int    $batch_id
-	 * @param string $notification_type e.g. live_class, homework, attendance, leave, event, batch
-	 * @param string $msg
-	 * @param string $url relative path or full URL (stored as varchar(255) — keep short)
-	 * @return int rows inserted
-	 */
-	public function fan_out_batch_students($batch_id, $notification_type, $msg, $url = '')
-	{
-		$batch_id = (int) $batch_id;
-		if ($batch_id < 1) {
-			return 0;
-		}
-		$notification_type = trim((string) $notification_type);
-		$msg = trim((string) $msg);
-		if ($notification_type === '' || $msg === '') {
-			return 0;
-		}
-		$url = trim((string) $url);
-		if (strlen($url) > 250) {
-			$url = substr($url, 0, 250);
-		}
-		if (strlen($msg) > 250) {
-			$msg = substr($msg, 0, 250);
-		}
-
-		$students = $this->CI->db_model->select_data('student_id', 'student_batchs', array('batch_id' => $batch_id, 'status' => 1), '');
-		if (empty($students)) {
-			return 0;
-		}
-		$now = date('Y-m-d H:i:s');
-		$n = 0;
-		foreach ($students as $s) {
-			$sid = isset($s['student_id']) ? (int) $s['student_id'] : 0;
-			if ($sid < 1) {
-				continue;
-			}
-			$this->CI->db_model->insert_data('notifications', array(
-				'student_id' => $sid,
-				'batch_id' => $batch_id,
-				'notification_type' => $notification_type,
-				'msg' => $msg,
-				'url' => $url,
-				'status' => 0,
-				'time' => $now,
-				'seen_by' => '',
-			));
-			$n++;
-		}
-		return $n;
-	}
-
-	/**
-	 * Single student notification (e.g. targeted message).
+	 * UNIFIED entry point. Resolve recipients, write 1 master + N detail rows, send FCM.
 	 *
-	 * @return int insert id or 0
+	 * Recipient selection via $opts (first match wins):
+	 *   - 'student_ids' => int[]   specific students
+	 *   - 'batch_id'    => int     enrolled active students of one batch
+	 *   - 'batch_ids'   => int[]   enrolled active students of several batches
+	 *   - 'all_students'=> true    every active student
+	 *
+	 * Other $opts: 'batch_id' (also stored on the master), 'send_push' (bool, default true),
+	 * 'title' (FCM/master title; falls back to $title arg), 'data' (extra FCM data payload).
+	 *
+	 * @return array{master_id:int,recipients:int,sent:int,failed:int}
 	 */
-	public function notify_student($student_id, $batch_id, $notification_type, $msg, $url = '')
+	public function push_notify($title, $message, $notification_type, $url = '', array $opts = array())
 	{
-		$student_id = (int) $student_id;
-		$batch_id = (int) $batch_id;
-		if ($student_id < 1 || $batch_id < 1) {
-			return 0;
-		}
+		$title = trim((string) $title);
+		$message = trim((string) $message);
 		$notification_type = trim((string) $notification_type);
-		$msg = trim((string) $msg);
-		if ($notification_type === '' || $msg === '') {
-			return 0;
+		$result = array('master_id' => 0, 'recipients' => 0, 'sent' => 0, 'failed' => 0);
+		if ($notification_type === '' || ($title === '' && $message === '')) {
+			return $result;
 		}
-		$url = trim((string) $url);
-		if (strlen($url) > 250) {
-			$url = substr($url, 0, 250);
+
+		$recipients = $this->resolve_student_recipients($opts);
+		if (empty($recipients)) {
+			return $result;
 		}
-		if (strlen($msg) > 250) {
-			$msg = substr($msg, 0, 250);
+
+		$master_batch_id = isset($opts['batch_id']) ? (int) $opts['batch_id'] : 0;
+		$send_push = !array_key_exists('send_push', $opts) || !empty($opts['send_push']);
+		$extra_data = isset($opts['data']) && is_array($opts['data']) ? $opts['data'] : array();
+
+		return $this->write_event(
+			$master_batch_id,
+			$notification_type,
+			$title,
+			$message,
+			$url,
+			$recipients,
+			array('send_push' => $send_push, 'data' => $extra_data)
+		);
+	}
+
+	/**
+	 * Insert the master row + one detail row per recipient (and optionally push via FCM).
+	 *
+	 * @param array $recipients each: ['userid'=>int,'user_type'=>int,'device_token'=>string]
+	 * @param array $opts       send_push(bool), data(array)
+	 * @return array{master_id:int,recipients:int,sent:int,failed:int}
+	 */
+	private function write_event($batch_id, $notification_type, $title, $message, $url, array $recipients, array $opts = array())
+	{
+		$result = array('master_id' => 0, 'recipients' => 0, 'sent' => 0, 'failed' => 0);
+		if (empty($recipients) || !$this->CI->db->table_exists('notifications')) {
+			return $result;
 		}
-		return (int) $this->CI->db_model->insert_data('notifications', array(
-			'student_id' => $student_id,
-			'batch_id' => $batch_id,
-			'notification_type' => $notification_type,
+		$send_push = !array_key_exists('send_push', $opts) || !empty($opts['send_push']);
+		$base_data = isset($opts['data']) && is_array($opts['data']) ? $opts['data'] : array();
+
+		$msg = $this->clip((string) $message, 250);
+		$url = $this->clip((string) $url, 250);
+
+		$master = array(
+			'batch_id' => (int) $batch_id,
+			'notification_type' => $this->clip((string) $notification_type, 255),
 			'msg' => $msg,
 			'url' => $url,
 			'status' => 0,
 			'time' => date('Y-m-d H:i:s'),
 			'seen_by' => '',
+		);
+		// `title` is optional (added by migration); only set it when the column exists.
+		if ($this->CI->db->field_exists('title', 'notifications')) {
+			$master['title'] = $this->clip((string) $title, 255);
+		}
+		$master_id = (int) $this->CI->db_model->insert_data('notifications', $master);
+		if ($master_id < 1) {
+			return $result;
+		}
+		$result['master_id'] = $master_id;
+
+		$has_details = $this->CI->db->table_exists('push_notifications_details');
+		$push_title = $title !== '' ? $title : ucwords(str_replace(array('_', '-'), ' ', $notification_type));
+		$data = array_merge($base_data, array(
+			'type' => $notification_type,
+			'pushnotify_id' => (string) $master_id,
+			'url' => $url,
 		));
+		if ((int) $batch_id > 0) {
+			$data['batch_id'] = (string) (int) $batch_id;
+		}
+
+		foreach ($recipients as $r) {
+			$uid = isset($r['userid']) ? (int) $r['userid'] : 0;
+			if ($uid < 1) {
+				continue;
+			}
+			$result['recipients']++;
+			$user_type = isset($r['user_type']) ? (int) $r['user_type'] : self::UT_STUDENT;
+			$device_token = isset($r['device_token']) ? trim((string) $r['device_token']) : '';
+
+			$push = null;
+			if ($send_push && $device_token !== '') {
+				$push = $this->CI->common->sendPushNotification($device_token, $push_title, $msg, $data);
+				!empty($push['ok']) ? $result['sent']++ : $result['failed']++;
+			}
+
+			if ($has_details) {
+				$ok = !empty($push['ok']);
+				$this->CI->db_model->insert_data('push_notifications_details', array(
+					'pushnotify_id' => $master_id,
+					'userid' => $uid,
+					'user_type' => $user_type,
+					'status' => $ok ? 1 : 0,
+					'notification_logs' => $push !== null ? (isset($push['response']) ? (string) $push['response'] : ((string) ($push['error'] ?? ''))) : '',
+					'notifcations_request' => $push !== null && isset($push['request']) ? (string) $push['request'] : '',
+					'device_token' => $device_token,
+					'events' => ($push !== null && !$ok) ? 2 : 0, // 2 => failed
+					'read' => 0,
+				));
+			}
+		}
+
+		return $result;
+	}
+
+	/**
+	 * In-app fan-out to a batch's enrolled active students (no FCM). 1 master + N details.
+	 * Kept for {@see MY_Controller} helpers and the batch-notify endpoint.
+	 *
+	 * @return int recipients written
+	 */
+	public function fan_out_batch_students($batch_id, $notification_type, $msg, $url = '')
+	{
+		$res = $this->push_notify('', $msg, $notification_type, $url, array(
+			'batch_id' => (int) $batch_id,
+			'send_push' => false,
+		));
+		return (int) $res['recipients'];
+	}
+
+	/**
+	 * Single-student in-app notification (no FCM). 1 master + 1 detail.
+	 *
+	 * @return int master id or 0
+	 */
+	public function notify_student($student_id, $batch_id, $notification_type, $msg, $url = '')
+	{
+		$res = $this->push_notify('', $msg, $notification_type, $url, array(
+			'student_ids' => array((int) $student_id),
+			'batch_id' => (int) $batch_id,
+			'send_push' => false,
+		));
+		return (int) $res['master_id'];
+	}
+
+	/**
+	 * Push (FCM) + record to every active, push-enabled student of a batch. 1 master + N details.
+	 *
+	 * @return array{parent_id:int,recipients:int,sent:int,failed:int}
+	 */
+	public function push_to_batch_students($batch_id, $title, $message, $notification_type, $url = '', array $data = array())
+	{
+		$res = $this->push_notify($title, $message, $notification_type, $url, array(
+			'batch_id' => (int) $batch_id,
+			'send_push' => true,
+			'data' => $data,
+		));
+		// Preserve the legacy return shape (parent_id alias).
+		return array(
+			'parent_id' => $res['master_id'],
+			'recipients' => $res['recipients'],
+			'sent' => $res['sent'],
+			'failed' => $res['failed'],
+		);
+	}
+
+	/**
+	 * Template-driven batch event: EMAIL (via the template) + PUSH + in-app, to every enrolled
+	 * active student of a batch. Writes 1 master + N detail rows.
+	 *
+	 * @return array{parent_id:int,recipients:int,emails_sent:int,push_sent:int,push_failed:int}
+	 */
+	public function notify_batch_event($batch_id, $purpose, array $vars = array(), array $opts = array())
+	{
+		$batch_id = (int) $batch_id;
+		$purpose = trim((string) $purpose);
+		$result = array('parent_id' => 0, 'recipients' => 0, 'emails_sent' => 0, 'push_sent' => 0, 'push_failed' => 0);
+		if ($batch_id < 1 || $purpose === '') {
+			return $result;
+		}
+
+		$do_email = !array_key_exists('email', $opts) || !empty($opts['email']);
+		$do_push = !array_key_exists('push', $opts) || !empty($opts['push']);
+		$url = isset($opts['url']) ? trim((string) $opts['url']) : '';
+		$type = isset($opts['notification_type']) ? trim((string) $opts['notification_type']) : $purpose;
+		$name_var = isset($opts['student_name_var']) ? (string) $opts['student_name_var'] : 'STUDENT_NAME';
+
+		$recipients = $this->resolve_student_recipients(array('batch_id' => $batch_id));
+		if (empty($recipients)) {
+			return $result;
+		}
+
+		// Derive push title/body from the same email template (templates has no 'push' type).
+		$push_title = isset($opts['push_title']) ? (string) $opts['push_title'] : '';
+		$push_message = isset($opts['push_message']) ? (string) $opts['push_message'] : '';
+		if ($push_title === '' || $push_message === '') {
+			$tpl = $this->CI->db_model->select_data('title,description,html_code', 'templates', array('purpose' => $purpose), 1);
+			$tpl = !empty($tpl[0]) ? $tpl[0] : array();
+			if ($push_title === '') {
+				$push_title = $this->apply_vars(isset($tpl['title']) ? $tpl['title'] : $purpose, $vars);
+			}
+			if ($push_message === '') {
+				$raw = !empty($tpl['description']) ? $tpl['description'] : (isset($tpl['html_code']) ? $tpl['html_code'] : '');
+				$push_message = trim(preg_replace('/\s+/', ' ', strip_tags($this->apply_vars($raw, $vars))));
+			}
+		}
+		if ($push_title === '') {
+			$push_title = ucwords(str_replace('_', ' ', $purpose));
+		}
+		if ($push_message === '') {
+			$push_message = $push_title;
+		}
+
+		// One master row for the event.
+		$master = array(
+			'batch_id' => $batch_id,
+			'notification_type' => $this->clip($type, 255),
+			'msg' => $this->clip($push_message, 250),
+			'url' => $this->clip($url, 250),
+			'status' => 0,
+			'time' => date('Y-m-d H:i:s'),
+			'seen_by' => '',
+		);
+		if ($this->CI->db->field_exists('title', 'notifications')) {
+			$master['title'] = $this->clip($push_title, 255);
+		}
+		$master_id = (int) $this->CI->db_model->insert_data('notifications', $master);
+		$result['parent_id'] = $master_id;
+		if ($master_id < 1) {
+			return $result;
+		}
+
+		$has_details = $this->CI->db->table_exists('push_notifications_details');
+		$push_data = array('type' => $type, 'pushnotify_id' => (string) $master_id, 'url' => $url, 'batch_id' => (string) $batch_id);
+
+		foreach ($recipients as $r) {
+			$uid = (int) $r['userid'];
+			if ($uid < 1) {
+				continue;
+			}
+			$result['recipients']++;
+			$name = isset($r['name']) ? (string) $r['name'] : '';
+			$email = isset($r['email']) ? trim((string) $r['email']) : '';
+			$device_token = isset($r['device_token']) ? trim((string) $r['device_token']) : '';
+
+			if ($do_email && $email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+				$res = $this->CI->common->send_email(array(
+					'purpose' => $purpose,
+					'to_email' => $email,
+					'dynamic_var' => array_merge($vars, array($name_var => $name)),
+				));
+				if (!empty($res['status'])) {
+					$result['emails_sent']++;
+				}
+			}
+
+			$push = null;
+			if ($do_push && $device_token !== '') {
+				$push = $this->CI->common->sendPushNotification($device_token, $push_title, $push_message, $push_data);
+				!empty($push['ok']) ? $result['push_sent']++ : $result['push_failed']++;
+			}
+
+			if ($has_details) {
+				$ok = !empty($push['ok']);
+				$this->CI->db_model->insert_data('push_notifications_details', array(
+					'pushnotify_id' => $master_id,
+					'userid' => $uid,
+					'user_type' => self::UT_STUDENT,
+					'status' => $ok ? 1 : 0,
+					'notification_logs' => $push !== null ? (isset($push['response']) ? (string) $push['response'] : ((string) ($push['error'] ?? ''))) : '',
+					'notifcations_request' => $push !== null && isset($push['request']) ? (string) $push['request'] : '',
+					'device_token' => $device_token,
+					'events' => ($push !== null && !$ok) ? 2 : 0,
+					'read' => 0,
+				));
+			}
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Single-recipient account-lifecycle notification: EMAIL + PUSH + in-app (1 master + 1 detail),
+	 * driven by a `templates.purpose`. Recipient is a student, teacher or institute.
+	 *
+	 * @param string $user_type 'student' | 'institute' | 'teacher'
+	 * @param array  $opts      notification_type, url, name_var, email/push/in_app(bool), note
+	 * @return array{email_sent:bool,push_sent:bool,in_app:int}
+	 */
+	public function notify_account_status($user_type, $user_id, $purpose, array $vars = array(), array $opts = array())
+	{
+		$user_type = strtolower(trim((string) $user_type));
+		$user_id = (int) $user_id;
+		$purpose = trim((string) $purpose);
+		$result = array('email_sent' => false, 'push_sent' => false, 'in_app' => 0);
+		if ($user_id < 1 || $purpose === '') {
+			return $result;
+		}
+
+		$do_email = !array_key_exists('email', $opts) || !empty($opts['email']);
+		$do_push = !array_key_exists('push', $opts) || !empty($opts['push']);
+		$do_in_app = !array_key_exists('in_app', $opts) || !empty($opts['in_app']);
+		$type = isset($opts['notification_type']) ? trim((string) $opts['notification_type']) : $purpose;
+		$url = isset($opts['url']) ? trim((string) $opts['url']) : '';
+		$name_var = isset($opts['name_var']) ? (string) $opts['name_var'] : 'STUDENT_NAME';
+		$note = isset($opts['note']) ? trim((string) $opts['note']) : '';
+		if ($note !== '') {
+			$vars = array_merge($vars, array('REASON' => $note, 'ADMIN_NOTE' => $note, 'NOTE' => $note));
+		}
+
+		// Resolve recipient + device token.
+		if ($user_type === 'student') {
+			$ut_code = self::UT_STUDENT;
+			$token_col = $this->CI->db->field_exists('device_token', 'students') ? 'device_token' : 'token';
+			$row = $this->CI->db_model->select_data('id,name,email,' . $token_col . ' AS device_token', 'students use index (id)', array('id' => $user_id), 1);
+		} else {
+			$ut_code = ($user_type === 'institute') ? self::UT_INSTITUTE : self::UT_TEACHER;
+			$token_col = $this->CI->db->field_exists('device_token', 'users') ? 'device_token' : ($this->CI->db->field_exists('token', 'users') ? 'token' : '');
+			$cols = 'id,name,email' . ($token_col !== '' ? ',' . $token_col . ' AS device_token' : '');
+			$row = $this->CI->db_model->select_data($cols, 'users use index (id)', array('id' => $user_id), 1);
+		}
+		if (empty($row[0])) {
+			return $result;
+		}
+		$name = isset($row[0]['name']) ? (string) $row[0]['name'] : '';
+		$email = isset($row[0]['email']) ? trim((string) $row[0]['email']) : '';
+		$device_token = isset($row[0]['device_token']) ? trim((string) $row[0]['device_token']) : '';
+
+		if ($do_email && $email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+			$email_arr = array(
+				'purpose' => $purpose,
+				'user_type' => $user_type,
+				'to_email' => $email,
+				'dynamic_var' => array_merge($vars, array($name_var => $name, 'NAME' => $name)),
+			);
+			if ($note !== '') {
+				$email_arr['append_html'] = '<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px;"><tr>'
+					. '<td style="padding:14px 16px;background:#f5f5f5;border-left:4px solid #1e88e5;color:#333333;font-size:14px;line-height:22px;">'
+					. '<strong>Message from the administrator:</strong><br>' . nl2br(html_escape($note))
+					. '</td></tr></table>';
+			}
+			$res = $this->CI->common->send_email($email_arr);
+			$result['email_sent'] = !empty($res['status']);
+		}
+
+		// Derive push title/body from the same template.
+		$msg_vars = array_merge($vars, array($name_var => $name, 'NAME' => $name));
+		$push_title = '';
+		$push_message = '';
+		if ($do_push || $do_in_app) {
+			$tpl = $this->CI->db_model->select_data('title,description,html_code', 'templates', array('purpose' => $purpose), 1);
+			$tpl = !empty($tpl[0]) ? $tpl[0] : array();
+			$push_title = $this->apply_vars(!empty($tpl['title']) ? $tpl['title'] : $purpose, $msg_vars);
+			$raw = !empty($tpl['description']) ? $tpl['description'] : (isset($tpl['html_code']) ? $tpl['html_code'] : '');
+			$push_message = trim(preg_replace('/\s+/', ' ', strip_tags($this->apply_vars($raw, $msg_vars))));
+			if ($push_title === '') {
+				$push_title = ucwords(str_replace('_', ' ', $purpose));
+			}
+			if ($push_message === '') {
+				$push_message = $push_title;
+			}
+			if ($note !== '') {
+				$push_message = trim($push_message . ' Reason: ' . $note);
+			}
+			$push_message = $this->clip($push_message, 250);
+		}
+
+		// Master + single detail row (in-app + push state).
+		$master_id = 0;
+		if (($do_in_app || $do_push) && $this->CI->db->table_exists('notifications')) {
+			$master = array(
+				'batch_id' => 0,
+				'notification_type' => $this->clip($type, 255),
+				'msg' => $push_message,
+				'url' => $this->clip($url, 250),
+				'status' => 0,
+				'time' => date('Y-m-d H:i:s'),
+				'seen_by' => '',
+			);
+			if ($this->CI->db->field_exists('title', 'notifications')) {
+				$master['title'] = $this->clip($push_title, 255);
+			}
+			$master_id = (int) $this->CI->db_model->insert_data('notifications', $master);
+			if ($master_id > 0 && $do_in_app) {
+				$result['in_app'] = 1;
+			}
+		}
+
+		if ($master_id > 0 && $this->CI->db->table_exists('push_notifications_details')) {
+			$push = null;
+			if ($do_push && $device_token !== '') {
+				$push = $this->CI->common->sendPushNotification($device_token, $push_title, $push_message, array('type' => $type, 'pushnotify_id' => (string) $master_id, 'url' => $url));
+				$result['push_sent'] = !empty($push['ok']);
+			}
+			$ok = !empty($push['ok']);
+			$this->CI->db_model->insert_data('push_notifications_details', array(
+				'pushnotify_id' => $master_id,
+				'userid' => $user_id,
+				'user_type' => $ut_code,
+				'status' => $ok ? 1 : 0,
+				'notification_logs' => $push !== null ? (isset($push['response']) ? (string) $push['response'] : ((string) ($push['error'] ?? ''))) : '',
+				'notifcations_request' => $push !== null && isset($push['request']) ? (string) $push['request'] : '',
+				'device_token' => $device_token,
+				'events' => ($push !== null && !$ok) ? 2 : 0,
+				'read' => 0,
+			));
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Resolve student recipients (id, name, email, device_token) from a selector in $opts.
+	 *
+	 * @return array<int,array{userid:int,user_type:int,name:string,email:string,device_token:string}>
+	 */
+	private function resolve_student_recipients(array $opts)
+	{
+		$token_col = $this->CI->db->field_exists('device_token', 'students') ? 'device_token' : 'token';
+		$this->CI->db->reset_query();
+		$this->CI->db->distinct()
+			->select('s.id AS userid, s.name AS name, s.email AS email, s.' . $token_col . ' AS device_token', false)
+			->from('students s');
+
+		if (!empty($opts['student_ids']) && is_array($opts['student_ids'])) {
+			$ids = array_values(array_unique(array_filter(array_map('intval', $opts['student_ids']))));
+			if (empty($ids)) {
+				return array();
+			}
+			$this->CI->db->where_in('s.id', $ids)->where('s.status', 1);
+		} elseif (!empty($opts['batch_id']) || !empty($opts['batch_ids'])) {
+			$batch_ids = !empty($opts['batch_ids']) && is_array($opts['batch_ids'])
+				? array_values(array_unique(array_filter(array_map('intval', $opts['batch_ids']))))
+				: array((int) $opts['batch_id']);
+			if (empty($batch_ids)) {
+				return array();
+			}
+			$this->CI->db->join('student_batchs sb', 'sb.student_id = s.id', 'inner')
+				->where_in('sb.batch_id', $batch_ids)
+				->where('sb.status', 1)
+				->where('s.status', 1);
+		} elseif (!empty($opts['all_students'])) {
+			$this->CI->db->where('s.status', 1);
+		} else {
+			return array();
+		}
+
+		$rows = $this->CI->db->get()->result_array();
+		$out = array();
+		foreach ($rows as $r) {
+			$uid = isset($r['userid']) ? (int) $r['userid'] : 0;
+			if ($uid < 1) {
+				continue;
+			}
+			$out[$uid] = array(
+				'userid' => $uid,
+				'user_type' => self::UT_STUDENT,
+				'name' => isset($r['name']) ? (string) $r['name'] : '',
+				'email' => isset($r['email']) ? (string) $r['email'] : '',
+				'device_token' => isset($r['device_token']) ? trim((string) $r['device_token']) : '',
+			);
+		}
+		return array_values($out);
+	}
+
+	/** Trim a string to a max length (multibyte-safe enough for our latin1/utf8 columns). */
+	private function clip($text, $max)
+	{
+		$text = (string) $text;
+		return strlen($text) > $max ? substr($text, 0, $max) : $text;
+	}
+
+	/** Minimal {{key}} / {key} replacement (mirrors Common::email_apply_vars for push text). */
+	private function apply_vars($text, array $vars)
+	{
+		$text = (string) $text;
+		foreach ($vars as $k => $v) {
+			$text = str_ireplace(array('{{' . $k . '}}', '{' . $k . '}'), (string) (is_scalar($v) ? $v : ''), $text);
+		}
+		return $text;
 	}
 }

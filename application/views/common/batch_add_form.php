@@ -2,7 +2,12 @@
                 <div class="row">
                     <?php if(isset($batch_data) && !empty($batch_data)){
                         $batchData = $batch_data[0];
-                        $subjectData = $this->db_model->select_data('batch_subjects.*,subjects.subject_name','batch_subjects use index (batch_id)',array('batch_subjects.batch_id'=>$batch_id),'','','',array('subjects','subjects.id = batch_subjects.subject_id'));
+                        // Teacher flow passes subject prefill from the shared API; admin keeps the direct read.
+                        if (isset($batch_subjects_prefill)) {
+                            $subjectData = $batch_subjects_prefill;
+                        } else {
+                            $subjectData = $this->db_model->select_data('batch_subjects.*,subjects.subject_name','batch_subjects use index (batch_id)',array('batch_subjects.batch_id'=>$batch_id),'','','',array('subjects','subjects.id = batch_subjects.subject_id'));
+                        }
                     }else{
                         $batchData = array();
                     }

@@ -281,38 +281,41 @@ class Institute extends MY_Controller
 			if ($this->authorize_student_request($uid, $request_data) === false) {
 				return array();
 			}
+			// "My institutes" = the assigned institute (batches.institute_id, role 4),
+			// NOT batches.admin_id (the creator, which can be a teacher/super-admin).
 			$this->db->distinct();
-			$this->db->select('b.admin_id');
+			$this->db->select('b.institute_id');
 			$this->db->from('student_batchs sb');
 			$this->db->join('batches b', 'b.id = sb.batch_id', 'inner');
 			$this->db->where('sb.student_id', $uid);
-			$this->db->where('b.admin_id >', 0);
+			$this->db->where('b.institute_id >', 0);
 			$rows = $this->db->get()->result_array();
 			$ids = array();
 			if (!empty($rows)) {
 				foreach ($rows as $r) {
-					$aid = isset($r['admin_id']) ? (int) $r['admin_id'] : 0;
-					if ($aid > 0) {
-						$ids[] = $aid;
+					$iid = isset($r['institute_id']) ? (int) $r['institute_id'] : 0;
+					if ($iid > 0) {
+						$ids[] = $iid;
 					}
 				}
 			}
 			return array_values(array_unique($ids));
 		}
 		if ($ut === 'teacher') {
+			// Institutes the teacher is assigned to (batches.institute_id).
 			$this->db->distinct();
-			$this->db->select('b.admin_id');
+			$this->db->select('b.institute_id');
 			$this->db->from('batch_subjects bs');
 			$this->db->join('batches b', 'b.id = bs.batch_id', 'inner');
 			$this->db->where('bs.teacher_id', $uid);
-			$this->db->where('b.admin_id >', 0);
+			$this->db->where('b.institute_id >', 0);
 			$rows = $this->db->get()->result_array();
 			$ids = array();
 			if (!empty($rows)) {
 				foreach ($rows as $r) {
-					$aid = isset($r['admin_id']) ? (int) $r['admin_id'] : 0;
-					if ($aid > 0) {
-						$ids[] = $aid;
+					$iid = isset($r['institute_id']) ? (int) $r['institute_id'] : 0;
+					if ($iid > 0) {
+						$ids[] = $iid;
 					}
 				}
 			}
@@ -595,16 +598,15 @@ class Institute extends MY_Controller
 
 		if ($base['profileType'] === 'teacher') {
 			$batches = $this->fetch_teacher_assigned_batches_raw($id);
-			$review_data = array(
-				'averageRating' => 0,
-				'totalReviews' => 0,
-				'reviews' => array(),
-			);
+			// Reviews are keyed by the target id (review.institute_id), so teachers get reviews too.
+			$review_data = $this->fetch_institute_approved_reviews_for_api($id, array('reviews_limit' => $reviews_limit));
 		} else {
-			$batch_owner_ids = $this->resolve_institute_batch_owner_user_ids($id, $row);
+			// Batches belong to THIS institute only: match by batches.institute_id (and the
+			// institute's own created batches admin_id = its id). Do NOT pull in the institute's
+			// creator admin_id (often super-admin 1), which would leak every admin batch here.
 			$batches = $this->fetch_institute_batches_for_api($id, array(
 				'active_only' => true,
-				'owner_ids' => $batch_owner_ids,
+				'owner_ids' => array($id),
 			));
 			$review_data = $this->fetch_institute_approved_reviews_for_api($id, array('reviews_limit' => $reviews_limit));
 		}

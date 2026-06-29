@@ -232,10 +232,12 @@
 											$front_role_s = strtolower(trim((string) $front_role_raw));
 											$is_front_student = ($front_api_ut === 'student' || $front_role_s === 'student' || $front_role_raw === 2 || $front_role_raw === '2');
 											$is_front_teacher = ($front_api_ut === 'teacher' || $front_role_s === 'teacher' || $front_role_raw === 3 || $front_role_raw === '3');
+											$front_my_institutes_url = base_url('institute/list');
 											$front_my_batches_url = base_url('batch/list');
 											if ($is_front_student || $is_front_teacher) {
 												$front_my_batches_url = base_url('batch/mylist');
-											}
+											    $front_my_institutes_url = base_url('institute/list');
+                                            }
 											$front_notifications_url = base_url('notifications');
 											$front_profile_img = trim((string) $this->session->userdata('profile_img'));
 											$front_avatar_url = ($front_profile_img !== '') ? profile_image_url($front_profile_img, $front_role_raw, $front_api_ut) : '';
@@ -253,7 +255,8 @@
 												<div class="front-profile-dropdown-inner">
 													<nav class="front-profile-links" aria-label="Account menu">
 														<a class="front-profile-link" href="<?php echo base_url('update-profile'); ?>"><i class="fas fa-user-circle"></i> View Profile</a>
-														<a class="front-profile-link" href="<?php echo html_escape($front_my_batches_url); ?>"><i class="fas fa-layer-group"></i> My Batches</a>
+                                                        <a class="front-profile-link" href="<?php echo html_escape($front_my_institutes_url); ?>"><i class="fas fa-chalkboard-teacher"></i>My Institutes</a>
+														<a class="front-profile-link" href="<?php echo html_escape($front_my_batches_url); ?>"><i class="fas fa-layer-group"></i>My Batches</a>
 														<a class="front-profile-link" href="<?php echo base_url('payment-history'); ?>"><i class="fas fa-receipt"></i> Payment History</a>
 														<a class="front-profile-link" href="<?php echo base_url('update-password'); ?>"><i class="fas fa-key"></i> Update Password</a>
 														<a class="front-profile-link" href="<?php echo html_escape($front_notifications_url); ?>"><i class="fas fa-bell"></i> Notifications</a>

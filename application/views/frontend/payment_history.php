@@ -34,6 +34,7 @@
 <script>
 (function () {
 	var url = <?php echo json_encode(isset($payment_history_data_url) ? $payment_history_data_url : ''); ?>;
+	var accessToken = <?php echo json_encode(isset($api_access_token) ? $api_access_token : ''); ?>;
 	function ok(s) { return s === true || s === 'true' || s === 1 || s === '1'; }
 	function esc(s) {
 		var d = document.createElement('div');
@@ -45,10 +46,15 @@
 		var tb = document.getElementById('pay_hist_rows');
 		msg.textContent = 'Loading…';
 		tb.innerHTML = '';
+		// Direct API call needs the Bearer token (the API is shared with the mobile app).
+		var body = { page: 1, per_page: 50 };
+		if (accessToken) { body.access_token = accessToken; }
+		var headers = { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' };
+		if (accessToken) { headers.Authorization = 'Bearer ' + accessToken; }
 		fetch(url, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-			body: JSON.stringify({ page: 1, per_page: 50 })
+			headers: headers,
+			body: JSON.stringify(body)
 		}).then(function (r) { return r.json(); }).then(function (j) {
 			msg.textContent = ok(j.status) ? '' : (j.msg || 'Could not load payments.');
 			var rows = j.paymentData || [];

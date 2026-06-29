@@ -42,6 +42,7 @@
 (function () {
 	var iid = <?php echo (int) (isset($institute_id) ? $institute_id : 0); ?>;
 	var dataUrl = <?php echo json_encode(isset($institute_details_data_url) ? $institute_details_data_url : ''); ?>;
+	var accessToken = <?php echo json_encode(isset($api_access_token) ? $api_access_token : ''); ?>;
 	var addReviewBase = <?php echo json_encode(isset($add_review_url) ? rtrim($add_review_url, '/') : ''); ?>;
 	var batchPreview = 3;
 	var reviewPreview = 2;
@@ -74,9 +75,14 @@
 		return '';
 	}
 	function postJson(body) {
+		body = body || {};
+		// Direct API call needs the Bearer token (the API is shared with the mobile app).
+		if (accessToken && !body.access_token) { body.access_token = accessToken; }
+		var headers = { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' };
+		if (accessToken) { headers.Authorization = 'Bearer ' + accessToken; }
 		return fetch(dataUrl, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+			headers: headers,
 			body: JSON.stringify(body)
 		}).then(function (r) { return r.json(); });
 	}
@@ -169,12 +175,9 @@
 			var avg = r.averageRating != null ? Number(r.averageRating) : 0;
 			var tr = r.totalReviews != null ? r.totalReviews : 0;
 			var ratingBlock = document.getElementById('inst_d_rating_block');
-			if (profileType === 'institute') {
-				ratingBlock.innerHTML = starsHtml(Math.round(avg)) +
-					'<span class="inst-detail-rating-num">' + esc(avg.toFixed(1)) + ' (' + esc(tr) + ')</span>';
-			} else {
-				ratingBlock.innerHTML = '<span class="inst-detail-rating-num">' + esc(profileLabel) + '</span>';
-			}
+			// Both institutes and teachers can be rated/reviewed.
+			ratingBlock.innerHTML = starsHtml(Math.round(avg)) +
+				'<span class="inst-detail-rating-num">' + esc(avg.toFixed(1)) + ' (' + esc(tr) + ')</span>';
 			document.getElementById('inst_d_mobile_title').textContent = profileLabel + ' details';
 			document.getElementById('inst_d_name').textContent = ins.name || profileLabel;
 			var loc = [ins.address, ins.city, ins.state, ins.pincode, ins.country].filter(Boolean).join(', ');
@@ -192,12 +195,9 @@
 			document.getElementById('inst_d_contact').innerHTML = contacts.length ? contacts.join('') : '<li class="inst-muted">No contact on file.</li>';
 			var ar = document.getElementById('inst_d_add_review');
 			if (ar) {
-				if (profileType === 'institute') {
-					ar.href = addReviewBase + '?institute_id=' + encodeURIComponent(iid);
-					ar.style.display = '';
-				} else {
-					ar.style.display = 'none';
-				}
+				// review.institute_id holds the target id (institute OR teacher), so both can be reviewed.
+				ar.href = addReviewBase + '?institute_id=' + encodeURIComponent(iid);
+				ar.style.display = '';
 			}
 			document.getElementById('inst_d_batches_title').textContent = profileType === 'teacher' ? 'Assigned batches' : 'Batches';
 			var bb = j.batches || [];
@@ -213,9 +213,9 @@
 			var rev = j.reviews || [];
 			var rh = document.getElementById('inst_d_reviews');
 			var reviewPanel = document.getElementById('inst_panel_reviews');
-			if (profileType !== 'institute') {
-				reviewPanel.style.display = 'none';
-			} else if (!rev.length) {
+			// Reviews panel shows for both institutes and teachers.
+			reviewPanel.style.display = '';
+			if (!rev.length) {
 				rh.innerHTML = '<p class="inst-muted mb-0 px-2">No reviews yet.</p>';
 			} else {
 				rh.innerHTML = rev.map(function (x, idx) {

@@ -27,51 +27,74 @@ class Batch extends MY_Controller
 		return array_merge($data, $this->input->post(), $this->input->get());
 	}
 
-	private function build_slider_banners($institute_id = '')
+	private function build_slider_banners($payload = null)
 	{
-		$banners = array();
-		$row = $this->db_model->select_data('slider_details', 'frontend_details', array('id' => 1), 1);
-		if (empty($row[0]['slider_details'])) {
-			return $banners;
-		}
-		$sliders = json_decode($row[0]['slider_details'], true);
-		if (!is_array($sliders) || empty($sliders['slider_img'])) {
-			return $banners;
-		}
-		$count = count($sliders['slider_img']);
-
-		// Institute banner (when an institute context is given) goes first in the list.
-		if ($institute_id !== '') {
-			$institute_row = $this->db_model->select_data('banner', 'users', array('id' => $institute_id), 1);
-			$institute_banner = (is_array($institute_row) && isset($institute_row[0]) && is_array($institute_row[0]) && isset($institute_row[0]['banner']))
-				? trim((string) $institute_row[0]['banner'])
-				: '';
-			if ($institute_banner !== '') {
-				$institute_banner_url = base_url('uploads/users/') . $institute_banner;
-				$banners[] = array(
-					'id' => 0,
-					'image_url' => $institute_banner_url,
-					'heading' => '',
+		// 1) Gallery images (admin-managed) from the gallery table.
+		$gallery_images = array();
+		$rows = $this->db_model->select_data('id, image, title', 'gallery use index (id)', array('status' => 1, 'type' => 'Image','purpose' => 'Banner'), '', array('id', 'desc'));
+		if (!empty($rows)) {
+			foreach ($rows as $r) {
+				$img = isset($r['image']) ? trim((string) $r['image']) : '';
+				if ($img === '') {
+					continue;
+				}
+				$gallery_images[] = array(
+					'id' => isset($r['id']) ? (int) $r['id'] : 0,
+					'type' => 'gallery',
+					'image_url' => base_url('uploads/gallery/') . $img,
+					'heading' => isset($r['title']) ? (string) $r['title'] : '',
 					'subheading' => '',
-					'description' => ''
+					'description' => '',
 				);
 			}
 		}
 
-		for ($i = 0; $i < $count; $i++) {
-			$img = isset($sliders['slider_img'][$i]) ? $sliders['slider_img'][$i] : '';
-			if ($img === '') {
-				continue;
+		// 2) Institute banners (users.banner) for institutes the logged-in student is enrolled in.
+		$institute_banners = array();
+		$student_id = 0;
+		if (is_array($payload) && strtolower(trim((string) (isset($payload['ut']) ? $payload['ut'] : ''))) === 'student') {
+			$student_id = (int) $payload['uid'];
+		}
+		if ($student_id > 0) {
+			$sql = 'SELECT DISTINCT u.id, u.banner, u.name
+				FROM student_batchs sb
+				INNER JOIN batches b ON b.id = sb.batch_id
+				INNER JOIN users u ON u.id = b.institute_id AND u.role = 4 AND IFNULL(u.status, 1) = 1
+				WHERE sb.student_id = ? AND u.banner IS NOT NULL AND TRIM(u.banner) <> ""
+				ORDER BY u.name ASC';
+			$q = $this->db->query($sql, array($student_id));
+			if ($q !== false) {
+				foreach ($q->result_array() as $row) {
+					$banner = isset($row['banner']) ? trim((string) $row['banner']) : '';
+					if ($banner === '') {
+						continue;
+					}
+					$institute_banners[] = array(
+						'id' => isset($row['id']) ? (int) $row['id'] : 0,
+						'type' => 'institute_banner',
+						'image_url' => base_url('uploads/users/') . $banner,
+						'heading' => isset($row['name']) ? (string) $row['name'] : '',
+						'subheading' => '',
+						'description' => '',
+					);
+				}
 			}
-			$banners[] = array(
-				'id' => $i + 1,
-				'image_url' => base_url('uploads/site_data/') . $img,
-				'heading' => isset($sliders['slider_heading'][$i]) ? $sliders['slider_heading'][$i] : '',
-				'subheading' => isset($sliders['slider_subheading'][$i]) ? $sliders['slider_subheading'][$i] : '',
-				'description' => isset($sliders['slider_desc'][$i]) ? $sliders['slider_desc'][$i] : ''
-			);
 		}
 
+		// 3) Interleave: gallery, institute banner, gallery, institute banner, ...
+		$banners = array();
+		$gi = 0;
+		$bi = 0;
+		$gn = count($gallery_images);
+		$bn = count($institute_banners);
+		while ($gi < $gn || $bi < $bn) {
+			if ($gi < $gn) {
+				$banners[] = $gallery_images[$gi++];
+			}
+			if ($bi < $bn) {
+				$banners[] = $institute_banners[$bi++];
+			}
+		}
 
 		return $banners;
 	}
@@ -662,8 +685,7 @@ class Batch extends MY_Controller
 		if ($payload === false) {
 			return;
 		}
-		$institute_id = isset($data['institute_id']) ? (int) $data['institute_id'] : '';
-		$banners = $this->build_slider_banners($institute_id);
+		$banners = $this->build_slider_banners($payload);
 		$pg = $this->parse_api_list_pagination($data, 20, 100);
 		$total = is_array($banners) ? count($banners) : 0;
 		$banners_page = is_array($banners) ? array_slice($banners, $pg['offset'], $pg['limit']) : array();
@@ -845,10 +867,18 @@ class Batch extends MY_Controller
 		$category = $this->db_model->select_data('name', 'batch_category use index (id)', array('id' => $b['cat_id']), 1);
 		$subcategory = $this->db_model->select_data('name', 'batch_subcategory use index (id)', array('id' => $b['sub_cat_id']), 1);
 		$can_enroll = false;
+		// Free institutes (users.paid = 0) enroll without payment even for paid batches.
+		$requires_payment = $this->batch_requires_payment($b);
+		// For a free institute the batch/subscription fee is automatically 0.
+		$institute_user_id = !empty($b['institute_id']) ? (int) $b['institute_id'] : (isset($b['admin_id']) ? (int) $b['admin_id'] : 0);
+		$free_institute = $this->institute_is_free($institute_user_id);
+		if ($free_institute) {
+			$b['batch_price'] = '0';
+			$b['batch_offer_price'] = '0';
+		}
 		if ($ut === 'student') {
-			$batch_type = isset($b['batch_type']) ? (int) $b['batch_type'] : 0;
-			// Paid batch: allow pay only when no payment history exists for this student+batch.
-			if ($batch_type === 2) {
+			// Paid batch (and not a free institute): allow pay only when no payment history exists.
+			if ($requires_payment) {
 				$paid_rows = $this->db_model->select_data(
 					'id',
 					'student_payment_history',
@@ -865,6 +895,9 @@ class Batch extends MY_Controller
 			'batch_id' => $batch_id,
 			'title' => $b['batch_name'],
 			'batchName' => $b['batch_name'],
+			'institute_id' => isset($b['institute_id']) ? (int) $b['institute_id'] : 0,
+			'institute_name' => (isset($b['institute_id']) && (int) $b['institute_id'] > 0) ? $this->institute_name_by_id((int) $b['institute_id']) : '',
+			'instituteName' => (isset($b['institute_id']) && (int) $b['institute_id'] > 0) ? $this->institute_name_by_id((int) $b['institute_id']) : '',
 			'instructor' => $this->teacher_names_for_batch($batch_id),
 			'schedule' => $this->format_time_range($b['start_time'], $b['end_time']),
 			'start_time' => $b['start_time'],
@@ -887,6 +920,8 @@ class Batch extends MY_Controller
 				'added_by' => isset($enrollment[0]['added_by']) ? $enrollment[0]['added_by'] : ''
 			),
 			'canEnroll' => $can_enroll,
+			'requiresPayment' => $requires_payment,
+			'isFreeInstitute' => $free_institute,
 			'modules' => array(
 				'live_classes' => array(
 					'is_live' => $is_live,
@@ -1119,6 +1154,8 @@ class Batch extends MY_Controller
 			echo json_encode(array('status' => 'false', 'msg' => 'Failed to add book'));
 			return;
 		}
+		// Email enrolled students of the batch about the new study material (best-effort).
+		@$this->send_library_material_emails($batch_id);
 		$download_url = $image !== '' ? base_url('uploads/book/') . $image : '';
 		echo json_encode(array(
 			'status' => 'true',
@@ -1288,7 +1325,7 @@ class Batch extends MY_Controller
 	private function batch_normalize_attendance_day_status($raw)
 	{
 		$s = strtolower(trim((string) $raw));
-		if ($s === 'halfday') {
+		if ($s === 'halfday' || $s === 'half') {
 			$s = 'half_day';
 		}
 		$allowed = array('present', 'late', 'absent', 'half_day');
@@ -1480,6 +1517,7 @@ class Batch extends MY_Controller
 
 		$results = array();
 		$any_ok = false;
+		$alerts = array(); // students marked late/half_day/absent -> notify after the loop
 		foreach ($entries as $e) {
 			if (!is_array($e)) {
 				continue;
@@ -1584,8 +1622,14 @@ class Batch extends MY_Controller
 					'dayStatus' => $final_day_status,
 				);
 			}
+			if (in_array($final_day_status, array('late', 'half_day', 'absent'), true)) {
+				$alerts[] = array('student_id' => $student_id, 'date' => $date, 'day_status' => $final_day_status);
+			}
 			$any_ok = true;
 		}
+
+		// Email (and, later, SMS) parents of students marked late/half-day/absent. Best-effort.
+		@$this->send_attendance_alerts($alerts, $batch_id);
 
 		$ok_count = count(array_filter($results, function ($r) {
 			return isset($r['status']) && $r['status'] === 'true';
@@ -1595,6 +1639,76 @@ class Batch extends MY_Controller
 			'results' => $results,
 			'savedCount' => $ok_count,
 		));
+	}
+
+	/**
+	 * Notify parents when a student is marked late / half-day / absent.
+	 * Email now (template purpose: attendance_absent, reused for all three with a {{STATUS}} var)
+	 * plus SMS to the guardian (students.contact_no) via MSG91. Both best-effort.
+	 *
+	 * @param array $alerts list of array{student_id:int,date:string,day_status:string}
+	 * @param int   $batch_id
+	 * @return int emails sent
+	 */
+	private function send_attendance_alerts(array $alerts, $batch_id)
+	{
+		if (empty($alerts)) {
+			return 0;
+		}
+		$batch_id = (int) $batch_id;
+		$batch_name = '';
+		if ($batch_id > 0) {
+			$bn = $this->db_model->select_data('batch_name', 'batches use index (id)', array('id' => $batch_id), 1);
+			if (!empty($bn[0]['batch_name'])) {
+				$batch_name = (string) $bn[0]['batch_name'];
+			}
+		}
+
+		$labels = array('late' => 'Late', 'half_day' => 'Half-day', 'absent' => 'Absent');
+		$purposes = array('late' => 'attendance_late', 'half_day' => 'attendance_halfday', 'absent' => 'attendance_absent');
+		$sent = 0;
+		foreach ($alerts as $a) {
+			$sid = (int) $a['student_id'];
+			if ($sid < 1) {
+				continue;
+			}
+			$stu = $this->db_model->select_data('id,name,email,contact_no', 'students', array('id' => $sid), 1);
+			if (empty($stu[0])) {
+				continue;
+			}
+			$name = isset($stu[0]['name']) ? (string) $stu[0]['name'] : '';
+			$email = isset($stu[0]['email']) ? trim((string) $stu[0]['email']) : '';
+			$contact_no = isset($stu[0]['contact_no']) ? trim((string) $stu[0]['contact_no']) : '';
+			$status_label = isset($labels[$a['day_status']]) ? $labels[$a['day_status']] : ucfirst((string) $a['day_status']);
+			$purpose = isset($purposes[$a['day_status']]) ? $purposes[$a['day_status']] : 'attendance_absent';
+			$date = (string) $a['date'];
+
+			$vars = array(
+				'STUDENT_NAME' => $name,
+				'STATUS' => $status_label,
+				'DATE' => $date,
+				'BATCH_NAME' => $batch_name,
+				'CURRENT_YEAR' => date('Y'),
+			);
+
+			if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+				$res = $this->common->send_email(array(
+					'purpose' => $purpose,
+					'to_email' => $email,
+					'dynamic_var' => $vars,
+				));
+				if (!empty($res['status'])) {
+					$sent++;
+				}
+			}
+
+			if ($contact_no !== '') {
+				$msg = trim($name . ' was marked ' . $status_label . ' on ' . $date
+					. ($batch_name !== '' ? ' (' . $batch_name . ')' : '') . '.');
+				@$this->common->send_sms($contact_no, $msg);
+			}
+		}
+		return $sent;
 	}
 
 	/**
@@ -2164,6 +2278,8 @@ class Batch extends MY_Controller
 			'added_at' => date('Y-m-d H:i:s'),
 		));
 		$new_id = (int) $this->db_model->insert_data('notes_pdf', $insert);
+		// Email enrolled students of the batch about the new study material (best-effort).
+		@$this->send_library_material_emails($batch_id);
 		$this->api_json(true, 'Notes added successfully', array(
 			'id' => $new_id,
 			'batch_id' => $batch_id,
@@ -2345,6 +2461,20 @@ class Batch extends MY_Controller
 		$row = $this->db->get()->row_array();
 		$used = isset($row['total']) ? (int) $row['total'] : 0;
 
+		// Live classes (Zoom meetings) count toward the same 330-hour cap.
+		// batch_zoom_meetings.duration is in MINUTES, so convert to seconds.
+		if ($this->db->table_exists('batch_zoom_meetings')) {
+			$this->db->select_sum('duration', 'total');
+			$this->db->from('batch_zoom_meetings');
+			$this->db->where('batch_id', (int) $batch_id);
+			$this->db->where('status', 1);
+			$this->db->where('created_at >=', $cs);
+			$this->db->where('created_at <', $ce);
+			$mrow = $this->db->get()->row_array();
+			$meeting_minutes = isset($mrow['total']) ? (int) $mrow['total'] : 0;
+			$used += $meeting_minutes * 60;
+		}
+
 		return array('used' => $used, 'limit' => $limit, 'cycle_start' => $cs, 'cycle_end' => $ce);
 	}
 
@@ -2440,6 +2570,26 @@ class Batch extends MY_Controller
 			'added_at' => date('Y-m-d H:i:s'),
 		));
 		$new_id = (int) $this->db_model->insert_data('video_lectures', $insert);
+
+		// Email + push to enrolled students via the common template-driven notifier
+		// (template purpose: new_lecture_upload). Best-effort; never blocks the response.
+		$batch_name = '';
+		$bn = $this->db_model->select_data('batch_name', 'batches use index (id)', array('id' => $batch_id), 1);
+		if (!empty($bn[0]['batch_name'])) {
+			$batch_name = $bn[0]['batch_name'];
+		}
+		$this->load->library('notification_service');
+		@$this->notification_service->notify_batch_event(
+			$batch_id,
+			'new_lecture_upload',
+			array(
+				'BATCH_NAME' => $batch_name,
+				'LECTURE_TITLE' => $title,
+				'CURRENT_YEAR' => date('Y'),
+			),
+			array('url' => 'batch/video-lectures?batch_id=' . $batch_id)
+		);
+
 		$this->api_json(true, 'Video lecture added successfully', array('id' => $new_id, 'batch_id' => $batch_id));
 	}
 
@@ -2598,6 +2748,29 @@ class Batch extends MY_Controller
 			'added_at' => date('Y-m-d H:i:s'),
 		));
 		$new_id = (int) $this->db_model->insert_data('exams', $insert);
+
+		// Email + push to enrolled students via the common template-driven notifier
+		// (template purpose: new_exam). Best-effort; never blocks the response.
+		$batch_name = '';
+		$bn = $this->db_model->select_data('batch_name', 'batches use index (id)', array('id' => $batch_id), 1);
+		if (!empty($bn[0]['batch_name'])) {
+			$batch_name = $bn[0]['batch_name'];
+		}
+		$this->load->library('notification_service');
+		@$this->notification_service->notify_batch_event(
+			$batch_id,
+			'new_exam',
+			array(
+				'BATCH_NAME' => $batch_name,
+				'EXAM_NAME' => $name,
+				'EXAM_DATE' => isset($insert['mock_sheduled_date']) ? $insert['mock_sheduled_date'] : '',
+				'EXAM_TIME' => isset($insert['mock_sheduled_time']) ? $insert['mock_sheduled_time'] : '',
+				'TOTAL_MARKS' => $total_marks,
+				'CURRENT_YEAR' => date('Y'),
+			),
+			array('url' => 'batch/exams?batch_id=' . $batch_id)
+		);
+
 		$this->api_json(true, 'Exam added successfully', array(
 			'id' => $new_id,
 			'batch_id' => $batch_id,
@@ -3355,25 +3528,49 @@ class Batch extends MY_Controller
 				), array('id' => (int) $bz[0]['id']), 1);
 			}
 
-			// Send notifications to all enrolled students
-			$students = $this->db_model->select_data('student_id', 'student_batchs', array('batch_id' => $batch_id), '');
-			if (!empty($students)) {
-				foreach ($students as $student) {
-					$student_id = (int) $student['student_id'];
-					if ($student_id > 0) {
-						$notification = array(
-							'student_id' => $student_id,
-							'batch_id' => $batch_id,
-							'notification_type' => 'class_started',
-							'msg' => 'Class has started! Join now.',
-							'url' => site_url('batch/live-room?batch_id=' . $batch_id),
-							'status' => 0,
-							'time' => date('Y-m-d H:i:s')
-						);
-						$this->db_model->insert_data('notifications', $notification);
-					}
-				}
+			// Email + push + in-app (1 master + N push_notifications_details) via the common
+			// template-driven notifier (template purpose: class_started).
+			$batch_name = '';
+			$teacher_name = $this->zoom_display_name_from_payload($payload);
+			$bn = $this->db_model->select_data('batch_name', 'batches use index (id)', array('id' => $batch_id), 1);
+			if (!empty($bn[0]['batch_name'])) {
+				$batch_name = $bn[0]['batch_name'];
 			}
+
+			// Class start/end timings come from batch_subjects (sub_start_time / sub_end_time).
+			// Prefer the subject taught by the teacher who started the class; fall back to the first subject.
+			$start_time_raw = '';
+			$end_time_raw = '';
+			$teacher_id = isset($payload['uid']) ? (int) $payload['uid'] : 0;
+			$subj = array();
+			if ($teacher_id > 0) {
+				$subj = $this->db_model->select_data('sub_start_time,sub_end_time', 'batch_subjects use index (batch_id)', array('batch_id' => $batch_id, 'teacher_id' => $teacher_id), 1);
+			}
+			if (empty($subj[0])) {
+				$subj = $this->db_model->select_data('sub_start_time,sub_end_time', 'batch_subjects use index (batch_id)', array('batch_id' => $batch_id), 1);
+			}
+			if (!empty($subj[0])) {
+				$start_time_raw = isset($subj[0]['sub_start_time']) ? (string) $subj[0]['sub_start_time'] : '';
+				$end_time_raw = isset($subj[0]['sub_end_time']) ? (string) $subj[0]['sub_end_time'] : '';
+			}
+			$start_time = $start_time_raw !== '' && strtotime($start_time_raw) !== false ? date('h:i A', strtotime($start_time_raw)) : $start_time_raw;
+			$end_time = $end_time_raw !== '' && strtotime($end_time_raw) !== false ? date('h:i A', strtotime($end_time_raw)) : $end_time_raw;
+
+			$this->load->library('notification_service');
+			@$this->notification_service->notify_batch_event(
+				$batch_id,
+				'class_started',
+				array(
+					'BATCH_NAME' => $batch_name,
+					'TEACHER_NAME' => $teacher_name,
+					'class_instructor' => $teacher_name,
+					'CLASS_LINK' => base_url('batch/live-classes?batch_id=' . $batch_id),
+					'time' => $start_time,
+					'start_date' => $start_time,
+					'end_date' => $end_time,
+				),
+				array('url' => 'batch/live-classes?batch_id=' . $batch_id, 'student_name_var' => 'NAME')
+			);
 
 			$this->api_json(true, 'Class started and notifications sent');
 			return;
@@ -3484,19 +3681,15 @@ class Batch extends MY_Controller
 				$batch_info = $this->db_model->select_data('batch_name', 'batches use index (id)', array('id' => $batch_id), 1);
 				$batch_name = !empty($batch_info[0]['batch_name']) ? (string) $batch_info[0]['batch_name'] : 'Zoom Class';
 
-				foreach ($student_ids as $student_id) {
-					$notification = array(
-						'student_id' => (int) $student_id,
-						'batch_id' => (int) $batch_id,
-						'notification_type' => 'Class Ended',
-						'msg' => 'The Zoom class "' . $batch_name . '" has ended. Recording will be available soon.',
-						'url' => 'batch/live-classes',
-						'status' => 0,
-						'time' => date('Y-m-d H:i:s'),
-						'seen_by' => ''
-					);
-					$this->db_model->insert_data('notifications', $notification);
-				}
+				// 1 master + N push_notifications_details for enrolled students.
+				$this->load->library('notification_service');
+				@$this->notification_service->push_notify(
+					'Class Ended',
+					'The Zoom class "' . $batch_name . '" has ended. Recording will be available soon.',
+					'Class Ended',
+					'batch/live-classes',
+					array('batch_id' => (int) $batch_id)
+				);
 			}
 		}
 
@@ -4039,6 +4232,12 @@ class Batch extends MY_Controller
 		$batch_id = (int) $batch_id;
 		if ($batch_id < 1) {
 			return 0;
+		}
+		// Teacher / institute: show ALL active exams they created for the batch (matches the
+		// "Created Exams" list and the other tiles, which are totals — not upcoming-only).
+		if ($ut !== 'student') {
+			$this->db->reset_query();
+			return (int) $this->db->where(array('batch_id' => $batch_id, 'status' => 1))->count_all_results('exams');
 		}
 		$this->db->reset_query();
 		$this->db->select('id,type,mock_sheduled_date,mock_sheduled_time,time_duration');
@@ -5675,6 +5874,23 @@ class Batch extends MY_Controller
 			echo json_encode(array('status' => 'false', 'msg' => 'Failed to add homework'));
 			return;
 		}
+		// Email + push to enrolled students via the common template-driven notifier
+		// (template purpose: new_homework_assignment). Best-effort; never blocks the response.
+		$batch_name = '';
+		$bn = $this->db_model->select_data('batch_name', 'batches use index (id)', array('id' => $batch_id), 1);
+		if (!empty($bn[0]['batch_name'])) {
+			$batch_name = $bn[0]['batch_name'];
+		}
+		$this->load->library('notification_service');
+		@$this->notification_service->notify_batch_event(
+			$batch_id,
+			'new_homework_assignment',
+			array(
+				'BATCH_NAME' => $batch_name,
+				'CURRENT_YEAR' => date('Y'),
+			),
+			array('url' => 'batch/homework?batch_id=' . $batch_id)
+		);
 		echo json_encode(array(
 			'status' => 'true',
 			'message' => 'Success',
@@ -5689,6 +5905,52 @@ class Batch extends MY_Controller
 			),
 		), JSON_UNESCAPED_SLASHES);
 		die;
+	}
+
+	/**
+	 * Email the `new_study_material_added_to_elibrary` template to enrolled, active students of the
+	 * given batch(es). $batch_ids may be an array of ids or a comma-separated string. Best-effort.
+	 */
+	private function send_library_material_emails($batch_ids)
+	{
+		if (!is_array($batch_ids)) {
+			$batch_ids = explode(',', (string) $batch_ids);
+		}
+		$bids = array();
+		foreach ($batch_ids as $b) { $bi = (int) $b; if ($bi > 0) { $bids[$bi] = $bi; } }
+		if (empty($bids)) {
+			return;
+		}
+		$this->db->reset_query();
+		$this->db->select('student_id')->from('student_batchs')->where_in('batch_id', array_values($bids))->where('status', 1);
+		$enr = $this->db->get()->result_array();
+		$ids = array();
+		foreach ((array) $enr as $e) { $sid = (int) $e['student_id']; if ($sid > 0) { $ids[$sid] = $sid; } }
+		if (empty($ids)) {
+			return;
+		}
+		$this->db->reset_query();
+		$this->db->select('id,name,email')->from('students')->where_in('id', array_values($ids))->where('status', 1);
+		if ($this->db->field_exists('deleted', 'students')) {
+			$this->db->where('deleted', '0');
+		}
+		$students = $this->db->get()->result_array();
+		foreach ((array) $students as $stu) {
+			$to = isset($stu['email']) ? trim((string) $stu['email']) : '';
+			if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
+				continue;
+			}
+			$this->common->send_email(array(
+				'purpose' => 'new_study_material_added_to_elibrary',
+				'user_id' => (int) $stu['id'],
+				'user_type' => 'student',
+				'to_email' => $to,
+				'dynamic_var' => array(
+					'STUDENT_NAME' => isset($stu['name']) ? $stu['name'] : '',
+					'CURRENT_YEAR' => date('Y'),
+				),
+			));
+		}
 	}
 
 	/**
@@ -6355,6 +6617,19 @@ class Batch extends MY_Controller
 		$start = isset($data['start_time']) ? trim((string) $data['start_time']) : '';
 		$duration = isset($data['duration']) ? (int) $data['duration'] : 60;
 		$timezone = isset($data['timezone']) ? trim((string) $data['timezone']) : 'UTC';
+
+		// 330-hour rolling-yearly cap is shared by uploaded videos AND live classes.
+		// Check the combined usage before creating anything on Zoom. duration is in minutes.
+		$meeting_seconds = max(0, $duration) * 60;
+		$quota = $this->batch_video_quota($batch_id);
+		if (($quota['used'] + $meeting_seconds) > $quota['limit']) {
+			$remaining = max(0, $quota['limit'] - $quota['used']);
+			$this->api_json(false, 'This live class exceeds the 330-hour yearly limit for this batch. This class is '
+				. $this->format_hours_minutes($meeting_seconds) . ', but only '
+				. $this->format_hours_minutes($remaining) . ' remain in the current cycle.');
+			return;
+		}
+
 		$created = $zc->create_meeting_for_batch($topic, $agenda, ($start !== '' ? $start : null), $duration, $timezone);
 		if (!$created['ok']) {
 			$this->zoom_log($batch_id, 'create', 0, $created['error'], $data, array(), $payload);
@@ -6402,7 +6677,26 @@ class Batch extends MY_Controller
 		$this->zoom_log($batch_id, 'create', 201, 'created', $data, $d, $payload);
 		// Email the join link to every active student of this batch (best-effort; never blocks the response on failure).
 		$invite_start = !empty($ins['start_time']) ? $ins['start_time'] : (isset($data['start_time']) ? trim((string) $data['start_time']) : '');
-		@$this->send_batch_meeting_invite($batch_id, $ins['join_url'], array('start_time' => $invite_start));
+		@$this->send_batch_meeting_invite($batch_id, $ins['join_url'], array('start_time' => $invite_start, 'teacher_id' => (int) $payload['uid']));
+
+		// Push notification (FCM) to enrolled students. Writes 1 parent `notifications` row +
+		// one `push_notifications_details` row per recipient (best-effort, never blocks the response).
+		$this->load->library('notification_service');
+		$batch_name = '';
+		$bn = $this->db_model->select_data('batch_name', 'batches use index (id)', array('id' => $batch_id), 1);
+		if (!empty($bn[0]['batch_name'])) {
+			$batch_name = $bn[0]['batch_name'];
+		}
+		$push_title = 'Live class started';
+		$push_msg = ($batch_name !== '' ? $batch_name . ': ' : '') . 'Your teacher has started a live class. Tap to join.';
+		@$this->notification_service->push_to_batch_students(
+			$batch_id,
+			$push_title,
+			$push_msg,
+			'class_start',
+			'batch/live-classes?batch_id=' . $batch_id
+		);
+
 		$this->api_json(true, 'Zoom meeting created. Students and teachers join only from Live classes in your app or website.', array('zoomMeetingId' => $mid));
 	}
 
@@ -6443,7 +6737,43 @@ class Batch extends MY_Controller
 		// logs in there and joins from inside the app where access is gated.
 		$class_page_url = base_url('batch/live-classes?batch_id=' . $batch_id);
 
-		$students = $this->db_model->select_data('id,name,email', 'students use index (id)', array('batch_id' => $batch_id, 'status' => 1));
+		// Class start/end timings come from batch_subjects (sub_start_time / sub_end_time).
+		// Prefer the subject taught by the teacher who created the meeting; fall back to the first subject.
+		$start_time_raw = '';
+		$end_time_raw = '';
+		$teacher_id = isset($extra['teacher_id']) ? (int) $extra['teacher_id'] : 0;
+		$subj = array();
+		if ($teacher_id > 0) {
+			$subj = $this->db_model->select_data('sub_start_time,sub_end_time', 'batch_subjects use index (batch_id)', array('batch_id' => $batch_id, 'teacher_id' => $teacher_id), 1);
+		}
+		if (empty($subj[0])) {
+			$subj = $this->db_model->select_data('sub_start_time,sub_end_time', 'batch_subjects use index (batch_id)', array('batch_id' => $batch_id), 1);
+		}
+		if (!empty($subj[0])) {
+			$start_time_raw = isset($subj[0]['sub_start_time']) ? (string) $subj[0]['sub_start_time'] : '';
+			$end_time_raw = isset($subj[0]['sub_end_time']) ? (string) $subj[0]['sub_end_time'] : '';
+		}
+		$start_time = $start_time_raw !== '' && strtotime($start_time_raw) !== false ? date('h:i A', strtotime($start_time_raw)) : $start_time_raw;
+		$end_time = $end_time_raw !== '' && strtotime($end_time_raw) !== false ? date('h:i A', strtotime($end_time_raw)) : $end_time_raw;
+
+		// Enrolled students come from the `student_batchs` table. (students.batch_id is stored as
+		// a JSON array like ["3"], so it can't be matched with a plain WHERE batch_id = X.)
+		$enr = $this->db_model->select_data('student_id', 'student_batchs', array('batch_id' => $batch_id, 'status' => 1), '');
+		$ids = array();
+		foreach ((array) $enr as $e) {
+			$sid = isset($e['student_id']) ? (int) $e['student_id'] : 0;
+			if ($sid > 0) { $ids[$sid] = $sid; }
+		}
+		if (empty($ids)) {
+			return 0;
+		}
+		$this->db->reset_query();
+		$this->db->select('id,name,email')->from('students')->where_in('id', array_values($ids))->where('status', 1);
+		if ($this->db->field_exists('deleted', 'students')) {
+			$this->db->where('deleted', '0');
+		}
+		$students = $this->db->get()->result_array();
+
 		$sent = 0;
 		foreach ((array) $students as $stu) {
 			$to = isset($stu['email']) ? trim((string) $stu['email']) : '';
@@ -6451,13 +6781,18 @@ class Batch extends MY_Controller
 				continue;
 			}
 			$res = $this->common->send_email(array(
-				'purpose' => 'zoom_class_invitation',
+				'purpose' => 'class_start',
 				'to_email' => $to,
 				'dynamic_var' => array(
 					'STUDENT_NAME' => isset($stu['name']) ? $stu['name'] : '',
+					'NAME' => isset($stu['name']) ? $stu['name'] : '',
 					'TEACHER_NAME' => $teacher_name,
+					'class_instructor' => $teacher_name,
 					'BATCH_NAME' => $batch_name,
 					'CLASS_START_TIME' => isset($extra['start_time']) ? $extra['start_time'] : '',
+					'time' => $start_time,
+					'start_date' => $start_time,
+					'end_date' => $end_time,
 					'CLASS_LINK' => $class_page_url,
 					// Backward-compat: existing templates use {{ZOOM_LINK}}. Point it at the website
 					// join page (NOT the raw Zoom URL) so the paid link is never exposed.
@@ -6521,6 +6856,24 @@ class Batch extends MY_Controller
 			$this->api_json(false, 'Nothing to update');
 			return;
 		}
+
+		// If the live-class duration is being changed, re-check the shared 330-hour cap
+		// (uploaded videos + live classes). Exclude this meeting's current duration so we
+		// compare against the NEW value, not double-count it. duration is in minutes.
+		if (isset($data['duration'])) {
+			$old_seconds = (int) $row[0]['duration'] * 60;
+			$new_seconds = max(0, (int) $data['duration']) * 60;
+			$quota = $this->batch_video_quota($batch_id);
+			$used_without_this = max(0, $quota['used'] - $old_seconds);
+			if (($used_without_this + $new_seconds) > $quota['limit']) {
+				$remaining = max(0, $quota['limit'] - $used_without_this);
+				$this->api_json(false, 'This live class exceeds the 330-hour yearly limit for this batch. This class is '
+					. $this->format_hours_minutes($new_seconds) . ', but only '
+					. $this->format_hours_minutes($remaining) . ' remain in the current cycle.');
+				return;
+			}
+		}
+
 		$this->load->library('zoom_rest_client');
 		$res = $this->zoom_rest_client->update_meeting($zoom_mid, $patch);
 		if (!$res['ok']) {

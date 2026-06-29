@@ -118,40 +118,43 @@ class Main extends MY_Controller
 			}
 		}
 
-		$this->db->reset_query();
 		$n = 'notifications';
-		$this->db->select(
-			$n . '.id, ' . $n . '.student_id as studentId, ' . $n . '.batch_id as batchId, ' . $n . '.notification_type as notificationType, ' .
-			$n . '.msg, ' . $n . '.url, ' . $n . '.status, ' . $n . '.time, ' . $n . '.seen_by as seenBy',
-			false
-		);
-		$this->db->from($n);
+		$has_title = $this->db->field_exists('title', $n);
 
-		if ($ut === 'student') {
-			$this->db->where($n . '.student_id', (int) $payload['uid']);
-		} else {
-			$this->db->where_in($n . '.batch_id', $teacher_batch_ids);
-		}
+		// Build the (filtered) query for either list or count. Students read per-recipient state
+		// from push_notifications_details (1 master row -> N detail rows); teachers see batch master rows.
+		$build = function ($for_count) use ($n, $ut, $payload, $teacher_batch_ids, $data, $has_title) {
+			$this->db->reset_query();
+			if (!$for_count) {
+				$cols = $n . '.id, ' . $n . '.batch_id as batchId, ' . $n . '.notification_type as notificationType, ' .
+					($has_title ? $n . '.title as title, ' : '') .
+					$n . '.msg, ' . $n . '.url, ' . $n . '.time';
+				if ($ut === 'student') {
+					$cols .= ', pd.userid as userId, pd.`read` as `read`, pd.status as pushStatus';
+				} else {
+					$cols .= ', ' . $n . '.status, ' . $n . '.seen_by as seenBy';
+				}
+				$this->db->select($cols, false);
+			}
+			$this->db->from($n);
+			if ($ut === 'student') {
+				$this->db->join('push_notifications_details pd', 'pd.pushnotify_id = ' . $n . '.id', 'inner')
+					->where('pd.userid', (int) $payload['uid'])
+					->where('pd.user_type', 1);
+			} else {
+				$this->db->where_in($n . '.batch_id', $teacher_batch_ids);
+			}
+			if (!empty($data['notification_type'])) {
+				$this->db->where($n . '.notification_type', $data['notification_type']);
+			}
+		};
 
-		if (!empty($data['notification_type'])) {
-			$this->db->where($n . '.notification_type', $data['notification_type']);
-		}
-
+		$build(false);
 		$this->db->order_by($n . '.id', 'DESC');
 		$this->db->limit($limit, $offset);
 		$list = $this->db->get()->result_array();
 
-		// Count query with same filters
-		$this->db->reset_query();
-		$this->db->from($n);
-		if ($ut === 'student') {
-			$this->db->where($n . '.student_id', (int) $payload['uid']);
-		} else {
-			$this->db->where_in($n . '.batch_id', $teacher_batch_ids);
-		}
-		if (!empty($data['notification_type'])) {
-			$this->db->where($n . '.notification_type', $data['notification_type']);
-		}
+		$build(true);
 		$total = (int) $this->db->count_all_results();
 
 		echo json_encode(array(
@@ -160,6 +163,132 @@ class Main extends MY_Controller
 			'notifications' => !empty($list) ? $list : array(),
 			'pagination' => $this->build_api_list_pagination_meta($page, $limit, $total),
 			'msg' => !empty($list) ? $this->lang->line('ltr_fetch_successfully') : $this->lang->line('ltr_no_record_msg')
+		));
+	}
+
+	/**
+	 * POST/GET api/main/notifications-read
+	 * Marks the caller's notification(s) as read (status = 1).
+	 * Input: `id` (single) and/or `ids` (array or comma-separated). Omit both to mark ALL read.
+	 * Auth:
+	 *  - student: own rows (student_id)
+	 *  - teacher: rows of the teacher's mapped batches
+	 */
+	public function notifications_read()
+	{
+		$this->notifications_mutate('read');
+	}
+
+	/**
+	 * POST/GET api/main/notifications-delete
+	 * Deletes the caller's notification(s).
+	 * Input: `id` (single) and/or `ids` (array or comma-separated). Omit both to delete ALL.
+	 * Auth scoping identical to {@see notifications_read}.
+	 */
+	public function notifications_delete()
+	{
+		$this->notifications_mutate('delete');
+	}
+
+	/**
+	 * Shared body for notifications-read / notifications-delete: same auth scoping as
+	 * notifications-list, same id parsing, only the final DB op differs.
+	 *
+	 * @param string $action 'read' | 'delete'
+	 */
+	private function notifications_mutate($action)
+	{
+		$data = $_REQUEST;
+		$payload = $this->require_auth_payload();
+		if ($payload === false) {
+			return;
+		}
+
+		$ut = (string) $payload['ut'];
+		if ($ut !== 'student' && $ut !== 'teacher') {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'Notifications are available for student and teacher only'
+			));
+			return;
+		}
+
+		// Teacher rows are scoped to mapped batches; resolve before building the QB (select_data resets it).
+		$teacher_batch_ids = null;
+		if ($ut === 'teacher') {
+			$teacher_id = (int) $payload['uid'];
+			$rows = $this->db_model->select_data('batch_id', 'batch_subjects', array('teacher_id' => $teacher_id));
+			$teacher_batch_ids = array();
+			if (!empty($rows)) {
+				foreach ($rows as $r) {
+					$bid = isset($r['batch_id']) ? (int) $r['batch_id'] : 0;
+					if ($bid > 0 && !in_array($bid, $teacher_batch_ids, true)) {
+						$teacher_batch_ids[] = $bid;
+					}
+				}
+			}
+			if (empty($teacher_batch_ids)) {
+				echo json_encode(array(
+					'status' => 'true',
+					'userType' => 'teacher',
+					'affected' => 0,
+					'msg' => $this->lang->line('ltr_no_record_msg')
+				));
+				return;
+			}
+		}
+
+		// Collect target ids from `id` and/or `ids` (array or comma-separated string).
+		$ids = array();
+		if (isset($data['id']) && $data['id'] !== '') {
+			$ids[] = (int) $data['id'];
+		}
+		if (isset($data['ids']) && $data['ids'] !== '') {
+			$raw = is_array($data['ids']) ? $data['ids'] : explode(',', (string) $data['ids']);
+			foreach ($raw as $v) {
+				$ids[] = (int) $v;
+			}
+		}
+		$ids = array_values(array_unique(array_filter($ids, function ($v) {
+			return $v > 0;
+		})));
+
+		$n = 'notifications';
+		$this->db->reset_query();
+
+		if ($ut === 'student') {
+			// Per-recipient state lives in push_notifications_details (keyed by master id = pushnotify_id).
+			$pd = 'push_notifications_details';
+			$this->db->where('userid', (int) $payload['uid'])->where('user_type', 1);
+			if (!empty($ids)) {
+				$this->db->where_in('pushnotify_id', $ids);
+			}
+			if ($action === 'delete') {
+				$this->db->delete($pd);
+			} else {
+				$this->db->where('`read`', 0)->update($pd, array('read' => 1));
+			}
+		} else {
+			// Teacher: batch-scoped master rows (no per-recipient copy).
+			$this->db->where_in($n . '.batch_id', $teacher_batch_ids);
+			if (!empty($ids)) {
+				$this->db->where_in($n . '.id', $ids);
+			}
+			if ($action === 'delete') {
+				$this->db->delete($n);
+			} else {
+				$this->db->update($n, array('status' => 1));
+			}
+		}
+		$affected = (int) $this->db->affected_rows();
+
+		echo json_encode(array(
+			'status' => 'true',
+			'userType' => $ut,
+			'affected' => $affected,
+			'msg' => $affected > 0
+				? ($action === 'delete' ? $this->lang->line('ltr_deleted_msg') : $this->lang->line('ltr_status_msg'))
+				: $this->lang->line('ltr_no_record_msg')
 		));
 	}
 
@@ -828,4 +957,250 @@ class Main extends MY_Controller
 		$this->db_model->delete_data('review', array('id' => $review_id), 1);
 		echo json_encode(array('status' => 'true', 'msg' => 'Review deleted'), JSON_UNESCAPED_SLASHES);
 	}
+
+	/**
+	 * POST/GET api/main/global-search
+	 * Body: { "search": "" } -> everything, { "search": "sharma" } -> filtered.
+	 * Searches batches (batch_name), institutes (role 4) and teachers (role 3).
+	 * Institute/teacher search columns: name, last_name, email, mobile, state,
+	 * city, address, school_college_name, teach_education.
+	 * Returns data: { batchList, instituteList, teacher_list }.
+	 */
+	public function globalsearch()
+	{
+		$data = json_decode(file_get_contents('php://input'), true);
+		if (!is_array($data)) {
+			$data = $_REQUEST;
+		}
+
+		$payload = $this->require_auth_payload(array(), is_array($data) ? $data : null);
+		if ($payload === false) {
+			return;
+		}
+
+		$search = isset($data['search']) ? trim((string) $data['search']) : '';
+		$limit = 50;
+
+		// ---- Batches (match batch_name) ----
+		$batch_rows = $this->fetch_all_active_batches_raw($search, $limit, 0);
+		$batchList = $this->map_batches_to_dashboard_list_cards(is_array($batch_rows) ? $batch_rows : array());
+
+		// ---- Institutes (role 4) and teachers (role 3) ----
+		$user_cols = array('name', 'last_name', 'email', 'mobile', 'state', 'city', 'address', 'school_college_name', 'teach_education');
+
+		$institutes = $this->global_search_users(4, $search, $user_cols, $limit);
+		$teachers = $this->global_search_users(3, $search, $user_cols, $limit);
+
+		$instituteList = array();
+		foreach ($institutes as $u) {
+			$img = !empty($u['teach_image']) ? $u['teach_image'] : (isset($u['image']) ? $u['image'] : '');
+			$instituteList[] = array(
+				'instituteId' => (int) $u['id'],
+				'name' => isset($u['name']) ? $u['name'] : '',
+				'email' => isset($u['email']) ? $u['email'] : '',
+				'role' => (int) $u['role'],
+				'image' => profile_image_url($img, 4, isset($u['user_type']) ? $u['user_type'] : ''),
+			);
+		}
+
+		$teacher_list = array();
+		foreach ($teachers as $u) {
+			$img = !empty($u['teach_image']) ? $u['teach_image'] : (isset($u['image']) ? $u['image'] : '');
+			$teacher_list[] = array(
+				'Id' => (int) $u['id'],
+				'name' => isset($u['name']) ? $u['name'] : '',
+				'email' => isset($u['email']) ? $u['email'] : '',
+				'role' => (int) $u['role'],
+				'image' => profile_image_url($img, 3, isset($u['user_type']) ? $u['user_type'] : ''),
+			);
+		}
+
+		echo json_encode(array(
+			'status' => 'true',
+			'msg' => $this->lang->line('ltr_fetch_successfully'),
+			'data' => array(
+				'batchList' => $batchList,
+				'instituteList' => $instituteList,
+				'teacher_list' => $teacher_list,
+			),
+		), JSON_UNESCAPED_SLASHES);
+	}
+
+	/**
+	 * GET/POST api/main/home-content
+	 * Public curated home-page content (shared by website home + mobile):
+	 * showcase batches (admin_id=1) with instructor + schedule, and site details.
+	 */
+	public function home_content()
+	{
+		$limit = 3;
+
+		$batches = $this->db_model->select_data(
+			'*',
+			'batches use index (id)',
+			array('status' => '1', 'admin_id' => '1'),
+			$limit,
+			array('id', 'DESC')
+		);
+		if (!is_array($batches)) {
+			$batches = array();
+		}
+
+		// Instructor names per batch (batch_subjects.teacher_id -> users.name).
+		$batch_ids = array();
+		foreach ($batches as $b) {
+			$batch_ids[] = isset($b['id']) ? (int) $b['id'] : 0;
+		}
+		$instructor_map = $this->home_instructor_map($batch_ids);
+
+		foreach ($batches as $k => $b) {
+			$bid = isset($b['id']) ? (int) $b['id'] : 0;
+			$start_time = isset($b['start_time']) ? trim((string) $b['start_time']) : '';
+			$end_time = isset($b['end_time']) ? trim((string) $b['end_time']) : '';
+			$from = ($start_time !== '' && strtotime($start_time)) ? date('g:i A', strtotime($start_time)) : '';
+			$to = ($end_time !== '' && strtotime($end_time)) ? date('g:i A', strtotime($end_time)) : '';
+			$schedule = '';
+			if ($from !== '' || $to !== '') {
+				$schedule = $from . (($from !== '' && $to !== '') ? ' - ' : '') . $to;
+			}
+			$batches[$k]['instructor'] = isset($instructor_map[$bid]) ? $instructor_map[$bid] : '';
+			$batches[$k]['schedule'] = $schedule;
+		}
+
+		$site = $this->db_model->select_data('*', 'site_details', array('id' => '1'), 1);
+
+		echo json_encode(array(
+			'status' => 'true',
+			'msg' => $this->lang->line('ltr_fetch_successfully'),
+			'data' => array(
+				'batches' => $batches,
+				'siteDetails' => !empty($site) ? $site : array(),
+			),
+		), JSON_UNESCAPED_SLASHES);
+	}
+
+	/**
+	 * Map batch_id -> comma-joined distinct instructor names (batch_subjects.teacher_id).
+	 */
+	private function home_instructor_map(array $batch_ids)
+	{
+		$batch_ids = array_values(array_unique(array_filter(array_map('intval', $batch_ids))));
+		if (empty($batch_ids)) {
+			return array();
+		}
+		$this->db->reset_query();
+		$rows = $this->db->select('batch_subjects.batch_id, users.name')
+			->from('batch_subjects')
+			->join('users', 'users.id = batch_subjects.teacher_id', 'left')
+			->where_in('batch_subjects.batch_id', $batch_ids)
+			->where('users.name IS NOT NULL', null, false)
+			->where("TRIM(users.name) <> ''", null, false)
+			->order_by('users.name', 'ASC')
+			->get()
+			->result_array();
+
+		$map = array();
+		foreach ($rows as $row) {
+			$batch_id = isset($row['batch_id']) ? (int) $row['batch_id'] : 0;
+			$name = isset($row['name']) ? trim((string) $row['name']) : '';
+			if ($batch_id < 1 || $name === '') {
+				continue;
+			}
+			if (!isset($map[$batch_id])) {
+				$map[$batch_id] = array();
+			}
+			if (!in_array($name, $map[$batch_id], true)) {
+				$map[$batch_id][] = $name;
+			}
+		}
+		foreach ($map as $batch_id => $names) {
+			$map[$batch_id] = implode(', ', $names);
+		}
+		return $map;
+	}
+
+	/**
+	 * Search active users of a given role across the configured text columns.
+	 * Empty $search returns all matching-role users (capped at $limit).
+	 */
+	private function global_search_users($role, $search, array $cols, $limit = 50)
+	{
+		$this->db->reset_query();
+		$this->db->select('id, name, last_name, email, role, image, teach_image, user_type', false);
+		$this->db->from('users');
+		$this->db->where('role', (int) $role);
+		$this->db->where('IFNULL(status, 1) = 1', null, false);
+		if ($this->db->field_exists('deleted', 'users')) {
+			$this->db->where('deleted', '0');
+		}
+
+		$search = trim((string) $search);
+		if ($search !== '') {
+			$this->db->group_start();
+			foreach (array_values($cols) as $i => $col) {
+				if ($i === 0) {
+					$this->db->like($col, $search);
+				} else {
+					$this->db->or_like($col, $search);
+				}
+			}
+			$this->db->group_end();
+		}
+
+		$this->db->order_by('name', 'ASC');
+		if ((int) $limit > 0) {
+			$this->db->limit((int) $limit);
+		}
+
+		$rows = $this->db->get()->result_array();
+		return is_array($rows) ? $rows : array();
+	}
+
+
+	public function slider_list() {
+		$data = json_decode(file_get_contents('php://input'), true);
+		if (!is_array($data)) {
+			$data = $_REQUEST;
+		}
+		$payload = $this->require_auth_payload(array(), is_array($data) ? $data : null);
+		if ($payload === false) {
+			return;
+		}
+
+		$gallery_images = array();
+		$rows = $this->db_model->select_data('id, image, title', 'gallery use index (id)', array('status' => 1, 'type' => 'Image', 'purpose' => 'Advertise'), '', array('id', 'desc'));
+		if (!empty($rows)) {
+			foreach ($rows as $r) {
+				$img = isset($r['image']) ? trim((string) $r['image']) : '';
+				if ($img === '') {
+					continue;
+				}
+				$gallery_images[] = array(
+					'id' => isset($r['id']) ? (int) $r['id'] : 0,
+					'type' => 'gallery',
+					'image_url' => base_url('uploads/gallery/') . $img,
+					'heading' => isset($r['title']) ? (string) $r['title'] : '',
+					'subheading' => '',
+					'description' => '',
+				);
+			}
+		}
+
+		$pg = $this->parse_api_list_pagination($data, 20, 100);
+		$total = count($gallery_images);
+		$banners_page = array_slice($gallery_images, $pg['offset'], $pg['limit']);
+
+		echo json_encode(array(
+			'status' => 'true',
+			'message' => 'Success',
+			'data' => array(
+				'banners' => $banners_page,
+				'pagination' => $this->build_api_list_pagination_meta($pg['page'], $pg['limit'], $total),
+			)
+		), JSON_UNESCAPED_SLASHES);
+		die;
+	}
+
+
+
 }

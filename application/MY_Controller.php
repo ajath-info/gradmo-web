@@ -369,50 +369,6 @@ class MY_Controller extends CI_Controller
 	}
 
 	/**
-	 * A "free institute" (users.paid = '0') lets students enroll in its batches without paying,
-	 * even paid (batch_type = 2) batches. Normal institutes (users.paid = '1', the default) are
-	 * unaffected. The institute is resolved from batches.institute_id, falling back to admin_id.
-	 *
-	 * @param int $institute_user_id users.id of the institute / batch owner
-	 * @return bool true when that institute is free (paid = 0)
-	 */
-	protected function institute_is_free($institute_user_id)
-	{
-		$institute_user_id = (int) $institute_user_id;
-		if ($institute_user_id < 1 || !$this->db->field_exists('paid', 'users')) {
-			return false;
-		}
-		$row = $this->db_model->select_data('paid', 'users use index (id)', array('id' => $institute_user_id), 1);
-		// enum('1','0'); only an explicit '0' means free.
-		return !empty($row) && isset($row[0]['paid']) && (string) $row[0]['paid'] === '0';
-	}
-
-	/**
-	 * Does enrolling in this batch require a payment? False when the batch is free (batch_type != 2)
-	 * OR the owning institute is free (users.paid = '0'). Use this everywhere instead of a bare
-	 * `batch_type == 2` check so free institutes skip the payment step.
-	 *
-	 * @param int|array $batch  batch id, or an already-loaded batch row (needs batch_type + institute_id/admin_id)
-	 * @return bool
-	 */
-	protected function batch_requires_payment($batch)
-	{
-		if (!is_array($batch)) {
-			$batch = $this->db_model->select_data('id,batch_type,institute_id,admin_id', 'batches use index (id)', array('id' => (int) $batch), 1);
-			$batch = !empty($batch[0]) ? $batch[0] : array();
-		}
-		if (empty($batch)) {
-			return false;
-		}
-		$batch_type = isset($batch['batch_type']) ? (int) $batch['batch_type'] : 0;
-		if ($batch_type !== 2) {
-			return false; // batch is already free
-		}
-		$institute_id = !empty($batch['institute_id']) ? (int) $batch['institute_id'] : (isset($batch['admin_id']) ? (int) $batch['admin_id'] : 0);
-		return !$this->institute_is_free($institute_id);
-	}
-
-	/**
 	 * Standard list pagination from request (page, limit, per_page).
 	 *
 	 * @param array $data Merged request body / query

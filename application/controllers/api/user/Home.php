@@ -375,12 +375,13 @@ class Home extends MY_Controller {
 	        }
 
 	        // Issue token; last_login_app is still updated for analytics / "since last login" features, not for single-device token binding.
-	        $tok = $this->mint_access_credentials($student['id'], 'student');
+	        $tok = $this->mint_access_credentials($student['id'], 'student', $this->next_session_iat('students', $student['id']));
 	        $access_token = $tok['access_token'];
 	        $now = date('Y-m-d H:i:s', $tok['iat']);
 	        $this->db_model->update_data_limit('students', [
 	            'login_status' => 1,
 	            'last_login_app' => $now,
+	            'app_token_iat' => (int) $tok['iat'],
 	            'token' => $device_token,
 				'device_id' => $device_id,
 				'device_token' => $device_token,
@@ -429,12 +430,13 @@ class Home extends MY_Controller {
 	            }
 	        }
 
-	        $tok = $this->mint_access_credentials($user['id'], $token_ut);
+	        $tok = $this->mint_access_credentials($user['id'], $token_ut, $this->next_session_iat('users', $user['id']));
 	        $access_token = $tok['access_token'];
 	        $now = date('Y-m-d H:i:s', $tok['iat']);
 	        $this->db_model->update_data_limit('users', [
 				'login_status' => 1,
 	            'device_token' => $device_token,
+	            'app_token_iat' => (int) $tok['iat'],
 	            'updated_at'   => $now
 	        ], ['id' => $user['id']], 1);
 			
@@ -464,15 +466,15 @@ class Home extends MY_Controller {
             $user_id = (int) $payload['uid'];
             $ins = $this->db_model->update_data_limit(
                 'users use index (id)',
-                array('login_status' => 0, 'token' => ''),
+                array('login_status' => 0, 'token' => '', 'app_token_iat' => 0),
                 array('id' => $user_id),
                 1
             );
-        } else { 
+        } else {
                 $student_id = (int) $payload['uid'];
                 $ins = $this->db_model->update_data_limit(
                     'students use index (id)',
-                    array('login_status' => 0, 'token' => ''),
+                    array('login_status' => 0, 'token' => '', 'app_token_iat' => 0),
                     array('id' => $student_id),
                     1
                 );
@@ -506,6 +508,23 @@ class Home extends MY_Controller {
 	        echo json_encode([
 	            'status' => 'false',
 	            'msg' => 'Missing required parameters'
+	        ]);
+	        return;
+	    }
+
+	    $name_check      = trim((string) $data['name']);
+	    $last_name_check = isset($data['last_name']) ? trim((string) $data['last_name']) : (isset($data['lastname']) ? trim((string) $data['lastname']) : '');
+	    if (mb_strlen($name_check) > 10) {
+	        echo json_encode([
+	            'status' => 'false',
+	            'msg' => 'First name must be at most 10 characters.'
+	        ]);
+	        return;
+	    }
+	    if ($last_name_check !== '' && mb_strlen($last_name_check) > 10) {
+	        echo json_encode([
+	            'status' => 'false',
+	            'msg' => 'Last name must be at most 10 characters.'
 	        ]);
 	        return;
 	    }
@@ -1257,6 +1276,15 @@ public function otherBatchData($data){
 
     if ($uid < 1) {
         echo json_encode(array('status' => 'false', 'msg' => 'Invalid token user'));
+        return;
+    }
+
+    if (isset($data['name']) && mb_strlen(trim((string) $data['name'])) > 10) {
+        echo json_encode(array('status' => 'false', 'msg' => 'First name must be at most 10 characters.'));
+        return;
+    }
+    if (isset($data['last_name']) && trim((string) $data['last_name']) !== '' && mb_strlen(trim((string) $data['last_name'])) > 10) {
+        echo json_encode(array('status' => 'false', 'msg' => 'Last name must be at most 10 characters.'));
         return;
     }
 
@@ -2478,7 +2506,7 @@ public function otherBatchData($data){
 	private function normalize_attendance_day_status($raw)
 	{
 		$s = strtolower(trim((string) $raw));
-		if ($s === 'halfday') {
+		if ($s === 'halfday' || $s === 'half') {
 			$s = 'half_day';
 		}
 		$allowed = array('present', 'late', 'absent', 'half_day');
@@ -3108,6 +3136,7 @@ public function otherBatchData($data){
 
 		$results = array();
 		$any_ok = false;
+		$alerts = array(); // students marked late/half_day/absent -> notify parents after the loop
 		foreach ($student_ids as $student_id) {
 			$student = $this->db_model->select_data('id,admin_id', 'students', array('id' => $student_id, 'status' => 1), 1);
 			if (empty($student)) {
@@ -3173,8 +3202,14 @@ public function otherBatchData($data){
 					'time' => $time
 				);
 			}
+			if (in_array($final_day_status, array('late', 'half_day', 'absent'), true)) {
+				$alerts[] = array('student_id' => $student_id, 'date' => $date, 'day_status' => $final_day_status);
+			}
 			$any_ok = true;
 		}
+
+		// Email (+ SMS via MSG91 when configured) to parents of late/half-day/absent students.
+		@$this->send_attendance_alerts($alerts, $batch_id);
 
 		$all_ok = count(array_filter($results, function ($r) { return isset($r['status']) && $r['status'] === 'true'; })) === count($results);
 
@@ -3188,6 +3223,74 @@ public function otherBatchData($data){
 			'attendance_date' => $date,
 			'results' => $results
 		), JSON_UNESCAPED_SLASHES);
+	}
+
+	/**
+	 * Notify parents when a student is marked late / half-day / absent.
+	 * Email (template purpose: attendance_absent, reused for all three with a {{STATUS}} var) plus
+	 * SMS to the guardian (students.contact_no) via MSG91 when configured. Best-effort.
+	 *
+	 * @param array $alerts list of array{student_id:int,date:string,day_status:string}
+	 * @param int   $batch_id
+	 * @return int emails sent
+	 */
+	private function send_attendance_alerts(array $alerts, $batch_id)
+	{
+		if (empty($alerts)) {
+			return 0;
+		}
+		$this->load->library('common');
+		$batch_id = (int) $batch_id;
+		$batch_name = '';
+		if ($batch_id > 0) {
+			$bn = $this->db_model->select_data('batch_name', 'batches', array('id' => $batch_id), 1);
+			if (!empty($bn[0]['batch_name'])) {
+				$batch_name = (string) $bn[0]['batch_name'];
+			}
+		}
+		$labels = array('late' => 'Late', 'half_day' => 'Half-day', 'absent' => 'Absent');
+		$purposes = array('late' => 'attendance_late', 'half_day' => 'attendance_halfday', 'absent' => 'attendance_absent');
+		$sent = 0;
+		foreach ($alerts as $a) {
+			$sid = (int) $a['student_id'];
+			if ($sid < 1) {
+				continue;
+			}
+			$stu = $this->db_model->select_data('id,name,email,contact_no', 'students', array('id' => $sid), 1);
+			if (empty($stu[0])) {
+				continue;
+			}
+			$name = isset($stu[0]['name']) ? (string) $stu[0]['name'] : '';
+			$email = isset($stu[0]['email']) ? trim((string) $stu[0]['email']) : '';
+			$contact_no = isset($stu[0]['contact_no']) ? trim((string) $stu[0]['contact_no']) : '';
+			$status_label = isset($labels[$a['day_status']]) ? $labels[$a['day_status']] : ucfirst((string) $a['day_status']);
+			$purpose = isset($purposes[$a['day_status']]) ? $purposes[$a['day_status']] : 'attendance_absent';
+			$date = (string) $a['date'];
+
+			$vars = array(
+				'STUDENT_NAME' => $name,
+				'STATUS' => $status_label,
+				'DATE' => $date,
+				'BATCH_NAME' => $batch_name,
+				'CURRENT_YEAR' => date('Y'),
+			);
+			if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+				$res = $this->common->send_email(array(
+					'purpose' => $purpose,
+					'to_email' => $email,
+					'dynamic_var' => $vars,
+				));
+				if (!empty($res['status'])) {
+					$sent++;
+				}
+			}
+			if ($contact_no !== '') {
+				$msg = trim($name . ' was marked ' . $status_label . ' on ' . $date
+					. ($batch_name !== '' ? ' (' . $batch_name . ')' : '') . '.');
+				@$this->common->send_sms($contact_no, $msg);
+			}
+		}
+		return $sent;
 	}
 
 
@@ -3575,8 +3678,9 @@ public function otherBatchData($data){
 			if(!empty($data['student_id']) && !empty($data['batch_id'])){
 				
 				$batch_type =$this->db_model->select_data('batch_type','batches use index (id)',array('id'=>$data['batch_id']),1)[0]['batch_type'];
-				
-				if($batch_type==2){
+
+				// Free institutes (users.paid = 0) enroll without payment even for paid batches.
+				if($this->batch_requires_payment($data['batch_id'])){
 					if(!empty($data['transaction_id']) && !empty($data['amount'])){
 					
 						$chackPayment =$this->db_model->select_data('*','student_payment_history ',array('batch_id'=>$data['batch_id'],'student_id'=>$data['student_id']));
@@ -3875,17 +3979,39 @@ public function otherBatchData($data){
             }
 
             $student = $this->db_model->select_data('id,name,email', 'students use index (id)', array('email' => $email), 1);
-            $user = $this->db_model->select_data('id,name,email,password', 'users use index (id)', array('email' => $email), 1);
+            $user = $this->db_model->select_data('id,name,email,user_type', 'users use index (id)', array('email' => $email), 1);
 
             if (empty($student) && empty($user)) {
                 echo json_encode(array('status' => 'false', 'msg' => $this->lang->line('ltr_email_not_exists_msg')), JSON_UNESCAPED_SLASHES);
                 return;
             }
 
-            $pwd = substr(str_shuffle('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'), 0, 8);
             $name = !empty($student[0]['name']) ? $student[0]['name'] : $user[0]['name'];
             $user_id = !empty($student[0]['id']) ? (int) $student[0]['id'] : (int) $user[0]['id'];
-            $user_type = !empty($student[0]) ? 'student' : (isset($user[0]['user_type']) ? $user[0]['user_type'] : 'teacher');
+            if (!empty($student[0])) {
+                $user_type = 'student';
+            } else {
+                $ut = isset($user[0]['user_type']) ? strtolower(trim((string) $user[0]['user_type'])) : '';
+                $user_type = in_array($ut, array('teacher', 'institute'), true) ? $ut : 'teacher';
+            }
+
+            // Secure, time-limited reset LINK (token valid 2 hours) — no password is emailed.
+            $token = $this->common->email_verify_token_create($user_id, $user_type, 2);
+            if ($token === '') {
+                echo json_encode(array('status' => 'false', 'msg' => $this->lang->line('ltr_something_msg')), JSON_UNESCAPED_SLASHES);
+                return;
+            }
+            $reset_link = site_url('reset-password/' . $token);
+
+            // DEV ONLY: on localhost Gmail filters localhost reset links, so log the link
+            // to application/logs/reset_links.log to let you test the flow without email.
+            if (!defined('ENVIRONMENT') || ENVIRONMENT !== 'production') {
+                @file_put_contents(
+                    APPPATH . 'logs/reset_links.log',
+                    date('Y-m-d H:i:s') . "  {$email}  =>  {$reset_link}\n",
+                    FILE_APPEND
+                );
+            }
 
             $mail = $this->common->send_email(array(
                 'purpose' => 'forgot_password',
@@ -3893,9 +4019,13 @@ public function otherBatchData($data){
                 'user_type' => $user_type,
                 'to_email' => $email,
                 'dynamic_var' => array(
+                    'USER_NAME' => $name,
+                    'NAME' => $name,
+                    'RESET_PASSWORD_LINK' => $reset_link,
+                    'PASSWORD_RESET_LINK' => $reset_link,
+                    // lowercase aliases kept for backward compatibility with older template copies.
                     'name' => $name,
-                    'password' => $pwd,
-                    'link' => base_url('login'),
+                    'link' => $reset_link,
                 ),
             ));
 
@@ -3904,15 +4034,77 @@ public function otherBatchData($data){
                 return;
             }
 
-            if (!empty($student[0])) {
-                $this->db_model->update_data('students', array('password' => md5($pwd)), array('email' => $email));
-            } else {
-                $this->db_model->update_data('users', array('password' => password_hash($pwd, PASSWORD_DEFAULT)), array('email' => $email));
+            echo json_encode(array(
+                'status' => 'true',
+                'msg' => 'We\'ve sent a password reset link to ' . $email . '.',
+            ), JSON_UNESCAPED_SLASHES);
+        }
+
+        /**
+         * POST api/user/set-new-password
+         * Body: token, password (new password). Validates the reset token and updates the password.
+         */
+        function set_new_password(){
+            $data = json_decode(file_get_contents('php://input'), true);
+            if (!is_array($data) || empty($data)) {
+                $data = array_merge($this->input->get(), $this->input->post());
             }
+            $token = isset($data['token']) ? trim((string) $data['token']) : '';
+            $password = isset($data['password']) ? trim((string) $data['password']) : '';
+
+            if ($token === '' || $password === '') {
+                echo json_encode(array('status' => 'false', 'msg' => $this->lang->line('ltr_missing_parameters_msg')), JSON_UNESCAPED_SLASHES);
+                return;
+            }
+            if (strlen($password) < 4) {
+                echo json_encode(array('status' => 'false', 'msg' => 'Password must be at least 4 characters.'), JSON_UNESCAPED_SLASHES);
+                return;
+            }
+
+            $parsed = $this->common->email_verify_token_parse($token);
+            if ($parsed === false) {
+                echo json_encode(array('status' => 'false', 'msg' => 'This reset link is invalid or has expired. Please request a new one.'), JSON_UNESCAPED_SLASHES);
+                return;
+            }
+
+            $user_id = (int) $parsed['user_id'];
+            $user_type = $parsed['user_type'];
+
+            if ($user_type === 'student') {
+                $exists = $this->db_model->select_data('id,name,email', 'students use index (id)', array('id' => $user_id), 1);
+                if (empty($exists)) {
+                    echo json_encode(array('status' => 'false', 'msg' => $this->lang->line('ltr_not_found_msg')), JSON_UNESCAPED_SLASHES);
+                    return;
+                }
+                $this->db_model->update_data('students', array('password' => md5($password)), array('id' => $user_id));
+            } else {
+                $exists = $this->db_model->select_data('id,name,email', 'users use index (id)', array('id' => $user_id), 1);
+                if (empty($exists)) {
+                    echo json_encode(array('status' => 'false', 'msg' => $this->lang->line('ltr_not_found_msg')), JSON_UNESCAPED_SLASHES);
+                    return;
+                }
+                $this->db_model->update_data('users', array('password' => password_hash($password, PASSWORD_DEFAULT)), array('id' => $user_id));
+            }
+
+            $notify_name = !empty($exists[0]['name']) ? $exists[0]['name'] : '';
+            $notify_email = !empty($exists[0]['email']) ? trim((string) $exists[0]['email']) : '';
+            // Confirmation email after password reset via token (best-effort).
+            @$this->common->send_email(array(
+                'purpose' => 'reset_password',
+                'user_id' => $user_id,
+                'user_type' => $user_type,
+                'to_email' => $notify_email,
+                'dynamic_var' => array(
+                    'USER_NAME' => $notify_name,
+                    'NAME' => $notify_name,
+                    'LOGIN_LINK' => site_url('login'),
+                    'link' => site_url('login'),
+                ),
+            ));
 
             echo json_encode(array(
                 'status' => 'true',
-                'msg' => 'We\'ve sent an email to ' . $email . '.',
+                'msg' => 'Your password has been updated. Please sign in with your new password.',
             ), JSON_UNESCAPED_SLASHES);
         }
         
@@ -3983,8 +4175,8 @@ public function otherBatchData($data){
     			    if(!empty($batch_type)){
     			        $studentData[0]['batchName']= $batch_type[0]['batch_name'];
     			        $studentData[0]['batchId']= $batch_type[0]['id'];
-    			        if($batch_type[0]['batch_type']==2){
-        			            
+    			        if($this->batch_requires_payment($batch_type[0])){
+
         			        $batch_his=   $this->db_model->select_data('*','student_payment_history',array('batch_id'=>$data['batch_id'], 'student_id'=>$data['student_id']),1);
         					$studentData[0]['transactionId'] = !empty($batch_his[0]['transaction_id'])?$batch_his[0]['transaction_id']:'';
         			    	$studentData[0]['amount'] = !empty($batch_his[0]['amount'])?$batch_his[0]['amount']:'';
@@ -4023,7 +4215,7 @@ public function otherBatchData($data){
 				    
 				    
     				$studentData[0]['batchId']= $batch_type[0]['id'];
-    			    if($batch_type[0]['batch_type']==2){
+    			    if($this->batch_requires_payment($batch_type[0])){
     			        $studentData[0]['batchName']= $batch_type[0]['batch_name'];
     					$data_pay=array(
     					           'student_id'=>$data['student_id'],
@@ -5045,6 +5237,77 @@ public function otherBatchData($data){
 	 * Auth: student Bearer / body token.
 	 * Returns userDetails, batchList, instituteList, enrollment_details (payments + plan 1 yearly rule).
 	 */
+	/**
+	 * POST/GET api/user/profile
+	 * Editable profile for the logged-in user (student, teacher OR institute).
+	 * Shaped exactly for the profile form (website + mobile share one backend).
+	 */
+	public function profile_details()
+	{
+		$from_body = json_decode(file_get_contents('php://input'), true);
+		if (!is_array($from_body)) {
+			$from_body = array();
+		}
+		$payload = $this->require_auth_payload(array('student', 'teacher', 'institute'), $from_body);
+		if ($payload === false) {
+			return;
+		}
+
+		$uid = (int) $payload['uid'];
+		$ut = strtolower(trim((string) $payload['ut']));
+		if ($ut === '3') {
+			$ut = 'teacher';
+		} elseif ($ut === '4') {
+			$ut = 'institute';
+		}
+
+		$profile = array(
+			'name' => '', 'last_name' => '', 'email' => '', 'mobile' => '',
+			'address' => '', 'country' => '', 'state' => '', 'city' => '',
+			'pincode' => '', 'school_college_name' => '', 'grade' => '',
+			'show_grade_field' => ($ut === 'student'),
+		);
+
+		if ($uid > 0 && $ut === 'student') {
+			$rows = $this->db_model->select_data('*', 'students use index (id)', array('id' => $uid), 1);
+			if (!empty($rows[0]) && is_array($rows[0])) {
+				$row = $rows[0];
+				$profile['name'] = isset($row['name']) ? (string) $row['name'] : '';
+				$profile['last_name'] = isset($row['last_name']) ? (string) $row['last_name'] : '';
+				$profile['email'] = isset($row['email']) ? (string) $row['email'] : '';
+				$profile['mobile'] = (isset($row['contact_no']) && $row['contact_no'] !== '') ? (string) $row['contact_no'] : (isset($row['mobile']) ? (string) $row['mobile'] : '');
+				$profile['address'] = isset($row['address']) ? (string) $row['address'] : '';
+				$profile['country'] = isset($row['country']) ? (string) $row['country'] : '';
+				$profile['state'] = isset($row['state']) ? (string) $row['state'] : '';
+				$profile['city'] = isset($row['city']) ? (string) $row['city'] : '';
+				$profile['pincode'] = isset($row['pincode']) ? (string) $row['pincode'] : '';
+				$profile['school_college_name'] = isset($row['school_college_name']) ? (string) $row['school_college_name'] : '';
+				$profile['grade'] = isset($row['grade']) ? (string) $row['grade'] : '';
+			}
+		} elseif ($uid > 0) {
+			$rows = $this->db_model->select_data('name,last_name,email,mobile,address,country,state,city,pincode,teach_education', 'users use index (id)', array('id' => $uid), 1);
+			if (!empty($rows[0]) && is_array($rows[0])) {
+				$row = $rows[0];
+				$profile['name'] = isset($row['name']) ? (string) $row['name'] : '';
+				$profile['last_name'] = isset($row['last_name']) ? (string) $row['last_name'] : '';
+				$profile['email'] = isset($row['email']) ? (string) $row['email'] : '';
+				$profile['mobile'] = isset($row['mobile']) ? (string) $row['mobile'] : '';
+				$profile['address'] = isset($row['address']) ? (string) $row['address'] : '';
+				$profile['country'] = isset($row['country']) ? (string) $row['country'] : '';
+				$profile['state'] = isset($row['state']) ? (string) $row['state'] : '';
+				$profile['city'] = isset($row['city']) ? (string) $row['city'] : '';
+				$profile['pincode'] = isset($row['pincode']) ? (string) $row['pincode'] : '';
+				$profile['school_college_name'] = isset($row['teach_education']) ? (string) $row['teach_education'] : '';
+			}
+		}
+
+		echo json_encode(array(
+			'status' => 'true',
+			'msg' => $this->lang->line('ltr_fetch_successfully'),
+			'data' => array('profile' => $profile),
+		), JSON_UNESCAPED_SLASHES);
+	}
+
 	public function user_details()
 	{
 		$from_body = json_decode(file_get_contents('php://input'), true);
@@ -5109,10 +5372,14 @@ public function otherBatchData($data){
 			return array();
 		}
 
+		// Institutes (role 4) in which the student is enrolled. We go purely by enrollment
+		// (student_batchs) and the batch's institute_id (the assigned institute) — NOT admin_id
+		// (the batch creator, which can be super-admin role 1 or a teacher role 3), and NOT
+		// filtered by batch status, so every institute the student joined is returned.
 		$sql = 'SELECT DISTINCT u.id, u.name, u.email, u.role, u.teach_image AS teach_image
 			FROM student_batchs sb
-			INNER JOIN batches b ON b.id = sb.batch_id AND (b.status = 1 OR b.status = \'1\')
-			INNER JOIN users u ON u.id = b.admin_id AND IFNULL(u.status, 1) = 1
+			INNER JOIN batches b ON b.id = sb.batch_id
+			INNER JOIN users u ON u.id = b.institute_id AND u.role = 4 AND IFNULL(u.status, 1) = 1
 			WHERE sb.student_id = ?
 			ORDER BY u.name ASC';
 		$q = $this->db->query($sql, array($student_id));
@@ -5533,12 +5800,13 @@ public function otherBatchData($data){
 	        $device_type = isset($data['device_type']) ? trim($data['device_type']) : '';
 
 	        if ($user_type === 'student') {
-	        	$tok = $this->mint_access_credentials($user->id, 'student');
+	        	$tok = $this->mint_access_credentials($user->id, 'student', $this->next_session_iat('students', $user->id));
 	        	$access_token = $tok['access_token'];
 	        	$session_time = date('Y-m-d H:i:s', $tok['iat']);
 	        	$this->db_model->update_data_limit('students', array(
 	        		'login_status' => 1,
 	        		'last_login_app' => $session_time,
+	        		'app_token_iat' => (int) $tok['iat'],
 	        		'token' => $device_token,
 	        		'device_id' => $device_id,
 	        		'device_token' => $device_token,
@@ -5557,7 +5825,7 @@ public function otherBatchData($data){
 	        }
 
 	        $utoken = isset($user->user_type) ? strtolower(trim((string) $user->user_type)) : $user_type;
-	        $tok = $this->mint_access_credentials((int) $user->id, $utoken);
+	        $tok = $this->mint_access_credentials((int) $user->id, $utoken, $this->next_session_iat('users', (int) $user->id));
 	        $access_token = $tok['access_token'];
 	        $session_time = date('Y-m-d H:i:s', $tok['iat']);
 	        $this->db_model->update_data_limit('users', array(
@@ -5565,6 +5833,7 @@ public function otherBatchData($data){
 	        	'device_id' => $device_id,
 	        	'device_token' => $device_token,
 	        	'device_type' => $device_type,
+	        	'app_token_iat' => (int) $tok['iat'],
 	        	'updated_at' => $session_time,
 	        ), array('id' => $user->id), 1);
 
@@ -5750,6 +6019,24 @@ public function otherBatchData($data){
 		}
 
 		if ($update) {
+			$notify_rows = ($ut === 'student')
+				? $this->db_model->select_data('name,email', 'students', array('id' => $uid), 1)
+				: $this->db_model->select_data('name,email', 'users', array('id' => $uid), 1);
+			$notify_name = !empty($notify_rows[0]['name']) ? $notify_rows[0]['name'] : '';
+			$notify_email = !empty($notify_rows[0]['email']) ? trim((string) $notify_rows[0]['email']) : '';
+			// Security notification email (best-effort; never blocks the response).
+			@$this->common->send_email(array(
+				'purpose' => 'password_changed',
+				'user_id' => $uid,
+				'user_type' => $ut,
+				'to_email' => $notify_email,
+				'dynamic_var' => array(
+					'USER_NAME' => $notify_name,
+					'NAME' => $notify_name,
+					'LOGIN_LINK' => site_url('login'),
+					'link' => site_url('login'),
+				),
+			));
 			echo json_encode(array(
 				'status' => 'true',
 				'msg' => 'Password changed successfully',
@@ -5860,9 +6147,12 @@ public function otherBatchData($data){
 				array('id' => $row->id),
 				1
 			);
+			$notify_user_id = (int) $row->id;
+			$notify_name = isset($row->name) ? (string) $row->name : '';
+			$notify_email = isset($row->email) ? trim((string) $row->email) : '';
 		} else {
 			$user = $this->db_model->select_data(
-				'id',
+				'id,name,email',
 				'users',
 				array('mobile' => $mobile, 'user_type' => $user_type),
 				1
@@ -5881,9 +6171,24 @@ public function otherBatchData($data){
 				array('id' => $user[0]['id']),
 				1
 			);
+			$notify_user_id = (int) $user[0]['id'];
+			$notify_name = !empty($user[0]['name']) ? (string) $user[0]['name'] : '';
+			$notify_email = !empty($user[0]['email']) ? trim((string) $user[0]['email']) : '';
 		}
 
 		if ($update) {
+			@$this->common->send_email(array(
+				'purpose' => 'reset_password',
+				'user_id' => $notify_user_id,
+				'user_type' => $user_type,
+				'to_email' => $notify_email,
+				'dynamic_var' => array(
+					'USER_NAME' => $notify_name,
+					'NAME' => $notify_name,
+					'LOGIN_LINK' => site_url('login'),
+					'link' => site_url('login'),
+				),
+			));
 			echo json_encode(array(
 				'status' => 'true',
 				'msg' => 'Password updated successfully',

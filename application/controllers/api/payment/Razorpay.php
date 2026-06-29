@@ -338,6 +338,60 @@ class Razorpay extends MY_Controller
 	}
 
 	/**
+	 * After a successful payment: email the student.
+	 *  - enrolled_batch (only when newly added to the batch)
+	 *  - subscription_activated_successfully (payment / subscription success)
+	 * Best-effort; never blocks the payment response.
+	 */
+	protected function send_payment_enrollment_emails($student_id, $batch_id, $newly_enrolled)
+	{
+		$student_id = (int) $student_id;
+		$batch_id = (int) $batch_id;
+		if ($student_id < 1) {
+			return;
+		}
+		$stu = $this->db_model->select_data('name,email,enrollment_id', 'students use index (id)', array('id' => $student_id), 1);
+		if (empty($stu[0])) {
+			return;
+		}
+		$to = isset($stu[0]['email']) ? trim((string) $stu[0]['email']) : '';
+		if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
+			return;
+		}
+		$name = isset($stu[0]['name']) ? $stu[0]['name'] : '';
+		$enroll_id = isset($stu[0]['enrollment_id']) ? $stu[0]['enrollment_id'] : '';
+		$batch = $this->db_model->select_data('batch_name', 'batches use index (id)', array('id' => $batch_id), 1);
+		$batch_name = !empty($batch[0]['batch_name']) ? $batch[0]['batch_name'] : '';
+
+		if ($newly_enrolled) {
+			@$this->common->send_email(array(
+				'purpose' => 'enrolled_batch',
+				'user_id' => $student_id,
+				'user_type' => 'student',
+				'to_email' => $to,
+				'dynamic_var' => array(
+					'name' => $name,
+					'batch_name' => $batch_name,
+					'enrollment_id' => $enroll_id,
+					'link' => base_url('login'),
+				),
+			));
+		}
+
+		@$this->common->send_email(array(
+			'purpose' => 'subscription_activated_successfully',
+			'user_id' => $student_id,
+			'user_type' => 'student',
+			'to_email' => $to,
+			'dynamic_var' => array(
+				'STUDENT_NAME' => $name,
+				'BATCH_NAME' => $batch_name,
+				'CURRENT_YEAR' => date('Y'),
+			),
+		));
+	}
+
+	/**
 	 * POST api/payment/razorpay/create-order
 	 * Auth: student | teacher | institute (Bearer / body token).
 	 * JSON: amount_in_paise (int, required) OR amount_in_rupees (float) — one is required.
@@ -367,6 +421,36 @@ class Razorpay extends MY_Controller
 			$amount_paise = (int) $data['amount_in_paise'];
 		} elseif (isset($data['amount_in_rupees']) && is_numeric($data['amount_in_rupees'])) {
 			$amount_paise = (int) round((float) $data['amount_in_rupees'] * 100);
+		}
+
+		// Application fee: when a STUDENT is paying for a batch, the SERVER decides the amount
+		// (application fee + batch fee) from the rules — the client-sent amount is ignored.
+		$fee_breakdown = null;
+		$ut = isset($payload['ut']) ? strtolower(trim((string) $payload['ut'])) : '';
+		$req_batch_id = 0;
+		if (isset($data['batch_id'])) {
+			$req_batch_id = (int) $data['batch_id'];
+		} elseif (isset($data['batchId'])) {
+			$req_batch_id = (int) $data['batchId'];
+		} elseif (isset($data['notes']) && is_array($data['notes']) && isset($data['notes']['batch_id'])) {
+			$req_batch_id = (int) $data['notes']['batch_id']; // website sends batch_id inside notes
+		}
+		if ($ut === 'student' && $req_batch_id > 0) {
+			$fee_breakdown = $this->common->compute_application_fee((int) $payload['uid'], $req_batch_id);
+			if (is_array($fee_breakdown) && $fee_breakdown['total'] > 0) {
+				$amount_paise = (int) round($fee_breakdown['total'] * 100);
+			}
+			// Free institute (fee 0): no order needed — tell the client to enroll directly.
+			if (is_array($fee_breakdown) && $fee_breakdown['total'] <= 0) {
+				echo json_encode(array(
+					'status' => 'true',
+					'msg' => 'No payment required for this batch.',
+					'requiresPayment' => false,
+					'amount' => 0,
+					'fee_breakdown' => $fee_breakdown,
+				), JSON_UNESCAPED_SLASHES);
+				return;
+			}
 		}
 
 		if ($amount_paise < 100) {
@@ -413,7 +497,7 @@ class Razorpay extends MY_Controller
 		}
 
 		$b = $resp['body'];
-		echo json_encode(array(
+		$out = array(
 			'status' => 'true',
 			'msg' => $this->lang->line('ltr_fetch_successfully'),
 			'order' => array(
@@ -424,7 +508,11 @@ class Razorpay extends MY_Controller
 				'status' => isset($b['status']) ? $b['status'] : '',
 			),
 			'keyId' => $this->razorpay_credentials()['key_id'],
-		), JSON_UNESCAPED_SLASHES);
+		);
+		if (is_array($fee_breakdown)) {
+			$out['feeBreakdown'] = $fee_breakdown;
+		}
+		echo json_encode($out, JSON_UNESCAPED_SLASHES);
 	}
 
 	/**
@@ -559,6 +647,8 @@ class Razorpay extends MY_Controller
 						'student_batchs_id' => $sb_ledger['student_batchs_id'],
 						'student_batchs_inserted' => $sb_ledger['student_batchs_inserted'],
 					);
+					// Notify the student: enrolled_batch (on new enrollment) + subscription_activated_successfully (payment ok).
+					$this->send_payment_enrollment_emails($sid, $bid, !empty($sb_ledger['student_batchs_inserted']));
 				}
 			}
 		}

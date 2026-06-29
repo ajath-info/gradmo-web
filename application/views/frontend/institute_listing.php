@@ -12,8 +12,12 @@
 				<?php if (! empty($show_institute_reviews_link)) { ?>
 				<a class="inst-see-all" href="<?php echo html_escape($institute_reviews_list_url); ?>">Manage reviews</a>
 				<?php } ?>
+				<?php if (! empty($list_flag) && $list_flag === 'my') { ?>
+				<a class="inst-see-all" href="<?php echo base_url('institute/listing'); ?>">All <Institutes></Institutes></a>
+				<?php } else { ?>
+				<a class="inst-see-all" href="<?php echo base_url('institute/mylist'); ?>">My Institutes</a>
+				<?php } ?>
 			</div>
-			<p class="inst-list-intro">Browse institutes. Sign in required.</p>
 			<div class="inst-list-filter-bar" role="search">
 				<div class="inst-list-filter-fields">
 					<div class="inst-list-filter-item inst-list-filter-grow">
@@ -51,16 +55,23 @@
 <script>
 (function () {
 	var dataUrl = <?php echo json_encode(isset($institute_listing_data_url) ? $institute_listing_data_url : ''); ?>;
+	var accessToken = <?php echo json_encode(isset($api_access_token) ? $api_access_token : ''); ?>;
 	var cityListUrl = <?php echo json_encode(isset($institute_city_list_url) ? $institute_city_list_url : ''); ?>;
 	var detailsBase = <?php echo json_encode(isset($institute_details_url) ? $institute_details_url : ''); ?>;
 	var batchId = <?php echo (int) (isset($batch_id) ? $batch_id : 0); ?>;
+	var listFlag = <?php echo json_encode(isset($list_flag) ? $list_flag : 'all'); ?>;
 	var page = 1;
 	var totalPages = 1;
 	function ok(s) { return s === true || s === 'true' || s === 1 || s === '1'; }
 	function postJson(body) {
+		body = body || {};
+		// Direct API call needs the Bearer token (the API is shared with the mobile app).
+		if (accessToken && !body.access_token) { body.access_token = accessToken; }
+		var headers = { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' };
+		if (accessToken) { headers.Authorization = 'Bearer ' + accessToken; }
 		return fetch(dataUrl, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+			headers: headers,
 			body: JSON.stringify(body)
 		}).then(function (r) { return r.json(); });
 	}
@@ -137,7 +148,8 @@
 			order_field: ord[0] || 'name',
 			order_type: ord[1] || 'asc',
 			search: (document.getElementById('inst_search').value || '').trim(),
-			city: (document.getElementById('inst_city').value || '').trim()
+			city: (document.getElementById('inst_city').value || '').trim(),
+			list: listFlag || 'all'
 		};
 		if (batchId > 0) { body.batch_id = batchId; }
 		document.getElementById('inst_list_msg').textContent = 'Loading…';

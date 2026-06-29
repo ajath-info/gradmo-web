@@ -120,6 +120,7 @@
                             <textarea name="address" rows="3" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_address'));?>" class="form-control"><?php echo !empty($student_data)?$student_data[0]['address']:'';?></textarea>
                         </div>
                     </div>
+                    <?php if (false): /* HIDDEN: BATCH INFORMATION + Batch + Old Batch section. Change false -> true to restore. */ ?>
                     <div class="col-lg-12 col-md-12 col-sm-12 col-12 edu_bottom_20" >
                         <div class="edu_title_wrapper">
                             <h4 class="edu_sub_title"><?php echo html_escape($this->common->languageTranslator('ltr_BATCH_INFORMATION'));?></h4>
@@ -205,8 +206,9 @@
                             </h4>
                            <span><?php echo rtrim($bName,','); ?></span>
                         </div>
-                    </div> 
-                    <div class="batch_new_fields_add col-lg-12 col-md-12 col-sm-12 col-12">                   
+                    </div>
+                    <?php endif; /* end hidden BATCH INFORMATION / Batch / Old Batch section */ ?>
+                    <div class="batch_new_fields_add col-lg-12 col-md-12 col-sm-12 col-12">
                     </div>
                 </div>
                 <?php if(!empty($student_id)){

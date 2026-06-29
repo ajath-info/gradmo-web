@@ -2934,12 +2934,18 @@ class Ajaxcall extends CI_Controller{
                             die();
                         }
                     }
-                    if($_POST['payMode']=='offline'){
-                        $batch_id = $this->input->post('batch_id',TRUE);
-                    }else{
-                        $batch_id =$_POST['multi_batch_id'];
+                    $payMode = $this->input->post('payMode', TRUE);
+                    // Batch section can be hidden on the form — tolerate missing batch fields.
+                    if ($payMode == 'offline') {
+                        $batch_id = $this->input->post('batch_id', TRUE);
+                    } else {
+                        $batch_id = $this->input->post('multi_batch_id', TRUE);
                     }
-                    
+                    if (!is_array($batch_id)) {
+                        $batch_id = ($batch_id === null || $batch_id === '') ? array() : array($batch_id);
+                    }
+                    $batch_id = array_values(array_filter($batch_id, function ($v) { return $v !== '' && $v !== null; }));
+
                     $data['batch_id'] = json_encode($batch_id);
                     $data['name'] = $data_arr['name'];
                     $data['last_name'] = isset($data_arr['last_name']) ? $data_arr['last_name'] : '';
@@ -2948,7 +2954,7 @@ class Ajaxcall extends CI_Controller{
                     $data['gender'] = $data_arr['gender'];
                     $data['contact_no'] = $data_arr['contact_no'];
                     $data['email'] = $data_arr['email'];
-                    $data['pay_mode'] = $data_arr['payMode'];
+                    $data['pay_mode'] = $payMode;
                     $data['address'] = $data_arr['address'];
                  
                     $data = $this->security->xss_clean($data);
@@ -2956,7 +2962,7 @@ class Ajaxcall extends CI_Controller{
                     $ins = $this->db_model->update_data_limit('students',$data,array('id'=>$st_id,'admin_id'=>$admin_id),1);
                      
                    $batchName = array();
-                    if($_POST['payMode']!='offline'){
+                    if($payMode!='offline'){
                         $del = $this->db_model->delete_data('student_batchs',array('student_id'=>$st_id));
                     }
                     if($ins){
@@ -2970,7 +2976,7 @@ class Ajaxcall extends CI_Controller{
                      if(empty($prevRecdBatch)){
                         $ins1 = $this->db_model->insert_data('student_batchs',$data2);
                      }
-                     if($_POST['payMode']=='offline'){
+                     if($payMode=='offline'){
                          $price = $data_arr['price'];
                
                             $data_pay = array(
@@ -3030,8 +3036,9 @@ class Ajaxcall extends CI_Controller{
                         $resp = array('status'=>'1', 'msg' => $this->input->post('name',TRUE).$this->lang->line('ltr_student_details_updated_msg'),'enroll_id'=>'', 'password'=>'');
                     }
                 }else{
-                    $prevRecd = $this->db_model->select_data('id','students use index (id)',array('admin_id'=>$admin_id,'email'=>$this->input->post('email',TRUE)),1);
-                    $prevRecdTeacher = $this->db_model->select_data('id','users use index (id)',array('email'=>$this->input->post('email',TRUE)),1);
+                    // Ignore soft-deleted (deleted='1') accounts — a deleted record must not block re-using the email.
+                    $prevRecd = $this->db_model->select_data('id','students use index (id)',array('admin_id'=>$admin_id,'email'=>$this->input->post('email',TRUE),'deleted'=>'0'),1);
+                    $prevRecdTeacher = $this->db_model->select_data('id','users use index (id)',array('email'=>$this->input->post('email',TRUE),'deleted'=>'0'),1);
                     
                     $prevRecdstud = $this->db_model->select_data('id','students use index (id)',array('admin_id'=>$admin_id,'contact_no'=>$this->input->post('contact_no',TRUE)),1);
                    
@@ -3074,24 +3081,23 @@ class Ajaxcall extends CI_Controller{
                         $data_arr['image']='student_img.png';
                         }
                     $multi_admin_id = [];
-                    if($_POST['payMode'] !="Online"){
-                         $batches_aid = $this->db_model->select_data('id,admin_id','batches use index (id)',array('id'=>$_POST['batch_id'][0]),1)[0]; 
-                         array_push($multi_admin_id,$batches_aid['admin_id']);
-                    }else{
-                        foreach($_POST['multi_batch_id'] as $v){
-                             $batches_aid = $this->db_model->select_data('id,admin_id','batches use index (id)',array('id'=>$v),1)[0];    
-                            array_push($multi_admin_id,$batches_aid['admin_id']);
-                        }
+                    $payMode = $this->input->post('payMode', TRUE);
+                    // Batch section can be hidden on the add-student form — tolerate missing batch fields.
+                    if ($payMode == 'offline') {
+                        $batch_id = $this->input->post('batch_id', TRUE);
+                    } else {
+                        $batch_id = $this->input->post('multi_batch_id', TRUE);
+                    }
+                    if (!is_array($batch_id)) {
+                        $batch_id = ($batch_id === null || $batch_id === '') ? array() : array($batch_id);
+                    }
+                    $batch_id = array_values(array_filter($batch_id, function ($v) { return $v !== '' && $v !== null; }));
+                    foreach ($batch_id as $v) {
+                        $brow = $this->db_model->select_data('id,admin_id','batches use index (id)',array('id'=>$v),1);
+                        if (!empty($brow[0]['admin_id'])) { array_push($multi_admin_id, $brow[0]['admin_id']); }
                     }
                     $m_aid = array_unique($multi_admin_id);
-                   
-                    if($_POST['payMode']=='offline'){
-                        $batch_id = $_POST['batch_id'];
-                        $data['multi_batch'] = json_encode($m_aid);
-                    }else{
-                         $batch_id = $_POST['multi_batch_id'];
-                        $data['multi_batch'] = json_encode($m_aid);
-                    }
+                    $data['multi_batch'] = json_encode($m_aid);
                     
                  
                     $data['image'] = $data_arr['image'];
@@ -3105,7 +3111,7 @@ class Ajaxcall extends CI_Controller{
                     $data['contact_no'] = $data_arr['contact_no'];
                     $data['email'] = $data_arr['email'];
                     $data['address'] = $data_arr['address'];
-                    $data['pay_mode'] = $data_arr['payMode'];
+                    $data['pay_mode'] = $payMode;
                     if ($this->students_column_exists('is_verified')) {
                         $data['is_verified'] = 0;
                     }
@@ -3142,7 +3148,7 @@ class Ajaxcall extends CI_Controller{
                        
                     }
                        
-                        if($ins1 && (!empty($data['batch_id']))){
+                        if($ins){
                             $resp = array('status'=>'1', 'msg' => $this->input->post('name',TRUE).$this->lang->line('ltr_added_msg'),'enroll_id'=>$enrolid, 'password'=>$password);
 
                             $batch_names = array();
@@ -4663,27 +4669,11 @@ function subcategory_table(){
                 if($ins==true){
                     $resp = array('status'=>1,'msg'=>'Notice added sucessfully.');
                     $notice_for = $this->input->post('notice_for',TRUE);
-                    
-                        $data['batch_id'] = $this->session->userdata('batch_id');
-                        $data['notification_type'] = "Notice";
-                        $data['msg'] = 'New Notice Added';
-                        $data['url'] = 'student/notice';
-                        $data['time'] = date('Y-m-d H:i:s');
-                        $data['seen_by'] = '';
-                        $student_data = $this->db_model->select_data('id','students', array('status'=>'1'));
-                       
-                      for($i=0;$i<count($student_data);$i++){
-                      $data['student_id'] = $student_data[$i]['id'];
-                        $notice_not = $this->db_model->insert_data('notifications',$data);     
-                      }
-                      
+
                     if(($notice_for=='Student') || ($notice_for=='Both')){
-                        $title ="New notice";
-                        $where ="notice_common";
-                        $batch_id='';
-                        if(!empty($where)){
-                            $this->push_notification_android($batch_id='',$title,$where);
-                        }
+                        // 1 master notification + 1 push_notifications_details row per active student.
+                        $this->load->library('notification_service');
+                        @$this->notification_service->push_notify('New notice','New Notice Added','Notice','student/notice',array('all_students'=>true));
                     }
                 }else{
                     $resp = array('status'=>0);
@@ -5031,24 +5021,10 @@ function subcategory_table(){
                // print_r($data_arr);
                 $ins = $this->db_model->insert_data('vacancy',$data_arr);
                 if($ins==true){
-                    
-                     $data['batch_id'] = '';
-                        $data['notification_type'] = "Vacancy";
-                        $data['msg'] = 'New Upcoming Exam Added';
-                        $data['url'] = 'student/vacancy';
-                        $data['time'] = date('Y-m-d H:i:s');
-                        $data['seen_by'] = '';
-                       
-                        $vacancy_not = $this->db_model->insert_data('notifications',$data);     
-                     
-                    
                     $resp = array('status'=>1,'msg'=> $this->lang->line('ltr_vacancy_added_msg'));
-                    $title =$this->lang->line('ltr_upcoming_exams');
-                    $where ="exam";
-                    $batch_id='';
-                    if(!empty($where)){
-                        $this->push_notification_android($batch_id='',$title,$where);
-                    }
+                    // 1 master notification + 1 push_notifications_details row per active student.
+                    $this->load->library('notification_service');
+                    @$this->notification_service->push_notify($this->lang->line('ltr_upcoming_exams'),'New Upcoming Exam Added','Vacancy','student/vacancy',array('all_students'=>true));
                 }else{
                     $resp = array('status'=>0);
                 }
@@ -5294,7 +5270,7 @@ function subcategory_table(){
                     }                       
                
                     if($role == 1){
-                            $action = "<p class='actions_wrap'><a class='edit_video_url btn_edit' title='Edit' data-batch_id='".implode(",",json_decode($vid['batch']))."' data-subject='".$vid['subject']."' data-topic='".$vid['topic']."' data-table='video_lectures'  data-id='".$vid["id"]."' ><i class='fa fa-edit'></i></a>
+                            $action = "<p class='actions_wrap'><a class='edit_video_url btn_edit' title='Edit' data-batch_id='".$this->json_or_scalar_csv($vid['batch'])."' data-subject='".$vid['subject']."' data-topic='".$vid['topic']."' data-table='video_lectures'  data-id='".$vid["id"]."' ><i class='fa fa-edit'></i></a>
                             <a class='viewVideo btn_view' title='View' data-id='".$vid["id"]."' data-id='".$vid["id"]."'  data-url='".base_url($vid["url"])."' data-type='".$vid["video_type"]."' data-desc='".$vid["description"]."'><i class='fa fa-eye'></i></a><a class='deleteData btn_delete' title='Delete' data-id='".$vid["id"]."' data-table='video_lectures'><i class='fa fa-trash'></i></a></p>";                        
                           
                         $dataarray[] = array(
@@ -5314,11 +5290,11 @@ function subcategory_table(){
                         ); 
                     }else if($role == 3){
                         if($_SESSION['uid']==$vid['added_by']){
-                          $action = "<p class='actions_wrap' disabled><a  class='edit_video_url btn_edit' title='Edit' data-batch_id='".implode(",",json_decode($vid['batch']))."' data-subject='".$vid['subject']."' data-topic='".$vid['topic']."' data-table='video_lectures'  data-id='".$vid["id"]."' ><i class='fa fa-edit'></i></a>
+                          $action = "<p class='actions_wrap' disabled><a  class='edit_video_url btn_edit' title='Edit' data-batch_id='".$this->json_or_scalar_csv($vid['batch'])."' data-subject='".$vid['subject']."' data-topic='".$vid['topic']."' data-table='video_lectures'  data-id='".$vid["id"]."' ><i class='fa fa-edit'></i></a>
                                 <a class='viewVideo btn_view' title='View' data-id='".$vid["id"]."' data-id='".$vid["id"]."' data-url='".base_url($vid["url"])."' data-type='".$vid["video_type"]."' data-desc='".$vid["description"]."'><i class='fa fa-eye'></i></a><a class='deleteData btn_delete' title='Delete' data-id='".$vid["id"]."' data-table='video_lectures'><i class='fa fa-trash'></i></a></p>";
 
                         }else{
-                            $action = "<p class='actions_wrap' ><a  class=' btn_edit disabled' title='Edit' data-batch_id='".implode(",",json_decode($vid['batch']))."' data-subject='".$vid['subject']."' data-topic='".$vid['topic']."' data-table='video_lectures'  data-id='".$vid["id"]."' ><i class='fa fa-edit'></i></a>
+                            $action = "<p class='actions_wrap' ><a  class=' btn_edit disabled' title='Edit' data-batch_id='".$this->json_or_scalar_csv($vid['batch'])."' data-subject='".$vid['subject']."' data-topic='".$vid['topic']."' data-table='video_lectures'  data-id='".$vid["id"]."' ><i class='fa fa-edit'></i></a>
                                 <a class='viewVideo btn_view' title='View' data-id='".$vid["id"]."' data-id='".$vid["id"]."' data-url='".base_url($vid["url"])."' data-type='".$vid["video_type"]."' data-desc='".$vid["description"]."'><i class='fa fa-eye'></i></a><a class=' btn_delete disabled' title='Delete' data-id='".$vid["id"]."' data-table='video_lectures'><i class='fa fa-trash'></i></a></p>";
                         }
                         $dataarray[] = array(
@@ -5504,7 +5480,23 @@ function subcategory_table(){
         $this->db->or_where('FIND_IN_SET(' . $bid . ', batch) > 0', null, false);
         $this->db->group_end();
         $row = $this->db->get()->row_array();
-        return isset($row['total']) ? (int) $row['total'] : 0;
+        $used = isset($row['total']) ? (int) $row['total'] : 0;
+
+        // Live classes (Zoom meetings) count toward the same 330-hour cap.
+        // batch_zoom_meetings.duration is in MINUTES, so convert to seconds.
+        if ($this->db->table_exists('batch_zoom_meetings')) {
+            $this->db->select_sum('duration', 'total');
+            $this->db->from('batch_zoom_meetings');
+            $this->db->where('batch_id', $bid);
+            $this->db->where('status', 1);
+            $this->db->where('created_at >=', $cycle_start->format('Y-m-d H:i:s'));
+            $this->db->where('created_at <', $cycle_end->format('Y-m-d H:i:s'));
+            $mrow = $this->db->get()->row_array();
+            $meeting_minutes = isset($mrow['total']) ? (int) $mrow['total'] : 0;
+            $used += $meeting_minutes * 60;
+        }
+
+        return $used;
     }
 
  function add_video(){
@@ -5568,23 +5560,9 @@ function subcategory_table(){
   
                     $ins = $this->db_model->insert_data('video_lectures',$data_arr);
                      
-                    // notification
-                    
-                        // $batch_data_id = json_decode($data_arr['batch']);
-                        $batch_data_id =$data_arr['batch'];
-                        for($i=0;$i<count($batch_data_id);$i++){
-                        $data['batch_id'] = $batch_data_id[$i];
-                        $data['notification_type'] = "Video-Lecture";
-                        $data['msg'] = 'New Video Added';
-                        $data['url'] = 'student/video-lecture';
-                        $data['time'] = date('Y-m-d H:i:s');
-                        $data['seen_by'] = '';
-                        $student_data = $this->db_model->select_data('id','students', array('batch_id'=> $data['batch_id'],'status'=>'1'));
-                        for($i=0;$i<count($student_data);$i++){
-                        $data['student_id'] = $student_data[$i]['id'];
-                        $video_not = $this->db_model->insert_data('notifications',$data);
-                        }  
-                    }
+                    // notification: 1 master + 1 push_notifications_details row per enrolled student of the batch(es).
+                    $this->load->library('notification_service');
+                    @$this->notification_service->push_notify('New Video','New Video Added','Video-Lecture','student/video-lecture',array('batch_ids'=>(array)$data_arr['batch']));
                 }else{
                    
                      if($data_arr['video_type']=='video' && $_FILES['video_file']['name'] ==""){
@@ -5809,6 +5787,13 @@ function subcategory_table(){
                 $data['institude_code'] = $data['institute_code'];
                 unset($data['institute_code']);
             }
+        }
+        // "Paid Institute" select (form field paid_institute) -> users.paid column (ENUM '1'/'0').
+        if (isset($data['paid_institute'])) {
+            if ($this->users_column_exists('paid')) {
+                $data['paid'] = ((string) $data['paid_institute'] === '0') ? '0' : '1';
+            }
+            unset($data['paid_institute']);
         }
         return $data;
     }
@@ -6384,7 +6369,7 @@ function subcategory_table(){
         				        </a>
         				    </li>
         				    <li>
-        				        <a href="javascript:void(0);" class="edit_teacher" title="Edit" data-id="'.$teach['id'].'" data-subject="'.implode(",",json_decode($teach['teach_subject'])).'" data-img="'.$teach['teach_image'].'" data-last_name="'.html_escape(isset($teach['last_name']) ? $teach['last_name'] : '').'">
+        				        <a href="javascript:void(0);" class="edit_teacher" title="Edit" data-id="'.$teach['id'].'" data-subject="'.implode(",",json_decode($teach['teach_subject'])).'" data-img="'.$teach['teach_image'].'" data-last_name="'.html_escape(isset($teach['last_name']) ? $teach['last_name'] : '').'" data-name="'.html_escape(isset($teach['name']) ? $teach['name'] : '').'" data-email="'.html_escape(isset($teach['email']) ? $teach['email'] : '').'" data-education="'.html_escape(isset($teach['teach_education']) ? $teach['teach_education'] : '').'" data-gender="'.html_escape(isset($teach['teach_gender']) ? $teach['teach_gender'] : '').'">
         				            <span class="action_drop_icon">
         				                <i class="fa fa-edit"></i>
         				            </span>
@@ -6939,22 +6924,10 @@ function subcategory_table(){
                             
                             if($ins==true){
                                 $resp = array('status'=>1,'msg'=>$this->lang->line('ltr_class_updated_msg'));
-                                $title ="View extra class";
-                                $where ="extraclasses";
-                                
-                            $data['batch_id'] = $batch_id;
-                            $data['notification_type'] =  'Extra-class';
-                            $data['msg'] = 'New ExtraClass Added';
-                            $data['url'] = 'student/extra-classes';
-                            $data['time'] = date('Y-m-d H:i:s');
-                            $data['seen_by'] = '';
-                            $student_data = $this->db_model->select_data('id','students', array('batch_id'=> $data['batch_id'],'status'=>'1'));
-                                for($i=0;$i<count($student_data);$i++){
-                                    $data['student_id'] = $student_data[$i]['id'];
-                                    $extra_not = $this->db_model->insert_data('notifications',$data);     
-                      }
+                                // 1 master + 1 push_notifications_details row per enrolled student of the batch.
                                 if(!empty($batch_id)){
-                                    $this->push_notification_android($batch_id,$title,$where);
+                                    $this->load->library('notification_service');
+                                    @$this->notification_service->push_notify('View extra class','New ExtraClass Added','Extra-class','student/extra-classes',array('batch_id'=>$batch_id));
                                 }
                             }else{
                                 $resp = array('status'=>0,'data'=> $batch_id);
@@ -7468,43 +7441,12 @@ function subcategory_table(){
                         $batch_id = $this->input->post('batch_id',TRUE);
                         $paper_type =$this->input->post('type',TRUE);
                         
+                        // notification: 1 master + 1 push_notifications_details row per enrolled student.
+                        $this->load->library('notification_service');
                         if($paper_type==1){
-                            $title =$this->lang->line('ltr_view_mock_paper');
-                            $where ="mock_test";
-                            
-                            // notification
-                            
-                        $data['batch_id'] = $batch_id;
-                        $data['notification_type'] = "Exam";
-                        $data['msg'] = 'New Mock Paper Added';
-                        $data['url'] = 'student/mock-paper';
-                        $data['time'] = date('Y-m-d H:i:s');
-                        $data['seen_by'] = '';
-                         $student_data = $this->db_model->select_data('id','students', array('batch_id'=> $data['batch_id'],'status'=>'1'));
-                      for($i=0;$i<count($student_data);$i++){
-                      $data['student_id'] = $student_data[$i]['id'];
-                        $exam_not = $this->db_model->insert_data('notifications',$data);  
-                      } 
-                            
+                            @$this->notification_service->push_notify($this->lang->line('ltr_view_mock_paper'),'New Mock Paper Added','Exam','student/mock-paper',array('batch_id'=>$batch_id));
                         }else{
-                            $title =$this->lang->line('ltr_view_practice_paper');
-                            $where ="practice";
-                            
-                             // notification
-                            
-                        $data['batch_id'] = $batch_id;
-                        $data['notification_type'] = "Exam";
-                        $data['msg'] = 'New Practice Paper Added';
-                        $data['url'] = 'student/practice-paper';
-                        $data['time'] = date('Y-m-d H:i:s');
-                         $student_data = $this->db_model->select_data('id','students', array('batch_id'=> $data['batch_id'],'status'=>'1'));
-                      for($i=0;$i<count($student_data);$i++){
-                      $data['student_id'] = $student_data[$i]['id'];
-                        $exam_not = $this->db_model->insert_data('notifications',$data);  
-                      }
-                        }
-                        if(!empty($batch_id)){
-                            $this->push_notification_android($batch_id,$title,$where);
+                            @$this->notification_service->push_notify($this->lang->line('ltr_view_practice_paper'),'New Practice Paper Added','Exam','student/practice-paper',array('batch_id'=>$batch_id));
                         }
                     }else{
                         $resp = array('status'=>0);
@@ -8711,38 +8653,20 @@ function result_table($type){
                     if($ins==true){
                          $resp = array('status'=>1,'msg'=>$this->lang->line('ltr_homework_added_msg'));
                          $batch_id = $this->input->post('batch');
-                         
-                        $title =$this->lang->line('ltr_view_homework');
-                        $where ="homework";
-                      
-                        $data['batch_id'] = $batch_id;
-                        $data['notification_type'] = "Assignment";
-                        $data['msg'] = 'New Assignment Added';
-                        $data['url'] = 'student/homework';
-                        $data['time'] = date('Y-m-d H:i:s');
-                        $data['seen_by'] = '';
-                       
-                       
-                         $student_data = $this->db_model->select_data('id','students',array('batch_id'=> $data['batch_id'],'status' => '1'));
-                        
-                      for($i=0;$i<count($student_data);$i++){
-                      $data['student_id'] = $student_data[$i]['id'];
-                     
-                        $notify = $this->db_model->insert_data('notifications',$data);     
-                     
-                      }
-                         
+
+                        // notification: 1 master + 1 push_notifications_details row per enrolled student.
                         if(!empty($batch_id)){
-                            $batch = $batch_id;
-                            $data = $this->push_notification_android($batch,$title,$where);
-                         
-                          }
+                            $this->load->library('notification_service');
+                            @$this->notification_service->push_notify($this->lang->line('ltr_view_homework'),'New Assignment Added','Assignment','student/homework',array('batch_ids'=>(array)$batch_id));
+                        }
+                        // Email enrolled students about the new homework (best-effort).
+                        @$this->send_homework_assignment_emails($batch_id);
                     }else{
                         $resp = array('status'=>0);
                     }
                 }
                 echo json_encode($resp,JSON_UNESCAPED_SLASHES);
-            } 
+            }
         }else{
             echo $this->lang->line('ltr_not_allowed_msg');
         }
@@ -8792,22 +8716,22 @@ function result_table($type){
                
                 foreach($gallery as $gal){
                     if($gal['upload'] == 'URL'){
-                        $editIcn = '<p class="actions_wrap"><a class="editVideoImgGalry btn_edit" title="Edit" data-id="'.$gal['id'].'" data-type="'.$gal['type'].'" data-url="'.$gal['video_url'].'"><i class="fa fa-edit"></i></a>';
+                        $editIcn = '<p class="actions_wrap"><a class="editVideoImgGalry btn_edit" title="Edit" data-id="'.$gal['id'].'" data-type="'.$gal['type'].'" data-purpose="'.(isset($gal['purpose']) ? $gal['purpose'] : 'Banner').'" data-url="'.$gal['video_url'].'"><i class="fa fa-edit"></i></a>';
                         $viewIcn = '<a class="viewVideo btn_view" title="View" data-id="'.$gal['id'].'" data-url="'.$gal['video_url'].'"><i class="fa fa-eye"></i></a>';
                     $deleteIcn = '<a class="deleteData btn_delete" title="Delete" data-id="'.$gal['id'].'" data-table="gallery" data-file="uploads/gallery/'.$gal['image'].'"><i class="fa fa-trash"></i></a></p>';
 
                     }elseif($gal['type'] == 'Video'){
-                        $editIcn = '<p class="actions_wrap"><a class="editVideoImgGalry btn_edit" title="Edit" data-id="'.$gal['id'].'" data-type="'.$gal['type'].'" data-video="'.base_url().'uploads/video/'.$gal['video'].'"><i class="fa fa-edit"></i></a>';
+                        $editIcn = '<p class="actions_wrap"><a class="editVideoImgGalry btn_edit" title="Edit" data-id="'.$gal['id'].'" data-type="'.$gal['type'].'" data-purpose="'.(isset($gal['purpose']) ? $gal['purpose'] : 'Banner').'" data-video="'.base_url().'uploads/video/'.$gal['video'].'"><i class="fa fa-edit"></i></a>';
                         $viewIcn = '<a class="viewVideo btn_view" title="View" data-id="'.$gal['id'].'" data-url="'.base_url().'uploads/video/'.$gal['video'].'"><i class="fa fa-eye"></i></a>';
                         $deleteIcn = '<a class="deleteData btn_delete" title="Delete" data-id="'.$gal['id'].'" data-table="gallery" data-file="uploads/video/'.$gal['video'].'"><i class="fa fa-trash"></i></a></p>';
                     }else{
-                         $editIcn = '<p class="actions_wrap"><a class="editVideoImgGalry btn_edit" title="Edit" data-id="'.$gal['id'].'" data-type="'.$gal['type'].'" data-img="'.$gal['image'].'"><i class="fa fa-edit"></i></a>';
+                         $editIcn = '<p class="actions_wrap"><a class="editVideoImgGalry btn_edit" title="Edit" data-id="'.$gal['id'].'" data-type="'.$gal['type'].'" data-purpose="'.(isset($gal['purpose']) ? $gal['purpose'] : 'Banner').'" data-img="'.$gal['image'].'"><i class="fa fa-edit"></i></a>';
                         $viewIcn = '<a class="viewImage btn_view" title="View" data-id="'.$gal['id'].'" data-img="uploads/gallery/'.$gal['image'].'"><i class="fa fa-eye"></i></a>';
                         $deleteIcn = '<a class="deleteData btn_delete" title="Delete" data-id="'.$gal['id'].'" data-table="gallery" data-file="uploads/gallery/'.$gal['image'].'"><i class="fa fa-trash"></i></a></p>';
 
                     }           
                     
-                    // $editIcn = '<a class="editVideoImgGalry btn_edit" title="Edit" data-id="'.$gal['id'].'" data-video="'.$gal['video'].'" data-img="'.$gal['image'].'" data-type="'.$gal['type'].'"><i class="fa fa-edit"></i></a>';
+                    // $editIcn = '<a class="editVideoImgGalry btn_edit" title="Edit" data-id="'.$gal['id'].'" data-video="'.$gal['video'].'" data-img="'.$gal['image'].'" data-type="'.$gal['type'].'" data-purpose="'.(isset($gal['purpose']) ? $gal['purpose'] : 'Banner').'"><i class="fa fa-edit"></i></a>';
                     $action = $editIcn.$viewIcn.$deleteIcn;
     
                     if($gal['status'] == 1){
@@ -8834,6 +8758,7 @@ function result_table($type){
                                 $count,
                                 $gal['title'],
                                 $gal['type'],
+                                $gal['purpose'],
                                 $statusDrop,
                                 $action,
                                 $added_by
@@ -9034,9 +8959,44 @@ function result_table($type){
                
                 $ins = $this->db_model->update_Data_limit($this->input->post('table',TRUE),$this->security->xss_clean(array('status'=>$this->input->post('status',TRUE))),array('id'=>$this->input->post('id',TRUE)));
                 if($ins){
-                    
+
                     $resp = array('status'=>1);
                     $id = $this->input->post('id',TRUE);
+
+                    // Account-lifecycle notifications (email + push + in-app), best-effort:
+                    //  - student  status 0 => access revoked,  status 1 => welcomed back
+                    //  - institute status 0 => account deactivated (non-compliance)
+                    $nt_table  = $this->input->post('table',TRUE);
+                    $nt_status = (string)$this->input->post('status',TRUE);
+                    $nt_id     = (int)$id;
+                    $nt_note   = trim((string)$this->input->post('note',TRUE)); // optional admin note/reason
+                    if($nt_id > 0 && ($nt_table === 'students' || $nt_table === 'users')){
+                        $this->load->library('notification_service');
+                        if($nt_table === 'students'){
+                            // Student account: deactivate => access revoked, activate => welcomed back.
+                            if($nt_status === '0'){
+                                @$this->notification_service->notify_account_status('student',$nt_id,'account_access_revoked_due_to_non_compliance',array(),array('url'=>base_url('login'),'note'=>$nt_note));
+                            }elseif($nt_status === '1'){
+                                @$this->notification_service->notify_account_status('student',$nt_id,'welcome_back_to_gradmo',array(),array('url'=>base_url('login'),'note'=>$nt_note));
+                            }
+                        }elseif($nt_table === 'users'){
+                            // `users` holds institutes (role 4) and teachers (role 3).
+                            $u = $this->db_model->select_data('user_type,role','users use index (id)',array('id'=>$nt_id),1);
+                            $utype = !empty($u[0]['user_type']) ? strtolower($u[0]['user_type']) : ((isset($u[0]['role']) && (int)$u[0]['role']===4) ? 'institute' : ((isset($u[0]['role']) && (int)$u[0]['role']===3) ? 'teacher' : ''));
+                            if($utype === 'institute' || $utype === 'teacher'){
+                                if($nt_status === '0'){
+                                    // Institute => "Institution Account Deactivated"; Teacher => "Account Access Revoked".
+                                    $purpose  = ($utype === 'institute') ? 'institution_account_deactivated_due_to_non_compliance' : 'account_access_revoked_due_to_non_compliance';
+                                    $name_var = ($utype === 'institute') ? 'INSTITUTION_ADMIN_NAME' : 'STUDENT_NAME';
+                                    @$this->notification_service->notify_account_status($utype,$nt_id,$purpose,array(),array('name_var'=>$name_var,'in_app'=>false,'note'=>$nt_note));
+                                }elseif($nt_status === '1'){
+                                    // Reactivation => welcomed back (institute or teacher).
+                                    @$this->notification_service->notify_account_status($utype,$nt_id,'welcome_back_to_gradmo',array(),array('name_var'=>'STUDENT_NAME','in_app'=>false,'url'=>base_url('login'),'note'=>$nt_note));
+                                }
+                            }
+                        }
+                    }
+
                     $studData = $this->db_model->select_data('student_id','leave_management use index (id)',array('id'=>$id),1);
                     if(!empty($studData)){
                         if($studData[0]['student_id']){
@@ -9094,9 +9054,40 @@ function result_table($type){
                 if($this->input->post('table',TRUE) == 'blog_comments'){
                    $res = $this->db_model->delete_data('blog_comments_reply',array('comment_id'=>$this->input->post('id',TRUE)));
                 }
+
+                // When deleting an account (student/teacher/institute), capture name/email BEFORE
+                // the row is removed so we can email an account-deletion notice afterwards.
+                $account_notice = null;
+                $del_table = $this->input->post('table',TRUE);
+                if($del_table == 'students'){
+                    $acc = $this->db_model->select_data('name,email','students use index (id)',array('id'=>$this->input->post('id',TRUE)),1);
+                    if(!empty($acc[0]['email'])){
+                        $account_notice = array('user_type'=>'student','email'=>$acc[0]['email'],'name'=>isset($acc[0]['name'])?$acc[0]['name']:'');
+                    }
+                }elseif($del_table == 'users'){
+                    $acc = $this->db_model->select_data('name,email,role,user_type','users use index (id)',array('id'=>$this->input->post('id',TRUE)),1);
+                    if(!empty($acc[0]['email'])){
+                        $rl = (int)$acc[0]['role'];
+                        $ut = ($rl===3)?'teacher':(($rl===4)?'institute':(isset($acc[0]['user_type'])?$acc[0]['user_type']:''));
+                        $account_notice = array('user_type'=>$ut,'email'=>$acc[0]['email'],'name'=>isset($acc[0]['name'])?$acc[0]['name']:'');
+                    }
+                }
+
                 $res = $this->db_model->delete_data($this->input->post('table',TRUE),array('id'=>$this->input->post('id',TRUE)));
-                
+
                 if($res){
+                    // Notify the deleted account by email (best-effort).
+                    if(!empty($account_notice)){
+                        @$this->common->send_email(array(
+                            'purpose' => 'account_delete',
+                            'user_type' => $account_notice['user_type'],
+                            'to_email' => $account_notice['email'],
+                            'dynamic_var' => array(
+                                'name' => $account_notice['name'],
+                                'link' => base_url('login'),
+                            ),
+                        ));
+                    }
                     if(!empty($studData) && $studData[0]['batch_id']!=''){
                         $this->db_model->update_with_increment('batches','no_of_student',array('id'=>$studData[0]['batch_id']),'minus',1);
                     }
@@ -10072,19 +10063,139 @@ function result_table($type){
                 $data_arr['admin_id'] = $this->session->userdata('admin_id');
                 
                 $check = $this->db_model->select_data('*','attendance',array('student_id'=>$data[$i],'date'=>date('Y-m-d'),'added_id'=>$this->session->userdata('uid')),'',array('id','desc'));
-                
+
                 if(empty($check)){
                     $ins = $this->db_model->insert_data('attendance',$data_arr);
                 }
-                
+
             }
+            // Email the students of this batch who were NOT marked present (i.e. absent).
+            $present_ids = is_array($data) ? $data : array();
+            @$this->send_attendance_absent_emails($this->session->userdata('batch_id'), $present_ids, date('Y-m-d'));
             $resp = array('status'=>1,'msg'=>$this->lang->line('ltr_attendance_added_msg'));
             echo json_encode($resp,JSON_UNESCAPED_SLASHES);
         }else{
             echo $this->lang->line('ltr_not_allowed_msg');
         }
     }
-    
+
+    /**
+     * Email the `attendance_absent` template to enrolled students of a batch who were NOT
+     * in the present list for the given date. Best-effort.
+     */
+    private function send_attendance_absent_emails($batch_id, array $present_ids, $date){
+        $batch_id = (int) $batch_id;
+        if($batch_id < 1){ return; }
+
+        // Enrolled students of this batch (student_batchs is the authoritative enrollment table).
+        $enr = $this->db_model->select_data('student_id','student_batchs',array('batch_id'=>$batch_id,'status'=>1),'');
+        $ids = array();
+        foreach((array)$enr as $e){
+            $sid = isset($e['student_id']) ? (int)$e['student_id'] : 0;
+            if($sid > 0){ $ids[$sid] = $sid; }
+        }
+        // Remove the present students.
+        foreach($present_ids as $pid){ unset($ids[(int)$pid]); }
+        if(empty($ids)){ return; }
+
+        // Absent students that are active and not deleted.
+        $this->db->reset_query();
+        $this->db->select('id,name,email')->from('students')->where_in('id', array_values($ids))->where('status',1);
+        if($this->db->field_exists('deleted','students')){ $this->db->where('deleted','0'); }
+        $absent = $this->db->get()->result_array();
+
+        $date_disp = date('d-m-Y', strtotime($date));
+        foreach((array)$absent as $stu){
+            $to = isset($stu['email']) ? trim((string)$stu['email']) : '';
+            if($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)){ continue; }
+            @$this->common->send_email(array(
+                'purpose' => 'attendance_absent',
+                'user_id' => (int)$stu['id'],
+                'user_type' => 'student',
+                'to_email' => $to,
+                'dynamic_var' => array(
+                    'STUDENT_NAME' => isset($stu['name']) ? $stu['name'] : '',
+                    'DATE' => $date_disp,
+                    'CURRENT_YEAR' => date('Y'),
+                ),
+            ));
+        }
+    }
+
+    /**
+     * Email the `new_homework_assignment` template to every enrolled, active student of a batch.
+     * Best-effort.
+     */
+    private function send_homework_assignment_emails($batch_id){
+        $batch_id = (int) $batch_id;
+        if($batch_id < 1){ return; }
+        $enr = $this->db_model->select_data('student_id','student_batchs',array('batch_id'=>$batch_id,'status'=>1),'');
+        $ids = array();
+        foreach((array)$enr as $e){
+            $sid = isset($e['student_id']) ? (int)$e['student_id'] : 0;
+            if($sid > 0){ $ids[$sid] = $sid; }
+        }
+        if(empty($ids)){ return; }
+        $this->db->reset_query();
+        $this->db->select('id,name,email')->from('students')->where_in('id', array_values($ids))->where('status',1);
+        if($this->db->field_exists('deleted','students')){ $this->db->where('deleted','0'); }
+        $students = $this->db->get()->result_array();
+        foreach((array)$students as $stu){
+            $to = isset($stu['email']) ? trim((string)$stu['email']) : '';
+            if($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)){ continue; }
+            @$this->common->send_email(array(
+                'purpose' => 'new_homework_assignment',
+                'user_id' => (int)$stu['id'],
+                'user_type' => 'student',
+                'to_email' => $to,
+                'dynamic_var' => array(
+                    'STUDENT_NAME' => isset($stu['name']) ? $stu['name'] : '',
+                    'CURRENT_YEAR' => date('Y'),
+                ),
+            ));
+        }
+    }
+
+    /**
+     * Email the `new_study_material_added_to_elibrary` template to enrolled, active students of the
+     * given batch(es). $batch_ids may be an array of ids or a comma-separated string. Best-effort.
+     */
+    private function send_library_material_emails($batch_ids){
+        if(!is_array($batch_ids)){
+            $batch_ids = explode(',', (string)$batch_ids);
+        }
+        $bids = array();
+        foreach($batch_ids as $b){ $bi = (int)$b; if($bi > 0){ $bids[$bi] = $bi; } }
+        if(empty($bids)){ return; }
+
+        // Unique enrolled students across these batches.
+        $this->db->reset_query();
+        $this->db->select('student_id')->from('student_batchs')->where_in('batch_id', array_values($bids))->where('status',1);
+        $enr = $this->db->get()->result_array();
+        $ids = array();
+        foreach((array)$enr as $e){ $sid = (int)$e['student_id']; if($sid > 0){ $ids[$sid] = $sid; } }
+        if(empty($ids)){ return; }
+
+        $this->db->reset_query();
+        $this->db->select('id,name,email')->from('students')->where_in('id', array_values($ids))->where('status',1);
+        if($this->db->field_exists('deleted','students')){ $this->db->where('deleted','0'); }
+        $students = $this->db->get()->result_array();
+        foreach((array)$students as $stu){
+            $to = isset($stu['email']) ? trim((string)$stu['email']) : '';
+            if($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)){ continue; }
+            @$this->common->send_email(array(
+                'purpose' => 'new_study_material_added_to_elibrary',
+                'user_id' => (int)$stu['id'],
+                'user_type' => 'student',
+                'to_email' => $to,
+                'dynamic_var' => array(
+                    'STUDENT_NAME' => isset($stu['name']) ? $stu['name'] : '',
+                    'CURRENT_YEAR' => date('Y'),
+                ),
+            ));
+        }
+    }
+
     function add_attendance_extra(){
         if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
             
@@ -11514,10 +11625,39 @@ function result_table($type){
 			    echo json_encode($resp,JSON_UNESCAPED_SLASHES);
         }else{
             echo $this->lang->line('ltr_not_allowed_msg');
-        } 
+        }
     }
-    
-    
+
+
+    function edit_sms_setting(){
+        if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
+
+            $keys = array(
+                'msg91_authkey'     => 'MSG91 Auth Key',
+                'msg91_sender'      => 'MSG91 Sender ID',
+                'msg91_route'       => 'MSG91 Route',
+                'msg91_country'     => 'MSG91 Country',
+                'msg91_template_id' => 'MSG91 Flow Template ID',
+            );
+            foreach($keys as $key => $title){
+                $value = $this->input->post($key, TRUE);
+                if($value === false || $value === null){ $value = ''; }
+                $exists = $this->db_model->select_data('id','general_settings',array('key_text'=>$key));
+                if(!empty($exists)){
+                    $this->db_model->update_data_limit('general_settings',array('velue_text'=>$value),array('key_text'=>$key),1);
+                }else{
+                    $this->db_model->insert_data('general_settings',$this->security->xss_clean(array(
+                        'title'=>$title,'key_text'=>$key,'velue_text'=>$value
+                    )));
+                }
+            }
+            echo json_encode(array('status'=>1,'msg'=>$this->lang->line('ltr_updated_msg')),JSON_UNESCAPED_SLASHES);
+        }else{
+            echo $this->lang->line('ltr_not_allowed_msg');
+        }
+    }
+
+
     function convertCurrency(){
         // print_r($_POST);
         // die();
@@ -11775,27 +11915,11 @@ function result_table($type){
     
     
                     if($ins==true){
-                       
-                            $data['batch_id'] = $batch_data[0];
-                            $data['notification_type'] = "Library";
-                            $data['msg'] = 'New Book Added';
-                            $data['url'] = 'student/book';
-                            $data['time'] = date('Y-m-d H:i:s');
-                            $data['seen_by'] = '';
-                            $student_data = $this->db_model->select_data('id','students', array('batch_id'=> $batch_data[0],'status'=>'1'));
-                          for($i=0;$i<count($student_data);$i++){
-                          $data['student_id'] = $student_data[$i]['id'];
-                          $book_not = $this->db_model->insert_data('notifications',$data);  
-                          }
-                          
-                        //send push notice
-                        
-                        for($i=0;$i<count($batch_data);$i++){
-                            $title="add New Book";
-                            $where ="addNewBook";
-                            $batch_id=$batch_data[$i];
-                            $this->push_notification_android($batch_id,$title,$where);
-                        }
+                        // 1 master + 1 push_notifications_details row per enrolled student of the batch(es).
+                        $this->load->library('notification_service');
+                        @$this->notification_service->push_notify('add New Book','New Book Added','Library','student/book',array('batch_ids'=>(array)$batch_data));
+                        // Email enrolled students of the batch(es) about the new study material (best-effort).
+                        @$this->send_library_material_emails($batch_data);
                          $resp = array('status'=>1,'msg'=>$this->lang->line('ltr_book_added_msg'));
                          
                     }else{
@@ -12172,6 +12296,20 @@ function result_table($type){
          echo json_encode($common);
     }
 	
+    /**
+     * book_pdf.batch is stored in different shapes in the wild: a JSON array ("[3,4]"),
+     * a JSON scalar ("3"), or a plain id / CSV ("3" or "3,4"). Normalise any of these to a
+     * comma-separated string so json_decode()+implode() never throws a TypeError (PHP 8).
+     */
+    private function json_or_scalar_csv($raw){
+        $raw = trim((string) $raw);
+        if($raw === ''){ return ''; }
+        $decoded = json_decode($raw, true);
+        if(is_array($decoded)){ return implode(',', array_map('strval', $decoded)); }
+        if(is_scalar($decoded)){ return (string) $decoded; }
+        return $raw; // not JSON — already a plain id or CSV
+    }
+
     function book_table(){
         if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
             $post = $this->input->post(NULL,TRUE);
@@ -12238,7 +12376,7 @@ function result_table($type){
                          $action = " 
                         
                         <p class='actions_wrap'>
-                         <a class='edit_book btn_edit' title='Edit' data-batch='".implode(",",json_decode($vid['batch']))."' data-table='book_pdf'  data-id='".$vid["id"]."' data-file='".$vid["file_name"]."'><i class='fa fa-edit'></i></a>
+                         <a class='edit_book btn_edit' title='Edit' data-batch='".$this->json_or_scalar_csv($vid['batch'])."' data-table='book_pdf'  data-id='".$vid["id"]."' data-file='".$vid["file_name"]."'><i class='fa fa-edit'></i></a>
                         <a class='viewPdf_ btn_view' title='View' data-id='".$vid["id"]."' href='".base_url("admin/file-view/book/").$vid["id"]."' target='_blank' data-url='uploads/book/".$vid["file_name"]."'><i class='fa fa-eye'></i></a>
                        
                         <a class='deleteData btn_delete' title='Delete' data-id='".$vid["id"]."' data-table='book_pdf'><i class='fa fa-trash'></i></a></p>";
@@ -12306,7 +12444,7 @@ function result_table($type){
                         if($_SESSION['uid']==$vid['added_by']){
                             $action = "
                             <a class='viewPdf_ btn_view' title='View' data-id='".$vid["id"]."' href='".base_url("teacher/file-view/book/").$vid["id"]."' target='_blank' data-url='uploads/book/".$vid["file_name"]."'><i class='fa fa-eye'></i></a>
-                            <p class='actions_wrap'><a class='edit_book btn_edit' title='Edit' data-batch='".implode(",",json_decode($vid['batch']))."' data-table='book_pdf'  data-id='".$vid["id"]."' data-file='".$vid["file_name"]."'><i class='fa fa-edit'></i></a>
+                            <p class='actions_wrap'><a class='edit_book btn_edit' title='Edit' data-batch='".$this->json_or_scalar_csv($vid['batch'])."' data-table='book_pdf'  data-id='".$vid["id"]."' data-file='".$vid["file_name"]."'><i class='fa fa-edit'></i></a>
                             <a class='deleteData btn_delete' title='Delete' data-id='".$vid["id"]."' data-table='book_pdf'><i class='fa fa-trash'></i></a></p>";
                         }else{
                             	$action = '
@@ -12409,32 +12547,12 @@ function result_table($type){
                 
                 if($ins==true){
                     $resp = array('status'=>1,'msg'=>$this->lang->line('ltr_notes_added_msg'));
-                    
-                    for($i=0;$i<count($batch_data);$i++){
-                        
-                    //send push notice
+                    // 1 master + 1 push_notifications_details row per enrolled student of the batch(es).
+                    $this->load->library('notification_service');
+                    @$this->notification_service->push_notify('add New Notes','New Notes Added','Notes','student/notes',array('batch_ids'=>(array)$batch_data));
+                    // Email enrolled students of the batch(es) about the new study material (best-effort).
+                    @$this->send_library_material_emails($batch_data);
 
-                        $title="add New Notes";
-                        $where ="addNewNotes";
-                        $batch_id= $batch_data[$i];
-                        $this->push_notification_android($batch_id,$title,$where);
-                    
-                    // notification 
-                     
-                        $data['batch_id'] = $batch_data[$i];
-                        $data['notification_type'] = "Notes";
-                        $data['msg'] = 'New Notes Added';
-                        $data['url'] = 'student/notes';
-                        $data['time'] = date('Y-m-d H:i:s');
-                        $data['seen_by'] = '';
-                        $student_data = $this->db_model->select_data('id','students', array('batch_id'=> $data['batch_id'],'status'=>'1'));
-
-                      for($j=0;$j<count($student_data);$j++){
-                      $data['student_id'] = $student_data[$j]['id'];
-                        $notes_not = $this->db_model->insert_data('notifications',$data);  
-                      }
-                    }
-                    
                 }else{
                     $resp = array('status'=>0);
                 }
@@ -12546,7 +12664,7 @@ function result_table($type){
                         $action = "
                             
                             <p class='actions_wrap'>
-                            <a class='edit_note btn_edit' title='Edit' data-topic_id='".implode(",",json_decode($vid['topic']))."' data-subject_id='".implode(",",json_decode($vid['subject']))."' data-batch_id='".implode(",",json_decode($vid['batch']))."' data-subject='".$vid['subject']."' data-table='notes_pdf'  data-id='".$vid["id"]."' data-file='".$vid["file_name"]."'><i class='fa fa-edit'></i></a>
+                            <a class='edit_note btn_edit' title='Edit' data-topic_id='".$this->json_or_scalar_csv($vid['topic'])."' data-subject_id='".$this->json_or_scalar_csv($vid['subject'])."' data-batch_id='".$this->json_or_scalar_csv($vid['batch'])."' data-subject='".$vid['subject']."' data-table='notes_pdf'  data-id='".$vid["id"]."' data-file='".$vid["file_name"]."'><i class='fa fa-edit'></i></a>
                             <a class='viewPdf_ btn_view' title='View' data-id='".$vid["id"]."' href='".base_url("admin/file-view/notes/").$vid["id"]."' target='_blank' data-url='uploads/notes/".$vid["file_name"]."'><i class='fa fa-eye'></i></a>
                             
                             <a class='deleteData btn_delete' title='Delete' data-id='".$vid["id"]."' data-table='notes_pdf'><i class='fa fa-trash'></i></a></p>";
@@ -12619,7 +12737,7 @@ function result_table($type){
                         if($_SESSION['admin_id']!=$vid['added_by']){
     						 $action = "
                             <a class='viewPdf_ btn_view' title='View' data-id='".$vid["id"]."' href='".base_url("teacher/file-view/notes/").$vid["id"]."' target='_blank' data-url='uploads/notes/".$vid["file_name"]."'><i class='fa fa-eye'></i></a>
-                            <p class='actions_wrap'><a class='edit_note btn_edit' title='Edit' data-topic_id='".implode(",",json_decode($vid['topic']))."' data-subject_id='".implode(",",json_decode($vid['subject']))."' data-batch_id='".implode(",",json_decode($vid['batch']))."' data-subject='".$vid['subject']."' data-table='notes_pdf'  data-id='".$vid["id"]."' data-file='".$vid["file_name"]."'><i class='fa fa-edit'></i></a>
+                            <p class='actions_wrap'><a class='edit_note btn_edit' title='Edit' data-topic_id='".$this->json_or_scalar_csv($vid['topic'])."' data-subject_id='".$this->json_or_scalar_csv($vid['subject'])."' data-batch_id='".$this->json_or_scalar_csv($vid['batch'])."' data-subject='".$vid['subject']."' data-table='notes_pdf'  data-id='".$vid["id"]."' data-file='".$vid["file_name"]."'><i class='fa fa-edit'></i></a>
                             <a class='deleteData btn_delete' title='Delete' data-id='".$vid["id"]."' data-table='notes_pdf'><i class='fa fa-trash'></i></a></p>";
                             
                         }else{
@@ -12822,6 +12940,8 @@ function result_table($type){
                         $batch_id=$batch_data[$i];
                         $this->push_notification_android($batch_id,$title,$where);
                     }
+                    // Email enrolled students of the batch(es) about the new study material (best-effort).
+                    @$this->send_library_material_emails($batch_data);
                 }else{
                     $resp = array('status'=>0);
                 }
@@ -13070,7 +13190,7 @@ function result_table($type){
                  if($_SESSION['admin_id']!=$vid['added_by']){
                      $action = "
                    
-                    <p class='actions_wrap'><a class='edit_oldpaper  btn_edit' title='Edit' data-batch_id='".implode(",",json_decode($vid['batch']))."' data-subject='".$vid['subject']."' data-table='old_paper_pdf'  data-id='".$vid["id"]."' data-file='".$vid["file_name"]."'><i class='fa fa-edit'></i></a> <a class='viewPdf_ btn_view' title='View' data-id='".$vid["id"]."' href='".base_url("admin/file-view/old_paper/").$vid["id"]."' target='_blank' data-url='uploads/notes/".$vid["file_name"]."'><i class='fa fa-eye'></i></a>
+                    <p class='actions_wrap'><a class='edit_oldpaper  btn_edit' title='Edit' data-batch_id='".$this->json_or_scalar_csv($vid['batch'])."' data-subject='".$vid['subject']."' data-table='old_paper_pdf'  data-id='".$vid["id"]."' data-file='".$vid["file_name"]."'><i class='fa fa-edit'></i></a> <a class='viewPdf_ btn_view' title='View' data-id='".$vid["id"]."' href='".base_url("admin/file-view/old_paper/").$vid["id"]."' target='_blank' data-url='uploads/notes/".$vid["file_name"]."'><i class='fa fa-eye'></i></a>
                     
                     <a class='deleteData btn_delete' title='Delete' data-id='".$vid["id"]."' data-table='old_paper_pdf'><i class='fa fa-trash'></i></a></p>";
                  }else{
@@ -13138,7 +13258,7 @@ function result_table($type){
                         if($_SESSION['admin_id']!=$vid['added_by']){
                         $action = "
                             <a class='viewPdf_ btn_view' title='View' data-id='".$vid["id"]."' href='".base_url("teacher/file-view/old_paper/").$vid["id"]."' target='_blank' data-url='uploads/notes/".$vid["file_name"]."'><i class='fa fa-eye'></i></a>
-                            <p class='actions_wrap'><a class='edit_oldpaper  btn_edit' title='Edit' data-batch_id='".implode(",",json_decode($vid['batch']))."' data-subject='".$vid['subject']."' data-table='old_paper_pdf'  data-id='".$vid["id"]."' data-file='".$vid["file_name"]."'><i class='fa fa-edit'></i></a>
+                            <p class='actions_wrap'><a class='edit_oldpaper  btn_edit' title='Edit' data-batch_id='".$this->json_or_scalar_csv($vid['batch'])."' data-subject='".$vid['subject']."' data-table='old_paper_pdf'  data-id='".$vid["id"]."' data-file='".$vid["file_name"]."'><i class='fa fa-edit'></i></a>
                             <a class='deleteData btn_delete' title='Delete' data-id='".$vid["id"]."' data-table='old_paper_pdf'><i class='fa fa-trash'></i></a></p>";
                        }else{       
                            $action = '<p class="actions_wrap"><a class="viewPdf_ btn_view" title="View" href="'.base_url('teacher/file-view/old_paper/').$vid['id'].'" target="_blank" data-id="'.$vid['id'].'" data-url="uploads/oldpaper/'.$vid['file_name'].'"><i class="fa fa-eye"></i></a>
@@ -13196,9 +13316,8 @@ function result_table($type){
          if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
              
             $id = $this->input->post('id');
-            $data['status'] = 1;
-            $data['seen_by'] = date('Y-m-d H:i:s');
-            $ins = $this->db_model->update_data_limit('notifications',$data,array('student_id'=>$id,'status'=>'0'));
+            // Read-state now lives per-recipient in push_notifications_details.read (1 => read).
+            $ins = $this->db_model->update_data('push_notifications_details',array('read'=>1),array('userid'=>$id,'user_type'=>1,'read'=>0));
 
              if(!empty($ins)){
                 $resp = array('status'=>'1', 'msg' =>$this->lang->line('ltr_updated_msg'));
@@ -14281,45 +14400,14 @@ function themesOption(){
                         $batch_id = $this->input->post('batch_id',TRUE);
                         $paper_type =$this->input->post('type',TRUE);
                         
+                        // notification: 1 master + 1 push_notifications_details row per enrolled student.
+                        $this->load->library('notification_service');
                         if($paper_type==1){
-                            $title =$this->lang->line('ltr_view_mock_paper');
-                            $where ="mock_test";
-                            
-                            // notification
-                            
-                            $data2['batch_id'] = $batch_id;
-                            $data2['notification_type'] = "Exam";
-                            $data2['msg'] = 'New Mock Paper Added';
-                            $data2['url'] = 'student/mock-paper';
-                            $data2['time'] = date('Y-m-d H:i:s');
-                            $data2['seen_by'] = '';
-                            $student_data = $this->db_model->select_data('id','students', array('batch_id'=> $data2['batch_id'],'status'=>'1'));
-                            for($i=0;$i<count($student_data);$i++){
-                                $data['student_id'] = $student_data[$i]['id'];
-                                $exam_not = $this->db_model->insert_data('notifications',$data);  
-                            } 
-                            
+                            @$this->notification_service->push_notify($this->lang->line('ltr_view_mock_paper'),'New Mock Paper Added','Exam','student/mock-paper',array('batch_id'=>$batch_id));
                         }else{
-                            $title =$this->lang->line('ltr_view_practice_paper');
-                            $where ="practice";
-                            
-                             // notification
-                            
-                            $data['batch_id'] = $batch_id;
-                            $data['notification_type'] = "Exam";
-                            $data['msg'] = 'New Practice Paper Added';
-                            $data['url'] = 'student/practice-paper';
-                            $data['time'] = date('Y-m-d H:i:s');
-                            $student_data = $this->db_model->select_data('id','students', array('batch_id'=> $data['batch_id'],'status'=>'1'));
-                            for($i=0;$i<count($student_data);$i++){
-                                $data['student_id'] = $student_data[$i]['id'];
-                                $exam_not = $this->db_model->insert_data('notifications',$data);  
-                            }
+                            @$this->notification_service->push_notify($this->lang->line('ltr_view_practice_paper'),'New Practice Paper Added','Exam','student/practice-paper',array('batch_id'=>$batch_id));
                         }
-                        if(!empty($batch_id)){
-                            $this->push_notification_android($batch_id,$title,$where);
-                        }
-                        
+
                     }else{
                         $resp = array('status'=>0);
                     }

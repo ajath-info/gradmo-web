@@ -49,6 +49,7 @@ while (count($home_promos) < 3) {
 		'image' => $fallbacks[$idx],
 	);
 }
+$global_search = base_url('search');
 $home_inst_listing = base_url('institute/listing');
 $home_batch_list = base_url('batch/list');
 $home_institute_api_url = isset($home_institute_api_url) ? $home_institute_api_url : site_url('api/institute/listing');
@@ -505,9 +506,9 @@ $home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
 		<div class="edu-home-hero-bottom">
 			<div class="edu-home-hero-inner">
 				<div id="edu_home_promo_dots" class="edu-home-promo-dots" aria-label="Slide indicators"></div>
-				<form class="edu-home-search" id="edu_home_search_form" action="<?php echo html_escape($home_inst_listing); ?>" method="get" role="search">
+				<form class="edu-home-search" id="edu_home_search_form" action="<?php echo html_escape($global_search); ?>" method="get" role="search">
 					<label for="edu_home_search_q" class="sr-only">Search institutes and batches</label>
-					<input type="search" name="search" id="edu_home_search_q" placeholder="Search by City, Topic, or Institute Name" autocomplete="off">
+					<input type="search" name="key" id="edu_home_search_q" placeholder="Search Institute, Batch or Teacher" autocomplete="off">
 					<button type="submit">Search</button>
 				</form>
 			</div>

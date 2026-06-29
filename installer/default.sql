@@ -647,15 +647,40 @@ CREATE TABLE `notices` (
 
 CREATE TABLE `notifications` (
   `id` int(11) NOT NULL,
-  `student_id` int(11) NOT NULL,
   `batch_id` int(11) NOT NULL,
   `notification_type` varchar(255) NOT NULL,
+  `title` varchar(255) NOT NULL DEFAULT '',
   `msg` varchar(255) NOT NULL,
   `url` varchar(255) NOT NULL,
   `status` int(2) NOT NULL DEFAULT 0,
   `time` datetime DEFAULT NULL,
   `seen_by` datetime DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `push_notifications_details`
+-- Per-recipient detail/log rows for a `notifications` master (pushnotify_id -> notifications.id).
+-- One row per user the notification was fanned out to; carries the per-recipient `read` flag.
+--
+
+CREATE TABLE `push_notifications_details` (
+  `id` int(10) UNSIGNED NOT NULL,
+  `pushnotify_id` int(10) UNSIGNED NOT NULL,
+  `userid` int(10) UNSIGNED NOT NULL,
+  `user_type` tinyint(4) DEFAULT NULL COMMENT '1=>student,2=>teacher,3=>institute',
+  `status` tinyint(4) NOT NULL DEFAULT 0 COMMENT '0=>failed,1=>success',
+  `notification_logs` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `notifcations_request` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `device_token` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `delivered_status` tinyint(4) NOT NULL DEFAULT 0,
+  `delivered_time` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `events` tinyint(4) NOT NULL DEFAULT 0 COMMENT '0=>default,1=>delivered,2=>failed,3=>invalid',
+  `read` tinyint(4) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -1229,6 +1254,14 @@ ALTER TABLE `notifications`
   ADD KEY `id` (`id`);
 
 --
+-- Indexes for table `push_notifications_details`
+--
+ALTER TABLE `push_notifications_details`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_pushnotify` (`pushnotify_id`),
+  ADD KEY `idx_user` (`userid`,`user_type`);
+
+--
 -- Indexes for table `old_paper_pdf`
 --
 ALTER TABLE `old_paper_pdf`
@@ -1534,6 +1567,12 @@ ALTER TABLE `notices`
 --
 ALTER TABLE `notifications`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `push_notifications_details`
+--
+ALTER TABLE `push_notifications_details`
+  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `old_paper_pdf`

@@ -17,7 +17,8 @@
 				<div class="edu_form_container_main edu_form_container withoutMapFrm">
 					<h4 class="mb-3">Personal information</h4>
 					<div class="row">
-						<div class="col-12"><div class="edu_field_holder"><input id="up_name" class="edu_form_field" type="text" placeholder="Name" value="<?php echo html_escape(isset($profile['name']) ? $profile['name'] : ''); ?>"></div></div>
+						<div class="col-md-6"><div class="edu_field_holder"><input id="up_name" class="edu_form_field" type="text" placeholder="First name" maxlength="10" value="<?php echo html_escape(isset($profile['name']) ? $profile['name'] : ''); ?>"></div></div>
+						<div class="col-md-6"><div class="edu_field_holder"><input id="up_last_name" class="edu_form_field" type="text" placeholder="Last name" maxlength="10" value="<?php echo html_escape(isset($profile['last_name']) ? $profile['last_name'] : ''); ?>"></div></div>
 						<div class="col-12"><div class="edu_field_holder"><input id="up_email" class="edu_form_field" type="email" placeholder="Email" value="<?php echo html_escape(isset($profile['email']) ? $profile['email'] : ''); ?>"></div></div>
 						<div class="col-12"><div class="edu_field_holder"><input id="up_mobile" class="edu_form_field" type="text" placeholder="Phone number" maxlength="10" inputmode="numeric" value="<?php echo html_escape(isset($profile['mobile']) ? $profile['mobile'] : ''); ?>"></div></div>
 						<div class="col-12"><div class="edu_field_holder"><input id="up_address" class="edu_form_field" type="text" placeholder="Address" value="<?php echo html_escape(isset($profile['address']) ? $profile['address'] : ''); ?>"></div></div>
@@ -180,8 +181,24 @@
 			loadCities(this.value).catch(function () {});
 		});
 		btn.addEventListener('click', function () {
+			var firstName = (document.getElementById('up_name').value || '').trim();
+			var lastNameEl = document.getElementById('up_last_name');
+			var lastName = lastNameEl ? (lastNameEl.value || '').trim() : '';
+			if (!firstName) {
+				if (typeof toastr !== 'undefined') { toastr.error('Please enter your first name.'); }
+				return;
+			}
+			if (firstName.length > 10) {
+				if (typeof toastr !== 'undefined') { toastr.error('First name must be at most 10 characters.'); }
+				return;
+			}
+			if (lastName.length > 10) {
+				if (typeof toastr !== 'undefined') { toastr.error('Last name must be at most 10 characters.'); }
+				return;
+			}
 			var payload = {
-				name: (document.getElementById('up_name').value || '').trim(),
+				name: firstName,
+				last_name: lastName,
 				email: (document.getElementById('up_email').value || '').trim(),
 				mobile: (document.getElementById('up_mobile').value || '').trim().replace(/\D/g, ''),
 				address: (document.getElementById('up_address').value || '').trim(),

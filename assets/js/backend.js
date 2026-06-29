@@ -54,6 +54,8 @@ $(document).ready(function() {
                 [10, 25, 50, 100, "All"]
             ],
             responsive: true,
+            // Gallery: respect the <th> widths (Type/Purpose) instead of auto-distributing.
+            autoWidth: $('.server_datatable').attr('data-url') === 'ajaxcall/gallery_table' ? false : true,
             serverSide: { "regex": true },
             columnDefs: serverTableColumnDefs,
             ajax: {
@@ -2218,19 +2220,19 @@ $(document).on('click','.genrateMeetingId',function (){
             $('#input_feilds_teacher').find('[name="teach_image"]').removeClass('require');
             $('#input_feilds_teacher').find('#PopupTitle').html(ltr_edit_teacher);
             $('#input_feilds_teacher').find('.addNewTeacher').attr('data-id', $(this).attr('data-id')).val(ltr_update_teacher);
-            var ttt = $(this).closest('tr').find('td:eq(2)').find('a').attr('data-word');
-            if (ttt != undefined) {
-                $('#input_feilds_teacher').find('[name="name"]').val(ttt);
-            } else {
-                $('#input_feilds_teacher').find('[name="name"]').val($(this).closest('tr').find('td:eq(2)').text());
-            }
-
+            // Read from data-attributes on the edit link (works for desktop AND DataTables
+            // responsive child-row clones, where closest('tr') is the wrong row).
+            var t_name = $(this).attr('data-name') || '';
+            var t_email = $(this).attr('data-email') || '';
+            var t_education = $(this).attr('data-education') || '';
+            var t_gender = $(this).attr('data-gender') || '';
+            $('#input_feilds_teacher').find('[name="name"]').val(t_name);
             $('#input_feilds_teacher').find('[name="last_name"]').val($(this).attr('data-last_name') || '');
-            $('#input_feilds_teacher').find('[name="email"]').val($(this).closest('tr').find('td:eq(3)').text()).attr('readonly', 'readonly');
-            $('#input_feilds_teacher').find('[name="teach_education"]').val($(this).closest('tr').find('td:eq(4)').text());
-            $('#input_feilds_teacher').find('[name="teach_gender"]').val($(this).closest('tr').find('td:eq(5)').text()).trigger('change');
+            $('#input_feilds_teacher').find('[name="email"]').val(t_email).attr('readonly', 'readonly');
+            $('#input_feilds_teacher').find('[name="teach_education"]').val(t_education);
+            $('#input_feilds_teacher').find('[name="teach_gender"]').val(t_gender).trigger('change');
             $('#input_feilds_teacher').find('[name="password"]').removeClass('require').closest('.form-group').find('label sup').addClass('hide');
-            $('#input_feilds_teacher').find('[value="' + $(this).closest('tr').find('td:eq(4)').text() + '"].ansRadioChck').prop('checked', 'checked');
+            $('#input_feilds_teacher').find('[value="' + t_education + '"].ansRadioChck').prop('checked', 'checked');
             $('#input_feilds_teacher').find('.fileNameShow').html($(this).attr('data-img'));
             var subject = $(this).attr('data-subject');
             $('[name="teach_subject[]"]').val(subject.split(",")).trigger('change');
@@ -2533,6 +2535,8 @@ $(document).on('click','.genrateMeetingId',function (){
                 $f.find('[name="institute_code"]').val(row['institute_code'] || '');
                 $f.find('[name="school_college_name"]').val(row['school_college_name'] || '');
                 $f.find('[name="grade"]').val(row['grade'] || '');
+                // Paid Institute select <- users.paid (default '1' when not set).
+                $f.find('[name="paid_institute"]').val((row['paid'] === '0' || row['paid'] === 0) ? '0' : '1').trigger('change');
                 $f.find('[name="pincode"]').val(row['pincode'] || '');
                 $f.find('[name="address"]').val(row['address'] || '');
                 $f.find('[name="lat"]').val(row['lat'] || row['latitude'] || '');
@@ -3271,7 +3275,15 @@ $(document).on('click','.genrateMeetingId',function (){
     });
 
     // Templates
+    // Remove the "this version is not secure" nag shown by CKEditor 4.15.1.
+    if (typeof CKEDITOR !== 'undefined' && CKEDITOR.config) { CKEDITOR.config.versionCheck = false; }
     var templateEditorConfig = {
+        // These are full HTML email documents (<html><head>...<body>). Open the editor in
+        // Source (code) view so the complete HTML shows cleanly and nothing is stripped or
+        // rendered as stray text. The "Source" button still toggles to the visual editor.
+        versionCheck: false,
+        allowedContent: true,
+        startupMode: 'source',
         extraPlugins: 'mathjax',
         filebrowserBrowseUrl: base_url + 'view_server_image/wiew_image',
         filebrowserUploadUrl: base_url + 'view_server_image/upload_blog_image',
@@ -3292,8 +3304,15 @@ $(document).on('click','.genrateMeetingId',function (){
         }
         destroyTemplateEditor();
         CKEDITOR.replace('template_html_code', templateEditorConfig);
+        var inst = CKEDITOR.instances.template_html_code;
+        inst.on('instanceReady', function () {
+            // Force raw HTML (source) view so full <html><head>...<body> shows as clean code.
+            if (inst.mode !== 'source') {
+                inst.setMode('source');
+            }
+        });
         if (content) {
-            CKEDITOR.instances.template_html_code.setData(content);
+            inst.setData(content);
         }
     }
 
@@ -3464,6 +3483,7 @@ $(document).on('click','.genrateMeetingId',function (){
             parentDiv.find('input[name="title"]').val($(this).closest('tr').find('td:eq(2)').text());
             var type = $(this).attr('data-type');
             parentDiv.find('.galleryType').val($(this).attr('data-type')).trigger('change');
+            parentDiv.find('[name="purpose"]').val($(this).attr('data-purpose') || 'Banner').trigger('change');
             parentDiv.find('.video').removeClass('require');
             if (type == 'Image') {
                 parentDiv.find('.Image').removeClass('require');
@@ -4468,6 +4488,45 @@ $.magnificPopup.open({
         var table = $(this).attr('data-table');
         var status = $(this).attr('data-status');
         var data_tabel = $(this).attr('data-table');
+        var id = $(this).attr('data-id');
+
+        // Deactivating a student/institute: let the admin attach an optional note/reason that is
+        // delivered to the account (email + push + in-app) alongside the status notification.
+        if ((data_tabel == 'students' || data_tabel == 'users') && status == '0') {
+            swal({
+                title: ltr_alert_updated_msg,
+                text: 'Optional: add a message/reason for the account holder.',
+                content: {
+                    element: 'textarea',
+                    attributes: { placeholder: 'Reason / message (optional)' }
+                },
+                icon: 'warning',
+                buttons: [ltr_cancel, ltr_ok],
+                dangerMode: true,
+            }).then(function(value) {
+                if (value === null) { return; } // cancelled
+                var note = (typeof value === 'string') ? value : (document.querySelector('.swal-content textarea') ? document.querySelector('.swal-content textarea').value : '');
+                $.ajax({
+                    method: "POST",
+                    url: base_url + "ajaxcall/change_status",
+                    data: { 'id': id, 'table': data_tabel, 'status': status, 'note': note },
+                    success: function(resp) {
+                        var resp = $.parseJSON(resp);
+                        if (resp['status'] == '1') {
+                            toastr.success(ltr_status_msg);
+                            targetTableUrl = $('.server_datatable').attr('data-url');
+                            dataTableObj.ajax.url(base_url + targetTableUrl).load();
+                        } else {
+                            toastr.error(ltr_something_msg);
+                        }
+                    },
+                    error: function(resp) {
+                        toastr.error(ltr_something_msg);
+                    }
+                });
+            });
+            return;
+        }
 
         if ((data_tabel == 'questions') && (status != 1)) {
             swal({
@@ -6182,6 +6241,36 @@ $.magnificPopup.open({
             var _this = $(this);
             var aurl = "ajaxcall/edit_email_setting";
 
+            var formdata = new FormData($(this).closest('form')[0]);
+            $('.edu_preloader').css('background-color', 'rgba(255,255,255,0.80)').css('display', 'block');
+            $.ajax({
+                method: "POST",
+                url: base_url + aurl,
+                data: formdata,
+                processData: false,
+                contentType: false,
+                success: function(resp) {
+                    var resp = $.parseJSON(resp);
+                    if (resp['status'] == '1') {
+                        toastr.success(resp['msg']);
+                        $('.edu_preloader').fadeOut();
+                    } else {
+                        toastr.error(resp['msg']);
+                        $('.edu_preloader').fadeOut();
+                    }
+                },
+                error: function(resp) {
+                    toastr.error(ltr_something_msg);
+                    $('.edu_preloader').fadeOut();
+                }
+            });
+        }
+    });
+
+    $(document).on('click', '.updateSmsDetails', function() {
+        var validchk = validate_form($(this).closest('form'));
+        if (validchk == 'valid') {
+            var aurl = "ajaxcall/edit_sms_setting";
             var formdata = new FormData($(this).closest('form')[0]);
             $('.edu_preloader').css('background-color', 'rgba(255,255,255,0.80)').css('display', 'block');
             $.ajax({

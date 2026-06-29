@@ -1100,7 +1100,8 @@ if ( ! is_array($cur_arr)) {
                         <li <?php echo (in_array("language-settings",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/language-settings"><?php echo html_escape($this->common->languageTranslator('ltr_language_settings'));?></a></li>
                         <li <?php echo (in_array("email-settings",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/email-settings"><?php echo html_escape($this->common->languageTranslator('ltr_email_settings'));?></a></li>
                         <li <?php echo (in_array("firebase-settings",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/firebase-settings"><?php echo html_escape($this->common->languageTranslator('ltr_firebase_settings'));?></a></li>
-                    </ul> 
+                        <li <?php echo (in_array("sms-settings",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/sms-settings"><?php echo html_escape($this->common->languageTranslator('ltr_sms_settings'));?></a></li>
+                    </ul>
                 </li>
                     <?php
                 }?>

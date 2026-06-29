@@ -1352,14 +1352,28 @@ class Admin_profile extends CI_Controller {
 	}
 	
 	function firebase_settings(){
-		
+
         $data['firebase_key'] =$this->general_settings('firebase_key');
-	    $header['title']=$this->lang->line('ltr_firebase_settings');	
+	    $header['title']=$this->lang->line('ltr_firebase_settings');
 		$data['firebase_settings'] = $this->general_settings('language_name');
 		$this->load->view("common/admin_header",$header);
-		$this->load->view("admin/front/firebase_settings",$data); 
+		$this->load->view("admin/front/firebase_settings",$data);
 		$this->load->view("common/admin_footer");
-		
+
+	}
+
+	function sms_settings(){
+
+		$data['msg91_authkey']     = $this->general_settings('msg91_authkey');
+		$data['msg91_sender']      = $this->general_settings('msg91_sender');
+		$data['msg91_route']       = $this->general_settings('msg91_route');
+		$data['msg91_country']     = $this->general_settings('msg91_country');
+		$data['msg91_template_id'] = $this->general_settings('msg91_template_id');
+		$header['title']           = $this->lang->line('ltr_sms_settings');
+		$this->load->view("common/admin_header",$header);
+		$this->load->view("admin/front/sms_settings",$data);
+		$this->load->view("common/admin_footer");
+
 	}
 	
 	public function SendMail($tomail='', $subject='', $msg=''){

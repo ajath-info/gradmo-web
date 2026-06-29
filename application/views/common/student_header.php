@@ -817,8 +817,19 @@
        <div class="notification-wrapper">
 	<a href="javascript:void(0);" class="notification-info">
 	    <?php 
-	    $total_not = $this->db_model->countAll('notifications',array('status'=>'0','student_id' => $this->session->userdata('uid')));
-		$notify = $this->db_model->select_data('*','notifications',array('status'=>'0', 'student_id' => $this->session->userdata('uid')),'3',array('id','desc')); 
+	    // Unread count + latest 3 come from push_notifications_details.read (per-recipient state).
+	    $uid = $this->session->userdata('uid');
+	    $this->db->reset_query();
+	    $this->db->from('push_notifications_details pd')->where('pd.userid',$uid)->where('pd.user_type',1)->where('pd.`read`',0);
+	    $total_not = (int) $this->db->count_all_results();
+
+	    $this->db->reset_query();
+	    $this->db->select('n.*, pd.`read` as `read`', false)
+	        ->from('push_notifications_details pd')
+	        ->join('notifications n','n.id = pd.pushnotify_id','inner')
+	        ->where('pd.userid',$uid)->where('pd.user_type',1)->where('pd.`read`',0)
+	        ->order_by('n.id','desc')->limit(3);
+	    $notify = $this->db->get()->result_array();
 		?>
 		<span class="header-icon">
 		     <span><?php echo $total_not;?></span>

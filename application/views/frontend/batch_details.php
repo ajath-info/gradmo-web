@@ -255,7 +255,7 @@
 				modTile('Live classes', (m.live_classes && m.live_classes.is_live) ? 'Live now' : 'Tap to open', 'fas fa-broadcast-tower', liveRoomHref(true)) +
 				modTile('Video Lectures', (m.video_lectures && m.video_lectures.count != null) ? ('Videos: ' + m.video_lectures.count) : 'No data', 'fas fa-play-circle', videoHref) +
 				modTile('Library', (m.library && m.library.book_count != null) ? ('Books: ' + m.library.book_count) : 'Tap to open', 'fas fa-book', libraryHref) +
-				modTile('Exams', (m.upcoming_exams && m.upcoming_exams.count != null) ? ('Upcoming: ' + m.upcoming_exams.count) : 'No data', 'fas fa-file-alt', examHref) +
+				modTile('Exams', (m.upcoming_exams && m.upcoming_exams.count != null) ? ((isTeacher ? 'Exams: ' : 'Upcoming: ') + m.upcoming_exams.count) : 'No data', 'fas fa-file-alt', examHref) +
 				modTile('Homework', (function () {
 					var h = m.homework || {};
 					var n = h.count != null ? parseInt(h.count, 10) : (h.total_count != null ? parseInt(h.total_count, 10) : NaN);
@@ -268,7 +268,9 @@
 			'</div>';
 			var canEnroll = truthy(b.canEnroll);
 			canEnrollForBatch = canEnroll;
-			document.getElementById('bd_next_btn').textContent = canEnroll ? 'Pay Now' : 'Continue';
+			// Free institute (requiresPayment === false): enroll without paying.
+			var freeInstitute = (b.requiresPayment === false) || truthy(b.isFreeInstitute);
+			document.getElementById('bd_next_btn').textContent = canEnroll ? (freeInstitute ? 'Enroll Now' : 'Pay Now') : 'Continue';
 			document.getElementById('bd_body').classList.toggle('bd-locked', canEnroll);
 			document.getElementById('bd_lock_hint').classList.toggle('inst-detail-hidden', !canEnroll);
 			if (canManageBatchZoom) {

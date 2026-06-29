@@ -80,6 +80,15 @@
                     </div>
                     <div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
                         <div class="form-group">
+                            <label>Paid Institute</label>
+                            <select id="paid_institute" class="form-control require edu_selectbox_without_search" data-placeholder="Select method" name="paid_institute">
+                                <option value="1">Yes</option>
+                                <option value="0">No</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-lg-6 col-md-12 col-sm-12 col-12 edu_bottom_20">
+                        <div class="form-group">
                             <label>Institute code</label>
                             <input type="text" class="form-control" name="institute_code" placeholder="Institute code">
                         </div>

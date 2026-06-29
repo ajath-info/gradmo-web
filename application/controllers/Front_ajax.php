@@ -406,63 +406,44 @@ function change_student_status(){
         } 
     }
     
-    function reset_password(){  
-    
+    function reset_password(){
+
         if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
             if(!empty($this->input->post('email',false))){
                 $email = $this->input->post('email',TRUE);
-                $userDetails = $this->db_model->select_data('id,name','users use index (id)',array('email'=>$email),1);
-                $studentDetails = $this->db_model->select_data('id,name','students use index (id)',array('email'=>$email),1);
-                // echo $this->db->last_query();
-                // print_r($studentDetails);
-                if(!empty($userDetails) || !empty($studentDetails)){
-                    $pwd = substr(str_shuffle('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'), 0, 8);
-                    $is_student = !empty($studentDetails);
-                    $name = $is_student ? $studentDetails[0]['name'] : $userDetails[0]['name'];
-                    $user_id = $is_student ? (int) $studentDetails[0]['id'] : (int) $userDetails[0]['id'];
-                    $user_type = $is_student ? 'student' : 'teacher';
 
-                    $mail = $this->common->send_email(array(
-                        'purpose' => 'forgot_password',
-                        'user_id' => $user_id,
-                        'user_type' => $user_type,
-                        'to_email' => $email,
-                        'dynamic_var' => array(
-                            'name' => $name,
-                            'password' => $pwd,
-                            'link' => base_url('login'),
-                        ),
-                    ));
+                // Forgot-password logic lives in the shared API (website + mobile use one backend).
+                $ch = curl_init(site_url('api/user/reset-password'));
+                curl_setopt_array($ch, array(
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_POST => true,
+                    CURLOPT_POSTFIELDS => http_build_query(array('email' => $email)),
+                    CURLOPT_HTTPHEADER => array('X-Requested-With: XMLHttpRequest'),
+                    CURLOPT_TIMEOUT => 30,
+                ));
+                $body = curl_exec($ch);
+                curl_close($ch);
+                $api = json_decode((string) $body, true);
 
-                    if (!empty($mail['status'])) {
-                        if ($is_student) {
-                            $this->db_model->update_data('students', array('password' => md5($pwd)), array('email' => $email));
-                        } else {
-                            $this->db_model->update_data('users', array('password' => password_hash($pwd, PASSWORD_DEFAULT)), array('email' => $email));
-                        }
-                        $resp = array(
-                            'status'=>'1',
-                            'msg'=>'We\'ve sent an email to '.$email.'.',
-                            'url'=>base_url('login')
-                        );
-                    }
-                    else{
-                        $resp = array(
-                            'status'=>'0',
-                            'msg'=>$this->lang->line('ltr_something_msg')
-                        );
-                    }
-                }else{
+                // Map the API response ('true'/'false') to the shape login.js expects (1/0 + url).
+                $ok = is_array($api) && isset($api['status']) && in_array((string) $api['status'], array('true', '1'), true);
+                if ($ok) {
                     $resp = array(
-                        'status'=>'0',
-                        'msg'=>$this->lang->line('ltr_email_not_exists_msg')
+                        'status' => '1',
+                        'msg'    => isset($api['msg']) ? $api['msg'] : 'We\'ve sent an email to '.$email.'.',
+                        'url'    => base_url('login'),
+                    );
+                } else {
+                    $resp = array(
+                        'status' => '0',
+                        'msg'    => (is_array($api) && !empty($api['msg'])) ? $api['msg'] : $this->lang->line('ltr_something_msg'),
                     );
                 }
                 echo json_encode($resp,JSON_UNESCAPED_SLASHES);
             }
         }else{
             echo $this->lang->line('ltr_not_allowed_msg');
-        } 
+        }
     }
    
     function logout(){
@@ -1673,7 +1654,16 @@ function change_student_status(){
             }
             $admin_id = $this->session->userdata('admin_id');
             
-            $notify = $this->db_model->select_data('notification_type,msg,time,url','notifications use index (id)',array('student_id' => $id),$limit,array('id','desc'),$like,'','',$or_like);
+            // Recipients live in push_notifications_details now; join back to the master notifications.
+            $this->db->reset_query();
+            $this->db->select('n.notification_type, n.msg, n.time, n.url', false)
+                ->from('push_notifications_details pd')
+                ->join('notifications n', 'n.id = pd.pushnotify_id', 'inner')
+                ->where('pd.userid', $id)->where('pd.user_type', 1);
+            if(is_array($like) && $post['search']['value'] != ''){ $this->db->like('n.msg', $post['search']['value']); }
+            $this->db->order_by('n.id', 'desc');
+            if(is_array($limit)){ $this->db->limit($limit[0], $limit[1]); }
+            $notify = $this->db->get()->result_array();
             if(!empty($notify)){
                 $role = $this->session->userdata('role');
                 if($role == '1'){  
@@ -1696,7 +1686,12 @@ function change_student_status(){
                     $count++;
                 }
     
-                $recordsTotal = $this->db_model->countAll('notifications use index (id)',array('student_id' => $id),'',$like,'','',$or_like);
+                $this->db->reset_query();
+                $this->db->from('push_notifications_details pd')
+                    ->join('notifications n', 'n.id = pd.pushnotify_id', 'inner')
+                    ->where('pd.userid', $id)->where('pd.user_type', 1);
+                if(is_array($like) && $post['search']['value'] != ''){ $this->db->like('n.msg', $post['search']['value']); }
+                $recordsTotal = $this->db->count_all_results();
     
                 $output = array(
                     "draw" => $post['draw'],
