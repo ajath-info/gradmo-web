@@ -1,3 +1,9 @@
+<style>
+/* Gallery table: keep Type compact; let Title absorb the slack so there's no big empty gap. */
+.gallery_dt thead th { white-space: nowrap; }
+.gallery_dt thead th[aria-label^="Title"] { width: 100%; }
+.gallery_dt thead th[aria-label^="Type"] { width: 80px; }
+</style>
 <section class="edu_admin_content">
 	<div class="edu_admin_right sectionHolder edu_gallery_manager">
 	    <div class="edu_btn_wrapper sectionHolder padderBottom30 text-right">
@@ -23,13 +29,14 @@
 		    <div class="edu_admin_informationdiv sectionHolder">
                 <div class="tableFullWrapper">
                     
-                    <table class="server_datatable table table-striped table-hover dt-responsive" cellspacing="0" width="100%" data-url="ajaxcall/gallery_table">
+                    <table class="server_datatable gallery_dt table table-striped table-hover dt-responsive" cellspacing="0" width="100%" data-url="ajaxcall/gallery_table">
                         <thead>
                             <tr>
                                 <th><input type="checkbox" class="checkAllAttendance"></th>
                                 <th>#</th>
                                 <th><?php echo html_escape($this->common->languageTranslator('ltr_title'));?></th>
-                                <th><?php echo html_escape($this->common->languageTranslator('ltr_type'));?></th>
+                                <th style="width:80px;white-space:nowrap;"><?php echo html_escape($this->common->languageTranslator('ltr_type'));?></th>
+                                <th style="width:110px;white-space:nowrap;"><?php echo html_escape($this->common->languageTranslator('ltr_purpose'));?></th>
                                 <th><?php echo html_escape($this->common->languageTranslator('ltr_status'));?></th>
                                 <th class="no-sort"><?php echo html_escape($this->common->languageTranslator('ltr_action'));?></th>
                                 <th class="no-sort"><?php echo html_escape($this->common->languageTranslator('ltr_added_by'));?></th>
@@ -77,7 +84,16 @@
 							</select>
 						</div>
 					</div>	
-					<div class="col-lg-12 col-md-12 col-sm-12 col-12 edu_bottom_20 galleryImgFld">
+					<div class="col-lg-12 col-md-12 col-sm-12 col-12 edu_bottom_20">
+							<div class="form-group">
+								<label>Purpose<sup>*</sup></label>
+								<select name="purpose" id="gallery_purpose" class="require form-control edu_selectbox_without_search">
+									<option value="Banner">Banner</option>
+									<option value="Advertise">Advertise</option>
+								</select>
+							</div>
+						</div>
+						<div class="col-lg-12 col-md-12 col-sm-12 col-12 edu_bottom_20 galleryImgFld">
 						<div class="form-group">
 							<label><?php echo html_escape($this->common->languageTranslator('ltr_image'));?><sup>*</sup></label>
 							<input type="file" class="form-control Image require" accepts="image/*" name="image" data-valid="image" data-error="Please select jpg/png image.">

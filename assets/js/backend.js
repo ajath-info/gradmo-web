@@ -17,55 +17,76 @@ $(document).ready(function() {
         var table_msg = ltr_live_class_msg;
     }
     if (typeof MathJax !== 'undefined') { MathJax.Hub.Queue(["Typeset", MathJax.Hub]); }
-    var dataTableObj = $('.server_datatable').DataTable({
-        searching: true,
-        processing: true,
-        dom: 'lf<"table-responsive" t >ip',
-        language: {
-            paginate: {
-                previous: '<i class="fa fa-chevron-left"></i>',
-                next: '<i class="fa fa-chevron-right"></i>',
+    var instituteTableUrl = 'ajaxcall/institute_table';
+    var isInstituteManageTable = $('.server_datatable').attr('data-url') === instituteTableUrl;
+    var serverTableColumnDefs = [{ targets: '_all', orderable: false }];
+    if (isInstituteManageTable) {
+        serverTableColumnDefs = serverTableColumnDefs.concat([
+            { targets: 0, responsivePriority: 1 },
+            { targets: 16, responsivePriority: 1 },
+            { targets: 2, responsivePriority: 2 },
+            { targets: 3, responsivePriority: 2 },
+            { targets: 1, responsivePriority: 3 },
+            { targets: 15, responsivePriority: 4 },
+            { targets: 4, responsivePriority: 500 },
+            { targets: [5, 6, 7, 8, 9, 10, 11], responsivePriority: 2000 },
+            { targets: [12, 13, 14], responsivePriority: 10000 }
+        ]);
+    }
+    var dataTableObj = null;
+    if ($('.server_datatable').length) {
+        dataTableObj = $('.server_datatable').DataTable({
+            searching: true,
+            processing: true,
+            dom: 'lf<"table-responsive" t >ip',
+            language: {
+                paginate: {
+                    previous: '<i class="fa fa-chevron-left"></i>',
+                    next: '<i class="fa fa-chevron-right"></i>',
+                },
+                emptyTable: table_msg,
+                search: ltr_search + ':',
+
             },
-            emptyTable: table_msg,
-            search: ltr_search + ':',
+            pageLength: 10,
+            lengthMenu: [
+                [10, 25, 50, 100, -1],
+                [10, 25, 50, 100, "All"]
+            ],
+            responsive: true,
+            // Gallery: respect the <th> widths (Type/Purpose) instead of auto-distributing.
+            autoWidth: $('.server_datatable').attr('data-url') === 'ajaxcall/gallery_table' ? false : true,
+            serverSide: { "regex": true },
+            columnDefs: serverTableColumnDefs,
+            ajax: {
+                "url": base_url + $('.server_datatable').attr('data-url'),
+                "type": "POST"
+            },
+            initComplete: function(settings, json) {
 
-        },
-        pageLength: 10,
-        lengthMenu: [
-            [10, 25, 50, 100, -1],
-            [10, 25, 50, 100, "All"]
-        ],
-        responsive: true,
-        serverSide: { "regex": true },
-        columnDefs: [{
-            targets: "_all",
-            orderable: false
-        }],
-        ajax: {
-            "url": base_url + $('.server_datatable').attr('data-url'),
-            "type": "POST"
-        },
-        initComplete: function(settings, json) {
-
-            if ($('.server_datatable').attr('data-url') == 'ajaxcall/teacher_table') {
-                $("table.dataTable td").css("white-space", "initial");
-            }
-            if ($('.server_datatable').attr('data-url') == 'ajaxcall/student_table') {
-                $("table.dataTable td").css("white-space", "initial");
-            }
-            $('.datatableSelect').select2({
-                minimumResultsForSearch: -1
-            });
-            $('.datatableSelectSrch').select2();
-            $('.server_datatable').on('draw.dt', function() {
+                if ($('.server_datatable').attr('data-url') == 'ajaxcall/teacher_table') {
+                    $("table.dataTable td").css("white-space", "initial");
+                }
+                if ($('.server_datatable').attr('data-url') == 'ajaxcall/institute_table') {
+                    $("table.dataTable td").css("white-space", "initial");
+                }
+                if ($('.server_datatable').attr('data-url') == 'ajaxcall/student_table') {
+                    $("table.dataTable td").css("white-space", "initial");
+                }
                 $('.datatableSelect').select2({
                     minimumResultsForSearch: -1
                 });
                 $('.datatableSelectSrch').select2();
-            });
-        },
+                $('.server_datatable').on('draw.dt', function() {
+                    $('.datatableSelect').select2({
+                        minimumResultsForSearch: -1
+                    });
+                    $('.datatableSelectSrch').select2();
+                });
+            },
 
-    });
+        });
+    }
 $(document).on('click','.genrateMeetingId',function (){
     let x = Math.floor((Math.random() * 10000000000) + 1);
     $('#meeting_number').val('mid='+x);
@@ -75,10 +96,12 @@ $(document).on('click','.genrateMeetingId',function (){
 });
 
     // Datepicker
-    $(".basic_datatable").DataTable({
-        /* No ordering applied by DataTables during initialisation */
-        "ordering": false
-    });
+    if ($(".basic_datatable").length && typeof $.fn.DataTable === 'function') {
+        $(".basic_datatable").DataTable({
+            /* No ordering applied by DataTables during initialisation */
+            "ordering": false
+        });
+    }
     $(".chooseDate").datepicker({
         changeMonth: true,
         changeYear: true,
@@ -106,14 +129,18 @@ $(document).on('click','.genrateMeetingId',function (){
         var batchstart_date = $('#b_startDate').val();
         var batchend_date = $('#b_endDate').val();
 
-        var startbatchDateArr = batchstart_date.split('-');
-        var endbatchDateArr = batchend_date.split('-');
+        if (batchstart_date && batchend_date) {
+            var startbatchDateArr = batchstart_date.split('-');
+            var endbatchDateArr = batchend_date.split('-');
 
-        var batchstart_date = startbatchDateArr[1] + '-' + startbatchDateArr[0] + '-' + startbatchDateArr[2];
-        var batchend_date = endbatchDateArr[1] + '-' + endbatchDateArr[0] + '-' + endbatchDateArr[2];
+            if (startbatchDateArr.length === 3 && endbatchDateArr.length === 3) {
+                batchstart_date = startbatchDateArr[1] + '-' + startbatchDateArr[0] + '-' + startbatchDateArr[2];
+                batchend_date = endbatchDateArr[1] + '-' + endbatchDateArr[0] + '-' + endbatchDateArr[2];
 
-        $('.edu_accordion_container .chooseDate').datepicker('option', 'minDate', new Date(batchstart_date));
-        $('.edu_accordion_container .chooseDate').datepicker('option', 'maxDate', new Date(batchend_date));
+                $('.edu_accordion_container .chooseDate').datepicker('option', 'minDate', new Date(batchstart_date));
+                $('.edu_accordion_container .chooseDate').datepicker('option', 'maxDate', new Date(batchend_date));
+            }
+        }
     }
 
 
@@ -159,8 +186,16 @@ $(document).on('click','.genrateMeetingId',function (){
         $.magnificPopup.proto._onFocusIn.call(this, e);
     };
 
+    // Prevent delete icons from toggling accordion panels
+    $(document).on('click', '.eb_removeacc, .removeAccSub, .removeAccHeading, .assSubHeading, .removeSubHeading', function(e) {
+        e.stopPropagation();
+    });
+
     //Accordian js
-    $(document).on("click", ".edu_accord_parent > span", function() {
+    $(document).on("click", ".edu_accord_parent > span", function(e) {
+        if ($(e.target).closest('.eb_removeacc, .assSubHeading, .removeSubHeading').length) {
+            return;
+        }
         if ($(this).hasClass("active")) {
             $(this).removeClass("active");
             $(this)
@@ -186,7 +221,7 @@ $(document).on('click','.genrateMeetingId',function (){
         }
     });
 
-    $('.AssignSubBatch').on('click', function() {
+    $(document).on('click', '.AssignSubBatch', function() {
         $('.edu_accord_parent > span').removeClass("active");
         $('.edu_accord_parent > span')
             .siblings(".edu_accordion_content")
@@ -216,7 +251,7 @@ $(document).on('click','.genrateMeetingId',function (){
             $('.select2-search__field').css('width', '100%');
         });
 
-        $('.edu_accordion_container').find('.edu_accord_parent:last edu_accord_parent > span').addClass("active").siblings(".edu_accordion_content").slideDown(200);
+        $('.edu_accordion_container').find('.edu_accord_parent:last > span').addClass("active").find('.upDownI').removeClass('fa-angle-right').addClass('fa-angle-down').end().siblings(".edu_accordion_content").slideDown(200);
 
         var start_date = $('#b_startDate').val();
         var end_date = $('#b_endDate').val();
@@ -254,7 +289,7 @@ $(document).on('click','.genrateMeetingId',function (){
         });
     });
 
-    $('.AssignBatchHeading').on('click', function() {
+    $(document).on('click', '.AssignBatchHeading', function() {
         $('.edu_accord_parent > span').removeClass("active");
         $('.edu_accord_parent > span')
             .siblings(".edu_accordion_content")
@@ -263,7 +298,7 @@ $(document).on('click','.genrateMeetingId',function (){
 
         var appendHtml = '<div class="edu_accord_parent"><span class="edu_accordion_header"><span class="speci_heading">' + ltr_benefit + '</span> <i><i class="fa fa-angle-right upDownI"></i><i class="fa fa-trash eb_removeacc removeAccHeading"></i></i></span><div class="edu_accordion_content count_heading"><div class="row"><div class="col-lg-12 col-md-12 col-sm-12 col-12"><div class="form-group"><label>' + ltr_heading + '</label><input type="text" class="form-control"  placeholder="' + ltr_i_learn + '" name="batch_speci_heading[]" ><input value="" type="hidden" name="batch_speci_id[]"></div></div><div class="col-lg-12 col-md-12 col-sm-12 col-12"><div class="form-group"><label>' + ltr_fecherd + '</label><div class="batch_sub_heading"><div class="sub_input"><input type="text" class="form-control fecherd"  placeholder="' + ltr_fecherd + '" ><div class="eb_subhead_icon"><i class="fa fa-plus eb_add_sheading assSubHeading"></i><i class="fa fa-trash eb_rem_sheading removeSubHeading"></i></div></div></div></div></div></div></div></div>';
         $('.edu_accordion_container_heading').append(appendHtml);
-
+        $('.edu_accordion_container_heading').find('.edu_accord_parent:last > span').addClass('active').find('.upDownI').removeClass('fa-angle-right').addClass('fa-angle-down').end().siblings('.edu_accordion_content').slideDown(200);
 
     });
 
@@ -275,7 +310,7 @@ $(document).on('click','.genrateMeetingId',function (){
 
     });
     $(document).on('click', '.removeSubHeading', function() {
-        if ($('.batch_sub_heading').closest('.sub_input').length == 1) {
+        if ($(this).closest('.batch_sub_heading').find('.sub_input').length == 1) {
             toastr.error(ltr_cant_msg);
             return false;
         } else {
@@ -1969,6 +2004,10 @@ $(document).on('click','.genrateMeetingId',function (){
             formdata.append('preview_type', $.trim($('input[name=preview_type]').val()));
             formdata.append('id', $.trim($('input[name=id]').val()));
 
+            var vfEl = $('.video_file')[0];
+            var videoFile = (vfEl && vfEl.files) ? vfEl.files[0] : null;
+
+            function postVideo() {
             $.ajax({
                 xhr: function() {
                     var xhr = new window.XMLHttpRequest();
@@ -2018,7 +2057,7 @@ $(document).on('click','.genrateMeetingId',function (){
                             }, 300);
                         }
                     } else {
-                        toastr.error(ltr_something_msg);
+                        toastr.error(resp['msg'] ? resp['msg'] : ltr_something_msg);
                     }
                     // 	$('#add_video_popup').find('.mfp-close').trigger('click');
                     // 	$('.edu_preloader').fadeOut();
@@ -2028,6 +2067,37 @@ $(document).on('click','.genrateMeetingId',function (){
                     // $('.edu_preloader').fadeOut();
                 }
             });
+            }
+
+            if (videoFile) {
+                var MAX_VIDEO_SECONDS = 86400; // 24h sanity ceiling
+                var vid = document.createElement('video');
+                vid.preload = 'metadata';
+                var durDone = false;
+                function durFinish(sec) {
+                    if (durDone) return;
+                    durDone = true;
+                    try { window.URL.revokeObjectURL(vid.src); } catch (e) {}
+                    var d = isFinite(sec) && sec > 0 ? Math.round(sec) : 0;
+                    if (d > MAX_VIDEO_SECONDS) d = 0;
+                    formdata.append('duration_seconds', d);
+                    postVideo();
+                }
+                vid.onloadedmetadata = function() {
+                    // Some MP4/WebM files report Infinity or a bogus value until we seek to the end.
+                    if (vid.duration === Infinity || isNaN(vid.duration) || vid.duration > MAX_VIDEO_SECONDS) {
+                        vid.ontimeupdate = function() { vid.ontimeupdate = null; durFinish(vid.duration); };
+                        try { vid.currentTime = 1e101; } catch (e2) { durFinish(0); }
+                    } else {
+                        durFinish(vid.duration);
+                    }
+                };
+                vid.onerror = function() { durFinish(0); };
+                window.setTimeout(function() { durFinish(vid.duration); }, 8000);
+                vid.src = window.URL.createObjectURL(videoFile);
+            } else {
+                postVideo();
+            }
         }
     });
 
@@ -2150,18 +2220,19 @@ $(document).on('click','.genrateMeetingId',function (){
             $('#input_feilds_teacher').find('[name="teach_image"]').removeClass('require');
             $('#input_feilds_teacher').find('#PopupTitle').html(ltr_edit_teacher);
             $('#input_feilds_teacher').find('.addNewTeacher').attr('data-id', $(this).attr('data-id')).val(ltr_update_teacher);
-            var ttt = $(this).closest('tr').find('td:eq(2)').find('a').attr('data-word');
-            if (ttt != undefined) {
-                $('#input_feilds_teacher').find('[name="name"]').val(ttt);
-            } else {
-                $('#input_feilds_teacher').find('[name="name"]').val($(this).closest('tr').find('td:eq(2)').text());
-            }
-
-            $('#input_feilds_teacher').find('[name="email"]').val($(this).closest('tr').find('td:eq(3)').text()).attr('readonly', 'readonly');
-            $('#input_feilds_teacher').find('[name="teach_education"]').val($(this).closest('tr').find('td:eq(4)').text());
-            $('#input_feilds_teacher').find('[name="teach_gender"]').val($(this).closest('tr').find('td:eq(5)').text()).trigger('change');
+            // Read from data-attributes on the edit link (works for desktop AND DataTables
+            // responsive child-row clones, where closest('tr') is the wrong row).
+            var t_name = $(this).attr('data-name') || '';
+            var t_email = $(this).attr('data-email') || '';
+            var t_education = $(this).attr('data-education') || '';
+            var t_gender = $(this).attr('data-gender') || '';
+            $('#input_feilds_teacher').find('[name="name"]').val(t_name);
+            $('#input_feilds_teacher').find('[name="last_name"]').val($(this).attr('data-last_name') || '');
+            $('#input_feilds_teacher').find('[name="email"]').val(t_email).attr('readonly', 'readonly');
+            $('#input_feilds_teacher').find('[name="teach_education"]').val(t_education);
+            $('#input_feilds_teacher').find('[name="teach_gender"]').val(t_gender).trigger('change');
             $('#input_feilds_teacher').find('[name="password"]').removeClass('require').closest('.form-group').find('label sup').addClass('hide');
-            $('#input_feilds_teacher').find('[value="' + $(this).closest('tr').find('td:eq(4)').text() + '"].ansRadioChck').prop('checked', 'checked');
+            $('#input_feilds_teacher').find('[value="' + t_education + '"].ansRadioChck').prop('checked', 'checked');
             $('#input_feilds_teacher').find('.fileNameShow').html($(this).attr('data-img'));
             var subject = $(this).attr('data-subject');
             $('[name="teach_subject[]"]').val(subject.split(",")).trigger('change');
@@ -2262,6 +2333,371 @@ $(document).on('click','.genrateMeetingId',function (){
                     toastr.error(ltr_something_msg);
                     $('.edu_preloader').fadeOut();
                     return false;
+                }
+            });
+        }
+    });
+
+    function instituteParseJson(resp) {
+        if (typeof resp === 'string') {
+            try {
+                return JSON.parse(resp);
+            } catch (e) {
+                return null;
+            }
+        }
+        return resp;
+    }
+
+    function instituteSyncLocationHidden() {
+        var $f = $('#input_feilds_institute');
+        var tc = $f.find('#institute_sel_country option:selected').text().trim();
+        var ts = $f.find('#institute_sel_state option:selected').text().trim();
+        var tci = $f.find('#institute_sel_city option:selected').text().trim();
+        $f.find('#institute_inp_country').val($f.find('#institute_sel_country').val() ? tc : '');
+        $f.find('#institute_inp_state').val($f.find('#institute_sel_state').val() ? ts : '');
+        $f.find('#institute_inp_city').val($f.find('#institute_sel_city').val() ? tci : '');
+    }
+
+    function instituteReloadCountries(callback) {
+        var $f = $('#input_feilds_institute');
+        var $c = $f.find('#institute_sel_country');
+        $c.find('option:not(:first)').remove();
+        $.ajax({
+            url: base_url + 'api/main/country-list',
+            type: 'POST',
+            data: {},
+            dataType: 'json',
+            success: function(j) {
+                j = instituteParseJson(j);
+                if (j && j.countries && j.countries.length) {
+                    $.each(j.countries, function(i, ct) {
+                        $c.append($('<option></option>').attr('value', ct.id).text(ct.name || ''));
+                    });
+                }
+                if (typeof callback === 'function') {
+                    callback();
+                }
+            },
+            error: function() {
+                if (typeof callback === 'function') {
+                    callback();
+                }
+            }
+        });
+    }
+
+    function instituteReloadStates(countryId, callback) {
+        var $f = $('#input_feilds_institute');
+        var $s = $f.find('#institute_sel_state');
+        var $ci = $f.find('#institute_sel_city');
+        $s.find('option:not(:first)').remove();
+        $ci.find('option:not(:first)').remove();
+        if (!countryId) {
+            if (typeof callback === 'function') {
+                callback();
+            }
+            return;
+        }
+        $.ajax({
+            url: base_url + 'api/main/state-list',
+            type: 'POST',
+            data: { country_id: countryId },
+            dataType: 'json',
+            success: function(j) {
+                j = instituteParseJson(j);
+                if (j && j.states && j.states.length) {
+                    $.each(j.states, function(i, st) {
+                        $s.append($('<option></option>').attr('value', st.id).text(st.name || ''));
+                    });
+                }
+                if (typeof callback === 'function') {
+                    callback();
+                }
+            },
+            error: function() {
+                if (typeof callback === 'function') {
+                    callback();
+                }
+            }
+        });
+    }
+
+    function instituteReloadCities(stateId, callback) {
+        var $f = $('#input_feilds_institute');
+        var $ci = $f.find('#institute_sel_city');
+        $ci.find('option:not(:first)').remove();
+        if (!stateId) {
+            if (typeof callback === 'function') {
+                callback();
+            }
+            return;
+        }
+        $.ajax({
+            url: base_url + 'api/main/city-list',
+            type: 'POST',
+            data: { state_id: stateId },
+            dataType: 'json',
+            success: function(j) {
+                j = instituteParseJson(j);
+                if (j && j.cities && j.cities.length) {
+                    $.each(j.cities, function(i, c) {
+                        var label = c.city || c.name || '';
+                        $ci.append($('<option></option>').attr('value', c.id).text(label));
+                    });
+                }
+                if (typeof callback === 'function') {
+                    callback();
+                }
+            },
+            error: function() {
+                if (typeof callback === 'function') {
+                    callback();
+                }
+            }
+        });
+    }
+
+    function instituteSelectOptionByText($select, text, callback) {
+        text = (text || '').trim();
+        var found = false;
+        if (text) {
+            $select.find('option').each(function() {
+                if ($(this).text().trim() === text) {
+                    $select.val($(this).attr('value'));
+                    found = true;
+                    return false;
+                }
+            });
+        }
+        if (!found) {
+            $select.val('');
+        }
+        if (typeof callback === 'function') {
+            callback();
+        }
+    }
+
+    function instituteApplyLocationNamesForEdit(row, done) {
+        var cn = (row && row.country) ? String(row.country) : '';
+        var sn = (row && row.state) ? String(row.state) : '';
+        var cin = (row && row.city) ? String(row.city) : '';
+        var $f = $('#input_feilds_institute');
+        instituteReloadCountries(function() {
+            instituteSelectOptionByText($f.find('#institute_sel_country'), cn, function() {
+                var cid = $f.find('#institute_sel_country').val();
+                instituteReloadStates(cid, function() {
+                    instituteSelectOptionByText($f.find('#institute_sel_state'), sn, function() {
+                        var sid = $f.find('#institute_sel_state').val();
+                        instituteReloadCities(sid, function() {
+                            instituteSelectOptionByText($f.find('#institute_sel_city'), cin, function() {
+                                instituteSyncLocationHidden();
+                                if (typeof done === 'function') {
+                                    done();
+                                }
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    }
+
+    function institute_edit(id, onReady) {
+        if (!id) {
+            toastr.error('Invalid institute.');
+            return;
+        }
+        $.ajax({
+            method: 'POST',
+            url: base_url + 'ajaxcall/institute_edit_new',
+            data: { id: id },
+            dataType: 'json',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            success: function(resp) {
+                var data = instituteParseJson(resp);
+                if (!data || !data.length) {
+                    toastr.error('Could not load institute for editing. Please refresh the page and try again.');
+                    return;
+                }
+                var row = data[0];
+                var $f = $('#input_feilds_institute');
+                $f.find('[name="teach_image"]').val('');
+                $f.find('[name="banner"]').removeClass('require error').val('');
+                $f.find('#PopupTitle').html('Edit Institute');
+                var $instBtn = $f.find('.addNewInstitute');
+                var updTxt = $instBtn.attr('data-btn-update') || 'Update Institute';
+                $instBtn.attr('data-id', row['id']).text(updTxt);
+                $f.find('[name="name"]').val(row['name'] || '');
+                $f.find('[name="last_name"]').val(row['last_name'] || '');
+                $f.find('[name="email"]').val(row['email'] || '').removeAttr('readonly');
+                $f.find('[name="contact_no"]').val(row['contact_no'] || '');
+                $f.find('[name="institute_code"]').val(row['institute_code'] || '');
+                $f.find('[name="school_college_name"]').val(row['school_college_name'] || '');
+                $f.find('[name="grade"]').val(row['grade'] || '');
+                // Paid Institute select <- users.paid (default '1' when not set).
+                $f.find('[name="paid_institute"]').val((row['paid'] === '0' || row['paid'] === 0) ? '0' : '1').trigger('change');
+                $f.find('[name="pincode"]').val(row['pincode'] || '');
+                $f.find('[name="address"]').val(row['address'] || '');
+                $f.find('[name="lat"]').val(row['lat'] || row['latitude'] || '');
+                $f.find('[name="long"]').val(row['long'] || row['longitude'] || '');
+                $f.find('[name="password"]').removeClass('require').closest('.form-group').find('label sup').addClass('hide');
+                $f.find('.fileNameShow').html(row['teach_image'] || '');
+                $f.find('.bannerNameShow').html(row['banner'] || '');
+                $f.find('.adminAccessControlDiv input[type="checkbox"]').prop('checked', false);
+                var instAccess = {};
+                if (row['access']) {
+                    try {
+                        instAccess = typeof row['access'] === 'object' ? row['access'] : JSON.parse(row['access']);
+                    } catch (e) {
+                        instAccess = {};
+                    }
+                }
+                $.each(instAccess, function(key, val) {
+                    if (val == 1 || val === '1') {
+                        $f.find('.adminAccessControlDiv input[name="' + key + '"]').prop('checked', true);
+                    }
+                });
+                instituteApplyLocationNamesForEdit(row, function() {
+                    if (typeof onReady === 'function') {
+                        onReady();
+                    }
+                });
+            },
+            error: function(xhr) {
+                var msg = 'Could not load institute for editing.';
+                try {
+                    var t = xhr.responseText || '';
+                    if (t.indexOf('Not allowed') !== -1 || t.indexOf('not_allowed') !== -1) {
+                        msg = 'Session expired or access denied. Please log in again.';
+                    }
+                } catch (e) {}
+                toastr.error(msg);
+            }
+        });
+    }
+
+    $(document).on('change', '#input_feilds_institute #institute_sel_country', function() {
+        var cid = $(this).val();
+        instituteReloadStates(cid, function() {
+            instituteSyncLocationHidden();
+        });
+    });
+    $(document).on('change', '#input_feilds_institute #institute_sel_state', function() {
+        var sid = $(this).val();
+        instituteReloadCities(sid, function() {
+            instituteSyncLocationHidden();
+        });
+    });
+    $(document).on('change', '#input_feilds_institute #institute_sel_city', function() {
+        instituteSyncLocationHidden();
+    });
+
+    $(document).on('change', '#input_feilds_institute [name="banner"]', function(e) {
+        if (e.target.files && e.target.files[0]) {
+            $(this).closest('.form-group').find('p.bannerNameShow').html(e.target.files[0].name);
+        }
+    });
+
+    $(document).on('click', '.addInstitutePop, .edit_institute', function(e) {
+        e.preventDefault();
+        if ($(this).hasClass('edit_institute')) {
+            var editId = $(this).attr('data-id');
+            institute_edit(editId, function() {
+                $.magnificPopup.open({
+                    items: { src: '#input_feilds_institute' },
+                    type: 'inline',
+                    callbacks: {
+                        open: function() {
+                            var $b = $('#input_feilds_institute .addNewInstitute');
+                            var iid = $b.attr('data-id');
+                            if (iid) {
+                                $b.text($b.attr('data-btn-update') || 'Update Institute');
+                            } else {
+                                $b.text($b.attr('data-btn-add') || 'Add Institute');
+                            }
+                        }
+                    }
+                });
+            });
+            return;
+        }
+        if (!$(this).hasClass('addInstitutePop')) {
+            return;
+        }
+        var $f = $('#input_feilds_institute');
+        $f.find('form').trigger('reset');
+        $f.find('#institute_inp_country, #institute_inp_state, #institute_inp_city').val('');
+        $f.find('#institute_sel_country option:not(:first)').remove();
+        $f.find('#institute_sel_state option:not(:first)').remove();
+        $f.find('#institute_sel_city option:not(:first)').remove();
+        $f.find('#institute_sel_country').val('');
+        instituteReloadCountries(function() {});
+        $f.find('#PopupTitle').html('Add Institute');
+        var $addBtn = $f.find('.addNewInstitute');
+        $addBtn.attr('data-id', '').text($addBtn.attr('data-btn-add') || 'Add Institute');
+        $f.find('[name="password"]').addClass('require').closest('.form-group').find('label sup').removeClass('hide');
+        $f.find('[name="email"]').removeAttr('readonly');
+        $f.find('[name="banner"]').addClass('require').removeClass('error');
+        $f.find('.fileNameShow').html('');
+        $f.find('.bannerNameShow').html('');
+        $f.find('.adminAccessControlDiv input[type="checkbox"]').prop('checked', false);
+        $.magnificPopup.open({
+            items: { src: '#input_feilds_institute' },
+            type: 'inline'
+        });
+    });
+
+    $(document).on('click', '.addNewInstitute', function() {
+        instituteSyncLocationHidden();
+        var validchk = validate_form($(this).closest('form'));
+        if (validchk == 'valid') {
+            var $btn = $(this);
+            var $form = $btn.closest('form');
+            var formdata = new FormData($form[0]);
+            var iid = $btn.attr('data-id') || '';
+            if (typeof formdata.set === 'function') {
+                formdata.set('institute_id', iid);
+            } else {
+                formdata.append('institute_id', iid);
+            }
+            var fileEl = $form.find('[name="teach_image"]')[0];
+            if (fileEl && (!fileEl.files || !fileEl.files.length) && typeof formdata.delete === 'function') {
+                formdata.delete('teach_image');
+            }
+            $('.edu_preloader').css('background-color', 'rgba(255,255,255,0.80)').css('display', 'block');
+            $.ajax({
+                method: "POST",
+                url: base_url + "ajaxcall/add_institute",
+                data: formdata,
+                processData: false,
+                contentType: false,
+                success: function(resp) {
+                    var parsed;
+                    try {
+                        parsed = typeof resp === 'object' ? resp : $.parseJSON(resp);
+                    } catch (e) {
+                        toastr.error(ltr_something_msg);
+                        $('.edu_preloader').fadeOut();
+                        return;
+                    }
+                    if (parsed['status'] == '1' || parsed['status'] === 1) {
+                        toastr.success(parsed['msg']);
+                        targetTableUrl = $('.server_datatable').attr('data-url');
+                        dataTableObj.ajax.url(base_url + targetTableUrl).load();
+                        $('#input_feilds_institute').find('[name="lat"]').val('');
+                        $('#input_feilds_institute').find('[name="long"]').val('');
+                        $('#input_feilds_institute').find('.mfp-close').trigger('click');
+                    } else if (parsed['status'] == '2' || parsed['status'] === 2) {
+                        toastr.error(parsed['msg'] || ltr_something_msg);
+                    } else {
+                        toastr.error(ltr_something_msg);
+                    }
+                    $('.edu_preloader').fadeOut();
+                },
+                error: function() {
+                    toastr.error(ltr_something_msg);
+                    $('.edu_preloader').fadeOut();
                 }
             });
         }
@@ -2558,6 +2994,11 @@ $(document).on('click','.genrateMeetingId',function (){
         
      
         if (validchk == 'valid') {
+            var contestName = $.trim($(this).closest('form').find('input[name="name"]').val());
+            if (contestName === '') {
+                toastr.error(typeof ltr_contest_name_required_msg !== 'undefined' ? ltr_contest_name_required_msg : 'Please enter the contest name.');
+                return false;
+            }
             var formdata = new FormData($(this).closest('form')[0]);
             var question_ids = $.trim($('.quetionIdsArr').html());
             formdata.append('question_ids', question_ids);
@@ -2689,6 +3130,314 @@ $(document).on('click','.genrateMeetingId',function (){
         }
     });
 
+    // CMS pages
+    var cmsEditorConfig = {
+        extraPlugins: 'mathjax',
+        filebrowserBrowseUrl: base_url + 'view_server_image/wiew_image',
+        filebrowserUploadUrl: base_url + 'view_server_image/upload_blog_image',
+        filebrowserUploadMethod: 'form',
+        mathJaxLib: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js?config=TeX-AMS_HTML',
+    };
+
+    function destroyCmsPageEditor() {
+        if (typeof CKEDITOR !== 'undefined' && CKEDITOR.instances.page_content) {
+            CKEDITOR.instances.page_content.destroy(true);
+        }
+    }
+
+    function initCmsPageEditor(content) {
+        if (typeof CKEDITOR === 'undefined' || !$('#page_content').length) {
+            $('#page_content').val(content || '');
+            return;
+        }
+        destroyCmsPageEditor();
+        CKEDITOR.replace('page_content', cmsEditorConfig);
+        if (content) {
+            CKEDITOR.instances.page_content.setData(content);
+        }
+    }
+
+    function openCmsPageModal() {
+        $.magnificPopup.open({
+            items: { src: '#cmsPageModal' },
+            type: 'inline',
+            callbacks: {
+                close: function() {
+                    destroyCmsPageEditor();
+                }
+            }
+        });
+        setTimeout(function() {
+            initCmsPageEditor($('#page_content').val());
+        }, 200);
+    }
+
+    function resetCmsPageForm() {
+        var parentDiv = $('#cmsPageModal');
+        parentDiv.find('form').trigger('reset');
+        parentDiv.find('.addEditCmsPage').attr('data-id', '');
+        $('#page_content').val('');
+        destroyCmsPageEditor();
+    }
+
+    function fillCmsPageForm(data) {
+        $('#cmsPageModal').find('#page_key').val(data.key || '');
+        $('#cmsPageModal').find('#page_url').val(data.url || '');
+        $('#cmsPageModal').find('#page_subject').val(data.subject || '');
+        $('#page_content').val(data.content || '');
+    }
+
+    $(document).on('blur', '#page_key', function() {
+        if ($.trim($('#page_url').val()) === '') {
+            $('#page_url').val($(this).val().replace(/_/g, '-').toLowerCase().replace(/[^a-z0-9\-]/g, '-'));
+        }
+    });
+
+    $(document).on('click', '.add_cms_page', function(e) {
+        e.preventDefault();
+        $('#cmsPageModalLabel').html(ltr_add_cms_page);
+        resetCmsPageForm();
+        openCmsPageModal();
+    });
+
+    $(document).on('click', '.edit_cms_page', function(e) {
+        e.preventDefault();
+        var pageId = $(this).attr('data-id');
+        if (!pageId) {
+            return;
+        }
+        $('#cmsPageModalLabel').html(ltr_edit_cms_page);
+        $('#cmsPageModal .addEditCmsPage').attr('data-id', pageId);
+        $.ajax({
+            method: "POST",
+            url: base_url + "ajaxcall/get_cms_page",
+            data: { id: pageId },
+            dataType: "json",
+            success: function(resp) {
+                if (resp && resp.status == 1 && resp.data) {
+                    fillCmsPageForm(resp.data);
+                    openCmsPageModal();
+                } else {
+                    toastr.error((resp && resp.msg) ? resp.msg : ltr_something_msg);
+                }
+            },
+            error: function(xhr) {
+                var msg = ltr_something_msg;
+                try {
+                    var resp = $.parseJSON(xhr.responseText);
+                    if (resp && resp.msg) {
+                        msg = resp.msg;
+                    }
+                } catch (err) {}
+                toastr.error(msg);
+            }
+        });
+    });
+
+    $(document).on('click', '.addEditCmsPage', function() {
+        if (CKEDITOR.instances.page_content) {
+            CKEDITOR.instances.page_content.updateElement();
+        }
+        var validchk = validate_form($(this).closest('form'));
+        if (validchk == 'valid') {
+            var formdata = new FormData($(this).closest('form')[0]);
+            var id = $(this).attr('data-id');
+            formdata.append('edit_id', id);
+            if (CKEDITOR.instances.page_content) {
+                formdata.set('content', CKEDITOR.instances.page_content.getData());
+            }
+            $('.edu_preloader').css('background-color', 'rgba(255,255,255,0.80)').css('display', 'block');
+            $.ajax({
+                method: "POST",
+                url: base_url + "ajaxcall/add_cms_page",
+                data: formdata,
+                processData: false,
+                contentType: false,
+                success: function(resp) {
+                    var resp = $.parseJSON(resp);
+                    if (resp.status == 1) {
+                        toastr.success(resp.msg);
+                        targetTableUrl = $('.server_datatable').attr('data-url');
+                        dataTableObj.ajax.url(base_url + targetTableUrl).load();
+                        $('#cmsPageModal').find('.mfp-close').trigger('click');
+                        resetCmsPageForm();
+                    } else {
+                        toastr.error(resp.msg || ltr_something_msg);
+                    }
+                    $('.edu_preloader').fadeOut();
+                },
+                error: function() {
+                    toastr.error(ltr_something_msg);
+                    $('.edu_preloader').fadeOut();
+                }
+            });
+        }
+    });
+
+    // Templates
+    // Remove the "this version is not secure" nag shown by CKEditor 4.15.1.
+    if (typeof CKEDITOR !== 'undefined' && CKEDITOR.config) { CKEDITOR.config.versionCheck = false; }
+    var templateEditorConfig = {
+        // These are full HTML email documents (<html><head>...<body>). Open the editor in
+        // Source (code) view so the complete HTML shows cleanly and nothing is stripped or
+        // rendered as stray text. The "Source" button still toggles to the visual editor.
+        versionCheck: false,
+        allowedContent: true,
+        startupMode: 'source',
+        extraPlugins: 'mathjax',
+        filebrowserBrowseUrl: base_url + 'view_server_image/wiew_image',
+        filebrowserUploadUrl: base_url + 'view_server_image/upload_blog_image',
+        filebrowserUploadMethod: 'form',
+        mathJaxLib: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js?config=TeX-AMS_HTML',
+    };
+
+    function destroyTemplateEditor() {
+        if (typeof CKEDITOR !== 'undefined' && CKEDITOR.instances.template_html_code) {
+            CKEDITOR.instances.template_html_code.destroy(true);
+        }
+    }
+
+    function initTemplateEditor(content) {
+        if (typeof CKEDITOR === 'undefined' || !$('#template_html_code').length) {
+            $('#template_html_code').val(content || '');
+            return;
+        }
+        destroyTemplateEditor();
+        CKEDITOR.replace('template_html_code', templateEditorConfig);
+        var inst = CKEDITOR.instances.template_html_code;
+        inst.on('instanceReady', function () {
+            // Force raw HTML (source) view so full <html><head>...<body> shows as clean code.
+            if (inst.mode !== 'source') {
+                inst.setMode('source');
+            }
+        });
+        if (content) {
+            inst.setData(content);
+        }
+    }
+
+    function openTemplateModal() {
+        $.magnificPopup.open({
+            items: { src: '#templateModal' },
+            type: 'inline',
+            callbacks: {
+                close: function() {
+                    destroyTemplateEditor();
+                }
+            }
+        });
+        setTimeout(function() {
+            initTemplateEditor($('#template_html_code').val());
+        }, 200);
+    }
+
+    function resetTemplateForm() {
+        $('#templateForm').trigger('reset');
+        $('.addEditTemplate').attr('data-id', '');
+        $('#template_html_code').val('');
+        $('#template_image_preview').html('');
+        $('.fileNameShow').text('');
+        destroyTemplateEditor();
+    }
+
+    function fillTemplateForm(data) {
+        $('#template_for').val(data.template_for || 'email');
+        $('#template_purpose').val(data.purpose || '');
+        $('#template_title').val(data.title || '');
+        $('#template_description').val(data.description || '');
+        $('#template_html_code').val(data.html_code || '');
+        $('#template_image_preview').html('');
+        if (data.image) {
+            $('#template_image_preview').html('<img src="' + base_url + 'uploads/templates/' + data.image + '" alt="template" style="max-height:80px;">');
+        }
+    }
+
+    $(document).on('click', '.add_template', function(e) {
+        e.preventDefault();
+        $('#templateModalLabel').html(ltr_add_template);
+        resetTemplateForm();
+        openTemplateModal();
+    });
+
+    $(document).on('click', '.edit_template', function(e) {
+        e.preventDefault();
+        var templateId = $(this).attr('data-id');
+        if (!templateId) {
+            return;
+        }
+        $('#templateModalLabel').html(ltr_edit_template);
+        $('.addEditTemplate').attr('data-id', templateId);
+        $.ajax({
+            method: "POST",
+            url: base_url + "ajaxcall/get_template",
+            data: { id: templateId },
+            dataType: "json",
+            success: function(resp) {
+                if (resp && resp.status == 1 && resp.data) {
+                    fillTemplateForm(resp.data);
+                    openTemplateModal();
+                } else {
+                    toastr.error((resp && resp.msg) ? resp.msg : ltr_something_msg);
+                }
+            },
+            error: function(xhr) {
+                var msg = ltr_something_msg;
+                try {
+                    var resp = $.parseJSON(xhr.responseText);
+                    if (resp && resp.msg) {
+                        msg = resp.msg;
+                    }
+                } catch (err) {}
+                toastr.error(msg);
+            }
+        });
+    });
+
+    $(document).on('change', '#template_image', function() {
+        var fileName = $(this).val().split('\\').pop();
+        $('.fileNameShow').text(fileName);
+    });
+
+    $(document).on('click', '.addEditTemplate', function() {
+        if (CKEDITOR.instances.template_html_code) {
+            CKEDITOR.instances.template_html_code.updateElement();
+        }
+        var validchk = validate_form($(this).closest('form'));
+        if (validchk == 'valid') {
+            var formdata = new FormData($(this).closest('form')[0]);
+            var id = $(this).attr('data-id');
+            formdata.append('edit_id', id);
+            if (CKEDITOR.instances.template_html_code) {
+                formdata.set('html_code', CKEDITOR.instances.template_html_code.getData());
+            }
+            $('.edu_preloader').css('background-color', 'rgba(255,255,255,0.80)').css('display', 'block');
+            $.ajax({
+                method: "POST",
+                url: base_url + "ajaxcall/add_template",
+                data: formdata,
+                processData: false,
+                contentType: false,
+                success: function(resp) {
+                    var resp = $.parseJSON(resp);
+                    if (resp.status == 1) {
+                        toastr.success(resp.msg);
+                        targetTableUrl = $('.server_datatable').attr('data-url');
+                        dataTableObj.ajax.url(base_url + targetTableUrl).load();
+                        $('#templateModal').find('.mfp-close').trigger('click');
+                        resetTemplateForm();
+                    } else {
+                        toastr.error(resp.msg || ltr_something_msg);
+                    }
+                    $('.edu_preloader').fadeOut();
+                },
+                error: function() {
+                    toastr.error(ltr_something_msg);
+                    $('.edu_preloader').fadeOut();
+                }
+            });
+        }
+    });
+
     //gallery js
 
     $(document).on('change', '.galleryType', function() {
@@ -2734,6 +3483,7 @@ $(document).on('click','.genrateMeetingId',function (){
             parentDiv.find('input[name="title"]').val($(this).closest('tr').find('td:eq(2)').text());
             var type = $(this).attr('data-type');
             parentDiv.find('.galleryType').val($(this).attr('data-type')).trigger('change');
+            parentDiv.find('[name="purpose"]').val($(this).attr('data-purpose') || 'Banner').trigger('change');
             parentDiv.find('.video').removeClass('require');
             if (type == 'Image') {
                 parentDiv.find('.Image').removeClass('require');
@@ -3738,6 +4488,45 @@ $.magnificPopup.open({
         var table = $(this).attr('data-table');
         var status = $(this).attr('data-status');
         var data_tabel = $(this).attr('data-table');
+        var id = $(this).attr('data-id');
+
+        // Deactivating a student/institute: let the admin attach an optional note/reason that is
+        // delivered to the account (email + push + in-app) alongside the status notification.
+        if ((data_tabel == 'students' || data_tabel == 'users') && status == '0') {
+            swal({
+                title: ltr_alert_updated_msg,
+                text: 'Optional: add a message/reason for the account holder.',
+                content: {
+                    element: 'textarea',
+                    attributes: { placeholder: 'Reason / message (optional)' }
+                },
+                icon: 'warning',
+                buttons: [ltr_cancel, ltr_ok],
+                dangerMode: true,
+            }).then(function(value) {
+                if (value === null) { return; } // cancelled
+                var note = (typeof value === 'string') ? value : (document.querySelector('.swal-content textarea') ? document.querySelector('.swal-content textarea').value : '');
+                $.ajax({
+                    method: "POST",
+                    url: base_url + "ajaxcall/change_status",
+                    data: { 'id': id, 'table': data_tabel, 'status': status, 'note': note },
+                    success: function(resp) {
+                        var resp = $.parseJSON(resp);
+                        if (resp['status'] == '1') {
+                            toastr.success(ltr_status_msg);
+                            targetTableUrl = $('.server_datatable').attr('data-url');
+                            dataTableObj.ajax.url(base_url + targetTableUrl).load();
+                        } else {
+                            toastr.error(ltr_something_msg);
+                        }
+                    },
+                    error: function(resp) {
+                        toastr.error(ltr_something_msg);
+                    }
+                });
+            });
+            return;
+        }
 
         if ((data_tabel == 'questions') && (status != 1)) {
             swal({
@@ -4132,13 +4921,18 @@ $.magnificPopup.open({
             success: function(resp) {
                 var resp = $.parseJSON(resp);
                 console.log(resp[0]['meeting_number']);
-                var parentDiv = $('#input_feilds_liveclass');
+                var parentDiv = $('#input_feilds_zoom_credentials');
+                if (!parentDiv.length) {
+                    parentDiv = $('#input_feilds_liveclass');
+                }
                 parentDiv.find('#classModalLabel').html(ltr_edit_live_class);
-                parentDiv.find('#batch').val(custom_value).trigger('change');
-                parentDiv.find('#zoom_api_key').val(resp[0]['zoom_api_key']);
-                parentDiv.find('#zoom_api_secret').val(resp[0]['zoom_api_secret']);
-                parentDiv.find('#meeting_number').val(resp[0]['meeting_number']);
-                parentDiv.find('#password').val(resp[0]['password']);
+                parentDiv.find('#meeting_sdk_key').val(resp[0]['meeting_sdk_key'] || resp[0]['zoom_api_key'] || '');
+                parentDiv.find('#meeting_sdk_secret').val(resp[0]['meeting_sdk_secret'] || resp[0]['zoom_api_secret'] || '');
+                parentDiv.find('[name="s2s_account_id"]').val(resp[0]['s2s_account_id'] || '');
+                parentDiv.find('[name="s2s_client_id"]').val(resp[0]['s2s_client_id'] || '');
+                parentDiv.find('[name="s2s_client_secret"]').val(resp[0]['s2s_client_secret'] || '');
+                parentDiv.find('[name="zoom_host_email"]').val(resp[0]['zoom_host_email'] || '');
+                parentDiv.find('[name="zoom_host_user_id"]').val(resp[0]['zoom_host_user_id'] || '');
                 parentDiv.find('.addLiveClassSetting').attr('data-type', 'edit');
                 parentDiv.find('#live_class_id').val(resp[0]['id']);
             }
@@ -4146,7 +4940,11 @@ $.magnificPopup.open({
     }
 
     $(document).on('click', '.addLiveclass, .edit_live_class', function() {
-        var parentDiv = $('#input_feilds_liveclass');
+        var parentDiv = $('#input_feilds_zoom_credentials');
+        if (!parentDiv.length) {
+            parentDiv = $('#input_feilds_liveclass');
+        }
+        var popupId = parentDiv.attr('id') ? '#' + parentDiv.attr('id') : '#input_feilds_liveclass';
         if ($(this).hasClass('addLiveclass')) {
             parentDiv.find('#classModalLabel').html(ltr_add_live_class);
             parentDiv.find('form').trigger('reset');
@@ -4155,13 +4953,13 @@ $.magnificPopup.open({
         } else {
 
             var id = $(this).attr('data-id');
-            var table_name = $(this).attr('data-table-name');
+            var table_name = $(this).attr('data-table-name') || 'zoom_api_credentials';
             common_ajax_funxtion(id, table_name, $(this).attr('data-batch'));
              parentDiv.find('.addjetsiClass').attr('data-type', 'edit');
         }
         $.magnificPopup.open({
                 items: {
-                    src: '#input_feilds_liveclass',
+                    src: popupId,
                 },
                 type: 'inline'
             });
@@ -4230,11 +5028,7 @@ $.magnificPopup.open({
         if (validchk == 'valid') {
             var type = $(this).attr('data-type');
             console.log(type);
-            if (type == 'add') {
-                var url = 'ajaxcall/add_live_class_setting';
-            } else {
-                var url = 'ajaxcall/edit_live_class_setting';
-            }
+            var url = 'ajaxcall/save_zoom_api_credentials';
             var formdata = new FormData($(this).closest('form')[0]);
             $('.edu_preloader').css('background-color', 'rgba(255,255,255,0.80)').css('display', 'block');
             $.ajax({
@@ -4261,7 +5055,7 @@ $.magnificPopup.open({
                     } else {
                         toastr.error(ltr_something_msg);
                     }
-                    $('#input_feilds_liveclass').find('.mfp-close').trigger('click');
+                    $('#input_feilds_zoom_credentials, #input_feilds_liveclass').find('.mfp-close').trigger('click');
                     $('.edu_preloader').fadeOut();
                 },
                 error: function(resp) {
@@ -4307,7 +5101,7 @@ $.magnificPopup.open({
                     } else {
                         toastr.error(ltr_something_msg);
                     }
-                    $('#input_feilds_liveclass').find('.mfp-close').trigger('click');
+                    $('#input_feilds_zoom_credentials, #input_feilds_liveclass').find('.mfp-close').trigger('click');
                     $('.edu_preloader').fadeOut();
                 },
                 error: function(resp) {
@@ -4699,7 +5493,9 @@ $.magnificPopup.open({
 
     $(document).on('click', '.add_live_class', function() {
         var parentDiv = $('#classSettingModal');
-        parentDiv.find('#live_class_id').val($(this).attr('data-id'));
+        var batchId = $(this).attr('data-batch') || $(this).attr('data-id');
+        parentDiv.find('#live_class_id').val(batchId);
+        parentDiv.find('#live_class_batch_id').val(batchId);
 
         $.magnificPopup.open({
             items: {
@@ -4722,10 +5518,12 @@ $.magnificPopup.open({
 
     $(document).on('click', '.add_live_class_admin', function() {
         var parentDiv = $('#classSettingModal');
-        parentDiv.find('#live_class_id').val($(this).attr('data-id'));
+        var batchId = $(this).attr('data-batch') || $(this).attr('data-id');
+        parentDiv.find('#live_class_id').val(batchId);
+        parentDiv.find('#live_class_batch_id').val(batchId);
         var formdata = new FormData();
 
-        formdata.append('batch_id', $(this).attr('data-batch'));
+        formdata.append('batch_id', batchId);
         $.ajax({
             method: "POST",
             url: base_url + "ajaxcall/get_subject_list",
@@ -4901,17 +5699,19 @@ $.magnificPopup.open({
         var ctx1 = document.getElementById('practice_paper').getContext('2d');
         window.myPie = new Chart(ctx1, practice_config);
     }
-    if (Array.isArray(mock_config)) {
-        for (var gr = 0; gr < graph_count; gr++) {
-            if (document.getElementById('mock_paper_' + gr) != null) {
-                var ctx2 = document.getElementById('mock_paper_' + gr).getContext('2d');
-                window.myPie = new Chart(ctx2, mock_config[gr]);
+    if (typeof mock_config !== 'undefined') {
+        if (Array.isArray(mock_config)) {
+            for (var gr = 0; gr < graph_count; gr++) {
+                if (document.getElementById('mock_paper_' + gr) != null) {
+                    var ctx2 = document.getElementById('mock_paper_' + gr).getContext('2d');
+                    window.myPie = new Chart(ctx2, mock_config[gr]);
+                }
             }
-        }
-    } else {
-        if (document.getElementById('mock_paper') != null) {
-            var ctx2 = document.getElementById('mock_paper').getContext('2d');
-            window.myPie = new Chart(ctx2, mock_config);
+        } else {
+            if (document.getElementById('mock_paper') != null) {
+                var ctx2 = document.getElementById('mock_paper').getContext('2d');
+                window.myPie = new Chart(ctx2, mock_config);
+            }
         }
     }
 
@@ -5350,15 +6150,34 @@ $.magnificPopup.open({
         });
     });
 
-    $(document).on('click', '.batchType', function() {
-        var chk = $(this).val();
-        if (chk == 1) {
-            $('.batchPrice').hide();
-            $('#batchPrice').removeClass('require');
+    // Handle Batch Type toggle - show/hide price fields
+    function updateBatchPriceDisplay() {
+        var selectedType = $("input[name='batchType']:checked").val();
+        var $priceFields = $('.batchPrice');
+
+        if (selectedType == 2) {
+            // Paid - SHOW price fields
+            $priceFields.css('display', 'block').removeClass('hide').addClass('show');
+            $('#batchPrice').addClass('require');
+            $('#batchOfferPrice').addClass('require');
         } else {
-            $('.batchPrice').show();
-            $('#batchPrice').addClass('require')
+            // Free - HIDE price fields
+            $priceFields.css('display', 'none').removeClass('show').addClass('hide');
+            $('#batchPrice').removeClass('require');
+            $('#batchOfferPrice').removeClass('require');
         }
+    }
+
+    // Trigger on radio button click
+    $(document).on('click', "input[name='batchType']", function() {
+        updateBatchPriceDisplay();
+    });
+
+    // Trigger on page ready
+    $(function() {
+        setTimeout(function() {
+            updateBatchPriceDisplay();
+        }, 100);
     });
 
     $(document).on('change', '.filter_subject_doubt', function() {
@@ -5422,6 +6241,36 @@ $.magnificPopup.open({
             var _this = $(this);
             var aurl = "ajaxcall/edit_email_setting";
 
+            var formdata = new FormData($(this).closest('form')[0]);
+            $('.edu_preloader').css('background-color', 'rgba(255,255,255,0.80)').css('display', 'block');
+            $.ajax({
+                method: "POST",
+                url: base_url + aurl,
+                data: formdata,
+                processData: false,
+                contentType: false,
+                success: function(resp) {
+                    var resp = $.parseJSON(resp);
+                    if (resp['status'] == '1') {
+                        toastr.success(resp['msg']);
+                        $('.edu_preloader').fadeOut();
+                    } else {
+                        toastr.error(resp['msg']);
+                        $('.edu_preloader').fadeOut();
+                    }
+                },
+                error: function(resp) {
+                    toastr.error(ltr_something_msg);
+                    $('.edu_preloader').fadeOut();
+                }
+            });
+        }
+    });
+
+    $(document).on('click', '.updateSmsDetails', function() {
+        var validchk = validate_form($(this).closest('form'));
+        if (validchk == 'valid') {
+            var aurl = "ajaxcall/edit_sms_setting";
             var formdata = new FormData($(this).closest('form')[0]);
             $('.edu_preloader').css('background-color', 'rgba(255,255,255,0.80)').css('display', 'block');
             $.ajax({

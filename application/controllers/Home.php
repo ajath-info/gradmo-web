@@ -52,6 +52,13 @@ class Home extends CI_Controller {
 	  }else{
 		  $data['batches'] =''; 
 	  }
+	  $data['home_institute_api_url'] = site_url('api/institute/listing');
+	  $data['home_institute_details_url'] = site_url('institute/details');
+	  $tok = (string) $this->session->userdata('access_token');
+	  if ($tok === '') {
+		  $tok = (string) $this->session->userdata('token');
+	  }
+	  $data['api_access_token'] = $tok;
       	  $this->load->view('common/front_header',$data);
 		  $this->load->view('frontend/home',$data);
 		  $this->load->view('common/front_footer',$data);
@@ -64,7 +71,7 @@ class Home extends CI_Controller {
         if($role==1){
           redirect(base_url().'admin/dashboard');
         }elseif($role==3){
-          redirect(base_url().'teacher/dashboard');
+          redirect(rtrim(base_url(), '/').'/');
         }else if($role=='student'){
           redirect(base_url().'student/my_course');
         }
@@ -277,37 +284,31 @@ $data['getsubjectchapter'] = $this->db_model->select_data('*','batch_subjects us
       $this->load->view('common/front_footer',$data);
     }
     
-    function privacypolicy(){
-      $data['title'] = $this->lang->line('ltr_privacy_policy');
-      $data['frontend_details'] = $this->db_model->select_data('*','frontend_details',array('id'=>'1'),1);
-      $data['courses'] = $this->db_model->select_data('course_name','courses use index (id)',array('status'=>'1','admin_id'=>'1'),5);
-      $data['facilities'] = $this->db_model->select_data('title','facilities use index (id)',array('status'=>'1'),5);
-      $data['policy'] = $this->db_model->select_data('*','privacy_policy_data',array('id'=>'1'),1);
-      $this->load->view('common/front_header',$data);
-      $this->load->view('frontend/privacypolicy',$data);
-      $this->load->view('common/front_footer',$data);
+    public function cms_page()
+    {
+        $url = trim($this->uri->segment(1));
+        if ($url === '') {
+            show_404();
+            return;
+        }
+
+        $page = $this->db_model->select_data('*', 'pages', array('url' => $url, 'status' => 1), 1);
+        if (empty($page[0])) {
+            show_404();
+            return;
+        }
+
+        $data['title'] = $page[0]['subject'];
+        $data['page'] = $page[0];
+        $data['frontend_details'] = $this->db_model->select_data('*', 'frontend_details', array('id' => '1'), 1);
+        $data['courses'] = $this->db_model->select_data('course_name', 'courses use index (id)', array('status' => '1', 'admin_id' => '1'), 5);
+        $data['facilities'] = $this->db_model->select_data('title', 'facilities use index (id)', array('status' => '1'), 5);
+
+        $this->load->view('common/front_header', $data);
+        $this->load->view('frontend/cms_page', $data);
+        $this->load->view('common/front_footer', $data);
     }
-     function privacyandpolicy(){
-      $data['title'] = $this->lang->line('ltr_privacy_policy');
-      $data['frontend_details'] = $this->db_model->select_data('*','frontend_details',array('id'=>'1'),1);
-      $data['courses'] = $this->db_model->select_data('course_name','courses use index (id)',array('status'=>'1','admin_id'=>'1'),5);
-      $data['facilities'] = $this->db_model->select_data('title','facilities use index (id)',array('status'=>'1'),5);
-      $data['policy'] = $this->db_model->select_data('*','privacy_policy_data',array('id'=>'1'),1);
-      
-      $this->load->view('frontend/privacyandpolicy',$data);
-     
-    }
-    
-    function termscondition(){
-      $data['title'] = $this->lang->line('ltr_privacy_policy');
-      $data['frontend_details'] = $this->db_model->select_data('*','frontend_details',array('id'=>'1'),1);
-      $data['courses'] = $this->db_model->select_data('course_name','courses use index (id)',array('status'=>'1','admin_id'=>'1'),5);
-      $data['facilities'] = $this->db_model->select_data('title','facilities use index (id)',array('status'=>'1'),5);
-      $data['terms'] = $this->db_model->select_data('*','term_condition_data',array('id'=>'1'),1);
-      $this->load->view('common/front_header',$data);
-      $this->load->view('frontend/termscondition',$data);
-      $this->load->view('common/front_footer',$data);
-    }
+
     
 	function readMoreWord($story_desc,$C_word='') {
         $chars = 90;
@@ -463,7 +464,7 @@ $data['getsubjectchapter'] = $this->db_model->select_data('*','batch_subjects us
 								 'batch_id'=>$paypalInfo['item_number'],
 								 'added_by'=>'student'
 										 );
-				   $this->db_model->insert_data('sudent_batchs',$data_batch);
+				   $this->db_model->insert_data('student_batchs',$data_batch);
 					// send email 
 				   $title = $this->db_model->select_data('site_title','site_details','',1,array('id','desc'))[0]['site_title'];
 					$subj = $title.'- '.$this->lang->line('ltr_credentials');
@@ -526,7 +527,7 @@ $data['getsubjectchapter'] = $this->db_model->select_data('*','batch_subjects us
 								 'batch_id'=>$paypalInfo['item_number'],
 								 'added_by'=>'student'
 										 );
-				$this->db_model->insert_data('sudent_batchs',$data_batch);
+				$this->db_model->insert_data('student_batchs',$data_batch);
 				// send email 
 			   $title = $this->db_model->select_data('site_title','site_details','',1,array('id','desc'))[0]['site_title'];
 				$subj = $title.'- '.$this->lang->line('ltr_credentials');

@@ -41,6 +41,9 @@ Assigned to: Theme Forest
     		-----------------------------------------------------*/
     		
     		popupFix: function () {
+    			if (typeof $.fn.magnificPopup !== 'function') {
+    				return;
+    			}
             	$('.openPopupLink').magnificPopup({
                   type: 'inline',
                   midClick: true,
@@ -149,13 +152,25 @@ Assigned to: Theme Forest
 //         });
 // });
 function myFunction() {
-    $('.hide_show').removeClass('fa-eye-slash');
-  var x = document.getElementById("password_show");
-  if (x.type === "password") {
-    x.type = "text";
-     $('.hide_show').addClass('fa-eye');
-  } else {
-    x.type = "password";
-     $('.hide_show').addClass('fa-eye-slash');
-  }
+	var x = document.getElementById('password_show');
+	if (!x) {
+		return;
+	}
+	var icons = document.querySelectorAll('.hide_show');
+	if (x.type === 'password') {
+		x.type = 'text';
+		icons.forEach(function (el) {
+			el.classList.remove('fa-eye-slash');
+			el.classList.add('fa-eye');
+		});
+	} else {
+		x.type = 'password';
+		icons.forEach(function (el) {
+			el.classList.remove('fa-eye');
+			el.classList.add('fa-eye-slash');
+		});
+	}
+}
+if (typeof window !== 'undefined') {
+	window.myFunction = myFunction;
 }

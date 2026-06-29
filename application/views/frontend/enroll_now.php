@@ -21,7 +21,7 @@
 					<div class="col-lg-12 col-md-12 col-sm-12 col-12 text-center">
 						<div class="edu_heading_wrapper">
 							<h4 class="edu_subTitle"><?php echo !empty($frontend_details[0]['cont_sub_heading'])?$frontend_details[0]['cont_sub_heading']:'START WITH US';?></h4>
-							<h4 class="edu_heading"><?php echo !empty($frontend_details[0]['cont_heading'])?$frontend_details[0]['cont_heading']:'Sign Up with, E-academy';?></h4>
+							<h4 class="edu_heading"><?php echo !empty($frontend_details[0]['cont_heading'])?$frontend_details[0]['cont_heading']:'Sign Up with, Gradmo';?></h4>
 							<img src="<?php echo base_url(); ?>assets/images/border.png" alt=""/>
 						</div>
 					</div>

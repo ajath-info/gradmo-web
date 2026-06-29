@@ -20,13 +20,21 @@ class Student_profile extends CI_Controller {
 	      
         $uid = $this->session->userdata('uid');
         $studentData = $this->db_model->select_data('token, brewers_check, status','students  use index (id)',array('id'=>$uid),'1',array('id','desc'));
-		if(!empty($studentData)){
-    	   if(($studentData[0]['token'] !=1) || ($studentData[0]['status'] !=1) || ($studentData[0]['brewers_check'] !=$_SESSION['brewers_check'])){
-        		if($this->session->all_userdata()){
-                    $this->session->sess_destroy();
-        			redirect(base_url('login'));
-        		}
-    	   }
+		// Legacy web login set token=1 + brewers_check in DB. API/mobile login uses device token and JWT;
+		// website login stores access_token in session — do not destroy session on legacy token mismatch.
+		$api_web_session = trim((string) $this->session->userdata('access_token')) !== '';
+		if (! empty($studentData) && ! $api_web_session) {
+			if (($studentData[0]['token'] != 1) || ($studentData[0]['status'] != 1) || ($studentData[0]['brewers_check'] != $_SESSION['brewers_check'])) {
+				if ($this->session->all_userdata()) {
+					$this->session->sess_destroy();
+					redirect(base_url('login'));
+				}
+			}
+		} elseif (! empty($studentData) && (int) $studentData[0]['status'] !== 1) {
+			if ($this->session->all_userdata()) {
+				$this->session->sess_destroy();
+				redirect(base_url('login'));
+			}
 		}
 	// check select language
 		$this->load->helper('language');
@@ -60,8 +68,8 @@ class Student_profile extends CI_Controller {
 		$uid = $this->session->userdata('uid');
 		$batch_id = $this->session->userdata('batch_id');
 		$batch_id_like = '"'.$this->session->userdata('batch_id').'"';
-		$data['batch_details'] = $this->db_model->custom_slect_query("sudent_batchs.student_id,batches.*  FROM `sudent_batchs` JOIN `batches` ON `batches`.`id`=`sudent_batchs`.`batch_id` WHERE `sudent_batchs`.`student_id` = '".$uid."' ");
-		// $data['batch_details'] = $this->db_model->select_data('*', 'sudent_batchs',array('student_id' => $uid));
+		$data['batch_details'] = $this->db_model->custom_slect_query("student_batchs.student_id,batches.*  FROM `student_batchs` JOIN `batches` ON `batches`.`id`=`student_batchs`.`batch_id` WHERE `student_batchs`.`student_id` = '".$uid."' ");
+		// $data['batch_details'] = $this->db_model->select_data('*', 'student_batchs',array('student_id' => $uid));
         $data['total_mock_test']=$this->db_model->countAll('exams use index (id)',array('admin_id'=>$admin_id,'status'=>1,'type'=>1,'mock_sheduled_date'=>date('Y-m-d'),'batch_id'=>$batch_id));
         $data['upcoming_mock_test']=$this->db_model->countAll('exams use index (id)',array('admin_id'=>$admin_id,'status'=>1,'type'=>1,'mock_sheduled_date >'=>date('Y-m-d'),'batch_id'=>$batch_id));
         
@@ -239,20 +247,21 @@ class Student_profile extends CI_Controller {
 	}
     function start_class($id){
         $data =array();
-		$livedata =$this->db_model->select_data('*','live_class_setting',array('batch' =>$id));
+		$batch_id = (int) $id;
 		$date = date('Y-m-d');
 		$time_s = date('h:i:s A');
-		$subCon = "batch_id = '$id' AND date ='$date' AND end_time =''";
+		$subCon = "batch_id = '$batch_id' AND date ='$date' AND end_time =''";
 		$livedata_his =$this->db_model->select_data('*','live_class_history',$subCon,1,array('id','desc'));
-	    
+		$this->load->library('zoom_live_lib');
+		$zoom = $this->zoom_live_lib->prepare_legacy_embed_view_data($batch_id, 0);
 	
-		if(!empty($livedata) && !empty($livedata_his)){
-  		$data['signature'] = $this->generate_signature($livedata[0]['zoom_api_key'], $livedata[0]['zoom_api_secret'],$livedata[0]['meeting_number'],1);
-		$data['sdk_key']=$livedata[0]['zoom_api_key'];
-		$data['sdk_secret']=$livedata[0]['zoom_api_secret'];
+		if(!empty($livedata_his) && !empty($zoom['ok'])){
+  		$data['signature'] = $zoom['signature'];
+		$data['sdk_key']=$zoom['sdk_key'];
+		$data['sdk_secret']=$zoom['sdk_secret'];
 		$data['display_name']=$this->session->userdata('name');
-		$data['meeting_number']=$livedata[0]['meeting_number'];
-		$data['password']=$livedata[0]['password'];
+		$data['meeting_number']=$zoom['meeting_number'];
+		$data['password']=$zoom['password'];
     		$this->load->view("student/start_live_class",$data);
         }else{
            
@@ -780,7 +789,7 @@ class Student_profile extends CI_Controller {
 
 	public function check_batch(){
 		if(empty($_SESSION['batch_id'])){
-		    $batches = $this->db_model->select_data('*','batches use index (id)',array('batches.status'=>'1','batches.admin_id'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('sudent_batchs','sudent_batchs.batch_id=batches.id'));
+		    $batches = $this->db_model->select_data('*','batches use index (id)',array('batches.status'=>'1','batches.admin_id'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('student_batchs','student_batchs.batch_id=batches.id'));
 		    if(!empty($batches)){
     		  redirect(base_url('student/my-course')); 
         	  }else{
@@ -801,8 +810,8 @@ class Student_profile extends CI_Controller {
 	function my_course(){
 	    
 		$header['title'] = $this->lang->line('ltr_my_course');
-        // $batches = $this->db_model->select_data('*','batches use index (id)',array('batches.status'=>'1','admin_id'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('sudent_batchs','sudent_batchs.batch_id=batches.id'));
-        $batches = $this->db_model->select_data('*','batches use index (id)',array('batches.status'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('sudent_batchs','sudent_batchs.batch_id=batches.id'));
+        // $batches = $this->db_model->select_data('*','batches use index (id)',array('batches.status'=>'1','admin_id'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('student_batchs','student_batchs.batch_id=batches.id'));
+        $batches = $this->db_model->select_data('*','batches use index (id)',array('batches.status'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('student_batchs','student_batchs.batch_id=batches.id'));
 	  if(!empty($batches)){
 	  	
 		  foreach($batches as $key =>$value){
@@ -825,7 +834,7 @@ class Student_profile extends CI_Controller {
 		}
 		$header['title'] = $this->lang->line('ltr_courses');
 		if(!empty($this->session->userdata('uid'))){
-    		$batchs_id =$this->db_model->select_data('batch_id','sudent_batchs',array('student_id'=>$this->session->userdata('uid')));
+    		$batchs_id =$this->db_model->select_data('batch_id','student_batchs',array('student_id'=>$this->session->userdata('uid')));
     		
     	    if(!empty($batchs_id)){
     	        $batchId=array();
@@ -999,7 +1008,7 @@ class Student_profile extends CI_Controller {
 	function check_batch_dashboard(){
 	   
 	  	    	if(empty($_SESSION['batch_id'])){
-		    $batches = $this->db_model->select_data('*','batches use index (id)',array('batches.status'=>'1','admin_id'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('sudent_batchs','sudent_batchs.batch_id=batches.id'));
+		    $batches = $this->db_model->select_data('*','batches use index (id)',array('batches.status'=>'1','admin_id'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('student_batchs','student_batchs.batch_id=batches.id'));
 		  	if(is_array($batches)){
     		  redirect(base_url('student/select-dashboard')); 
         	  }else{

@@ -190,10 +190,16 @@
 		date_default_timezone_set($timezoneDB[0]['timezone']);
 	}
 	
-	$admin_id = $this->session->userdata('admin_id');
-	$student_id = $this->session->userdata('uid');
-	$condN = "admin_id = $admin_id AND student_id = $student_id AND status = 1 AND read_status = 0";
-	$notice_count = $this->db_model->countAll('notices use index(id)',$condN);
+	$admin_id = (int) $this->session->userdata('admin_id');
+	$student_id = (int) $this->session->userdata('uid');
+	if ($admin_id < 1) {
+		$admin_id = $student_id;
+	}
+	$notice_count = 0;
+	if ($admin_id > 0 && $student_id > 0) {
+		$condN = 'admin_id = ' . $admin_id . ' AND student_id = ' . $student_id . ' AND status = 1 AND read_status = 0';
+		$notice_count = $this->db_model->countAll('notices use index(id)', $condN);
+	}
 	
 ?>
 <div class="edu_header_sidebar">
@@ -811,8 +817,19 @@
        <div class="notification-wrapper">
 	<a href="javascript:void(0);" class="notification-info">
 	    <?php 
-	    $total_not = $this->db_model->countAll('notifications',array('status'=>'0','student_id' => $this->session->userdata('uid')));
-		$notify = $this->db_model->select_data('*','notifications',array('status'=>'0', 'student_id' => $this->session->userdata('uid')),'3',array('id','desc')); 
+	    // Unread count + latest 3 come from push_notifications_details.read (per-recipient state).
+	    $uid = $this->session->userdata('uid');
+	    $this->db->reset_query();
+	    $this->db->from('push_notifications_details pd')->where('pd.userid',$uid)->where('pd.user_type',1)->where('pd.`read`',0);
+	    $total_not = (int) $this->db->count_all_results();
+
+	    $this->db->reset_query();
+	    $this->db->select('n.*, pd.`read` as `read`', false)
+	        ->from('push_notifications_details pd')
+	        ->join('notifications n','n.id = pd.pushnotify_id','inner')
+	        ->where('pd.userid',$uid)->where('pd.user_type',1)->where('pd.`read`',0)
+	        ->order_by('n.id','desc')->limit(3);
+	    $notify = $this->db->get()->result_array();
 		?>
 		<span class="header-icon">
 		     <span><?php echo $total_not;?></span>
@@ -852,7 +869,7 @@
                 <a class="edu_admin_bar edu_admin_with_img" href="javascript:void(0);"> 
 					<?php 
 					if(isset($this->session->userdata['profile_img']) && !empty($this->session->userdata['profile_img'])){
-						echo '<img src="'.base_url('uploads/students/').$this->session->userdata['profile_img'].'" />';
+						echo '<img src="'.profile_image_url($this->session->userdata['profile_img'], 2, 'student').'" />';
 					}else{
 						echo '<span class="icofont-user-alt-4"></span>';
 					} 
@@ -878,8 +895,8 @@
                               
                 			    <ul>
                 			      <?php 
-                			      //$batch = $this->db_model->select_data('*,sudent_batchs.batch_id','batches use index (id)',array('batches.status'=>'1','admin_id'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('sudent_batchs','sudent_batchs.batch_id=batches.id'));
-                			      $batch = $this->db_model->select_data('*,sudent_batchs.batch_id','batches use index (id)',array('batches.status'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('sudent_batchs','sudent_batchs.batch_id=batches.id'));
+                			      //$batch = $this->db_model->select_data('*,student_batchs.batch_id','batches use index (id)',array('batches.status'=>'1','admin_id'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('student_batchs','student_batchs.batch_id=batches.id'));
+                			      $batch = $this->db_model->select_data('*,student_batchs.batch_id','batches use index (id)',array('batches.status'=>'1','student_id'=>$this->session->userdata('uid')),'','','',array('student_batchs','student_batchs.batch_id=batches.id'));
                 			        if(!empty($batch)) {
                 			        foreach($batch as $bat){?>
                 			        <li>

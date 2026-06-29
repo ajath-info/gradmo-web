@@ -1,44 +1,40 @@
 <section class="edu_admin_content">
 	<div class="edu_admin_right sectionHolder edu_batch_manager">
-	    <?php 
-	        ?>
-	        <div class="edu_btn_wrapper sectionHolder padderBottom30 text-right res-left">
-    	        <!--<a href="#input_feilds_android" class="edu_admin_btn openPopupLink res-380-bottom"><i class="icofont-plus"></i><?php echo html_escape($this->common->languageTranslator('ltr_add_mobile_key')); ?></a>-->
-    		   <a href="#input_feilds_liveclass" class="edu_admin_btn openPopupLink addLiveclass"><i class="icofont-plus"></i><?php echo html_escape($this->common->languageTranslator('ltr_add_live_class')); ?></a>
+	    <div class="edu_btn_wrapper sectionHolder padderBottom30 text-right res-left">
+    		   <a href="#input_feilds_zoom_credentials" class="edu_admin_btn openPopupLink addLiveclass"><i class="icofont-plus"></i><?php echo html_escape($this->common->languageTranslator('ltr_add_live_class')); ?> / Zoom API</a>
     		</div>
-	        <?php 
-	    ?>
-		<?php 
-			if(!empty($live_data) && $live_data>=1){
-			?>
+		<?php
+			$zc = !empty($zoom_credentials[0]) ? $zoom_credentials[0] : array();
+			$has_zoom = !empty($zoom_sdk_ready);
+		?>
+		<?php if ($has_zoom) { ?>
 		<div class="edu_main_wrapper edu_table_wrapper">
 			<div class="edu_admin_informationdiv sectionHolder">
+				<p class="padderBottom15">Zoom credentials are stored in <strong>zoom_api_credentials</strong> (one row for the whole site). Per-batch meetings are created automatically in <strong>batch_zoom_meetings</strong> when a teacher starts a live class.</p>
 				<div class="tableFullWrapper">
-    				<table class="server_datatable datatable table table-striped table-hover dt-responsive" cellspacing="0" width="100%" data-url="ajaxcall/live_class_setting_table">
+    				<table class="server_datatable datatable table table-striped table-hover dt-responsive" cellspacing="0" width="100%" data-url="ajaxcall/zoom_api_credentials_table">
     					<thead>
     						<tr>
     							<th>#</th>
-    							<th><?php echo html_escape($this->common->languageTranslator('ltr_batch_name')); ?></th>
+    							<th>Scope</th>
     							<th><?php echo html_escape($this->common->languageTranslator('ltr_sdk_key')); ?></th>
     							<th><?php echo html_escape($this->common->languageTranslator('ltr_sdk_secret')); ?></th>
-    							<th><?php echo html_escape($this->common->languageTranslator('ltr_meeting_number')); ?></th>
-    							<th><?php echo html_escape($this->common->languageTranslator('ltr_password')); ?></th>
+    							<th>Meetings</th>
+    							<th>S2S / Host</th>
     							<th class="no-sort"><?php echo html_escape($this->common->languageTranslator('ltr_action')); ?></th>
-    							<th class="no-sort"><?php echo html_escape($this->common->languageTranslator('ltr_added_by')); ?></th>
+    							<th class="no-sort">Table</th>
     						</tr>
     					</thead>
-    					<tbody>
-    					</tbody>
+    					<tbody></tbody>
     				</table>
     			</div>
 			</div>
 		</div>
-		<?php 
-		}else{ 
+		<?php } else {
 		    echo '<section class="edu_admin_content">
                         <div class="edu_admin_right sectionHolder edu_add_users">
                             <div class="edu_admin_informationdiv edu_main_wrapper">
-                                <div class="eac_text eac_page_re">'.html_escape($this->common->languageTranslator('ltr_live_no_data')).'</div>
+                                <div class="eac_text eac_page_re">Configure Zoom in the button above: Meeting SDK (Client ID + Secret) and Server-to-Server OAuth in <code>zoom_api_credentials</code>. Per-batch meetings are stored in <code>batch_zoom_meetings</code>.</div>
                             </div>
                         </div>
                     </section>';
@@ -46,55 +42,61 @@
 	</div>
 </section>
 
-<!-- Pop Up Start  -->
-<div id="input_feilds_liveclass" class="edu_popup_container mfp-hide">
+<div id="input_feilds_zoom_credentials" class="edu_popup_container mfp-hide">
     <div class="edu_popup_wrapper">
         <div class="edu_popup_inner">
-            <h4 class="edu_sub_title" id="classModalLabel"><?php echo html_escape($this->common->languageTranslator('ltr_add_live_class')); ?></h4>
-            <form method="post">
+            <h4 class="edu_sub_title" id="classModalLabel">Zoom API credentials (zoom_api_credentials)</h4>
+            <form method="post" id="zoom_credentials_form">
                 <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-12 edu_bottom_20">
+                        <p><small>Meeting SDK: Zoom General app → Development → Client ID &amp; Secret. S2S: Server-to-Server OAuth for creating meetings.</small></p>
+                    </div>
                     <div class="col-lg-6 col-md-6 col-sm-12 col-12 edu_bottom_20">
     					<div class="form-group">
-							<label><?php echo html_escape($this->common->languageTranslator('ltr_batch')); ?><sup>*</sup></label>
-							<select class="form-control require edu_selectbox_with_search" name="batch" id="batch">
-								<option value=""><?php echo html_escape($this->common->languageTranslator('ltr_select_batch')); ?></option>
-                                            <?php if(!empty($batch)){
-                                                foreach($batch as $batch){
-                                                    echo '<option value="'.$batch['id'].'">'.$batch['batch_name'].'</option>';    
-                                                }
-                                            } ?>
-							</select>
-						</div>
-    				</div>
-                    <div class="col-lg-6 col-md-6 col-sm-12 col-12 edu_bottom_20">
-    					<div class="form-group">
-							<label><?php echo html_escape($this->common->languageTranslator('ltr_sdk_key')); ?><sup>*</sup></label>
-							<input type="text" class="form-control require" name="zoom_api_key" id="zoom_api_key" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_zoom_api_key')); ?>">
+							<label>Meeting SDK Client ID (meeting_sdk_key)<sup>*</sup></label>
+							<input type="text" class="form-control require" name="meeting_sdk_key" id="meeting_sdk_key" value="<?php echo html_escape(isset($zc['meeting_sdk_key']) ? $zc['meeting_sdk_key'] : ''); ?>">
 						</div>
     				</div>
     				<div class="col-lg-6 col-md-6 col-sm-12 col-12 edu_bottom_20">
     					<div class="form-group">
-							<label><?php echo html_escape($this->common->languageTranslator('ltr_sdk_secret')); ?><sup>*</sup></label>
-							<input type="text" class="form-control require" name="zoom_api_secret" id="zoom_api_secret" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_zoom_api_secret')); ?>">
+							<label>Meeting SDK Client Secret (meeting_sdk_secret)<sup>*</sup></label>
+							<input type="text" class="form-control require" name="meeting_sdk_secret" id="meeting_sdk_secret" value="<?php echo html_escape(isset($zc['meeting_sdk_secret']) ? $zc['meeting_sdk_secret'] : ''); ?>">
 						</div>
     				</div>
     				<div class="col-lg-6 col-md-6 col-sm-12 col-12 edu_bottom_20">
     					<div class="form-group">
-							<label><?php echo html_escape($this->common->languageTranslator('ltr_meeting_number')); ?><sup>*</sup></label>
-							<input type="text" class="form-control require" name="meeting_number" id="meeting_number" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_meeting_number')); ?>">
+							<label>S2S Account ID</label>
+							<input type="text" class="form-control" name="s2s_account_id" value="<?php echo html_escape(isset($zc['s2s_account_id']) ? $zc['s2s_account_id'] : ''); ?>">
 						</div>
     				</div>
     				<div class="col-lg-6 col-md-6 col-sm-12 col-12 edu_bottom_20">
     					<div class="form-group">
-							<label><?php echo html_escape($this->common->languageTranslator('ltr_password')); ?><sup>*</sup></label>
-							<input type="text" class="form-control require" name="password" id="password" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_password')); ?>">
+							<label>S2S Client ID</label>
+							<input type="text" class="form-control" name="s2s_client_id" value="<?php echo html_escape(isset($zc['s2s_client_id']) ? $zc['s2s_client_id'] : ''); ?>">
 						</div>
     				</div>
-				 
+    				<div class="col-lg-6 col-md-6 col-sm-12 col-12 edu_bottom_20">
+    					<div class="form-group">
+							<label>S2S Client Secret</label>
+							<input type="text" class="form-control" name="s2s_client_secret" value="<?php echo html_escape(isset($zc['s2s_client_secret']) ? $zc['s2s_client_secret'] : ''); ?>">
+						</div>
+    				</div>
+    				<div class="col-lg-6 col-md-6 col-sm-12 col-12 edu_bottom_20">
+    					<div class="form-group">
+							<label>Zoom host email</label>
+							<input type="text" class="form-control" name="zoom_host_email" value="<?php echo html_escape(isset($zc['zoom_host_email']) ? $zc['zoom_host_email'] : ''); ?>">
+						</div>
+    				</div>
+    				<div class="col-lg-6 col-md-6 col-sm-12 col-12 edu_bottom_20">
+    					<div class="form-group">
+							<label>Zoom host user ID (optional)</label>
+							<input type="text" class="form-control" name="zoom_host_user_id" value="<?php echo html_escape(isset($zc['zoom_host_user_id']) ? $zc['zoom_host_user_id'] : ''); ?>">
+						</div>
+    				</div>
     				<div class="col-lg-12 col-md-12 col-sm-12 col-12 edu_bottom_20">
     					<div class="edu_btn_wrapper">
-    					    <input type="hidden" name="live_class_id" id="live_class_id" value="">
-							<input type="button" value="<?php echo html_escape($this->common->languageTranslator('ltr_save')); ?>" class="edu_admin_btn addLiveClassSetting" data-type="add" />
+    					    <input type="hidden" name="live_class_id" id="live_class_id" value="<?php echo html_escape(isset($zc['id']) ? $zc['id'] : '1'); ?>">
+							<input type="button" value="<?php echo html_escape($this->common->languageTranslator('ltr_save')); ?>" class="edu_admin_btn addLiveClassSetting" data-type="edit" />
 						</div>
     				</div>
 				</div>
@@ -103,43 +105,6 @@
     </div>
 </div>
 
-
-<!-- Pop Up Start  -->
-<div id="input_feilds_android" class="edu_popup_container mfp-hide">
-    <div class="edu_popup_wrapper">
-        <div class="edu_popup_inner">
-            <h4 class="edu_sub_title" id="classModalLabel"><?php echo html_escape($this->common->languageTranslator('ltr_add_android_key')); ?></h4>
-            <form method="post">
-                <div class="row">
-                    
-                    <div class="col-lg-6 col-md-6 col-sm-12 col-12 edu_bottom_20">
-    					<div class="form-group">
-							<label><?php echo html_escape($this->common->languageTranslator('ltr_zoom_api_key')); ?><sup>*</sup></label>
-							<input type="text" class="form-control require" name="android_api_key" id="android_api_key" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_zoom_api_key')); ?>" value="<?php if(!empty($android_key[0]['android_api_key'])){ echo $android_key[0]['android_api_key'];}?>">
-						</div>
-    				</div>
-    				<div class="col-lg-6 col-md-6 col-sm-12 col-12 edu_bottom_20">
-    					<div class="form-group">
-							<label><?php echo html_escape($this->common->languageTranslator('ltr_zoom_api_secret')); ?><sup>*</sup></label>
-							<input type="text" class="form-control require" name="android_api_secret" id="android_api_secret" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_zoom_api_secret')); ?>" value="<?php if(!empty($android_key[0]['android_api_secret'])){ echo $android_key[0]['android_api_secret'];}?>">
-						</div>
-    				</div>
-    				
-    				
-				 
-    				<div class="col-lg-12 col-md-12 col-sm-12 col-12">
-    					<div class="edu_btn_wrapper">
-    					    
-							<input type="button" value="<?php echo html_escape($this->common->languageTranslator('ltr_save')); ?>" class="edu_admin_btn addLiveClassAndroid" data-type="add" />
-						</div>
-    				</div>
-				</div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- Pop Up Start  -->
 <div id="classSettingModal" class="edu_popup_container mfp-hide">
     <div class="edu_popup_wrapper">
         <div class="edu_popup_inner">
@@ -151,7 +116,6 @@
     						<label><?php echo html_escape($this->common->languageTranslator('ltr_subject')); ?><sup>*</sup></label>
 							<select class="form-control filter_subject edu_selectbox_with_search require " name="subject_id" data-placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_select_subject')); ?>" id="filter_subject">
 										<option value=""><?php echo html_escape($this->common->languageTranslator('ltr_select_subjects')); ?></option>
-										 
 									</select>	
     					</div>
     				</div>
@@ -163,9 +127,9 @@
 									</select>
     					</div>
     				</div>
-    				
 					<div class="col-lg-12 col-md-12 col-sm-12 col-12">
     					<div class="edu_btn_wrapper">
+							<input type="hidden" name="batch_id" id="live_class_batch_id" value="">
 							<input type="hidden" name="live_class_id" id="live_class_id" value="">
 							<input type="button" value="<?php echo html_escape($this->common->languageTranslator('ltr_continue')); ?>" class="edu_admin_btn liveClassSetting"  />
 						</div>

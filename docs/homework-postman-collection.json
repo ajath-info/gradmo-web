@@ -1,0 +1,237 @@
+{
+  "info": {
+    "_postman_id": "0d3f8510-3f36-4af4-a672-6b9a43f9f8aa",
+    "name": "Homework APIs",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Homework List",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"access_token\": \"{{access_token}}\",\n  \"batch_id\": {{batch_id}},\n  \"page\": 1,\n  \"limit\": 20\n}"
+        },
+        "url": "{{base_url}}/api/batch/homework-list"
+      }
+    },
+    {
+      "name": "Homework Details",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"access_token\": \"{{access_token}}\",\n  \"homework_id\": {{homework_id}}\n}"
+        },
+        "url": "{{base_url}}/api/batch/homework-details"
+      }
+    },
+    {
+      "name": "Homework Add (Teacher)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"access_token\": \"{{access_token}}\",\n  \"batch_id\": {{batch_id}},\n  \"subject_id\": {{subject_id}},\n  \"date\": \"2026-05-10\",\n  \"description\": \"Complete Q1 to Q20\"\n}"
+        },
+        "url": "{{base_url}}/api/batch/homework-add"
+      }
+    },
+    {
+      "name": "Homework Edit (Teacher)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"access_token\": \"{{access_token}}\",\n  \"homework_id\": {{homework_id}},\n  \"description\": \"Updated homework description\"\n}"
+        },
+        "url": "{{base_url}}/api/batch/homework-edit"
+      }
+    },
+    {
+      "name": "Homework Delete (Teacher)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"access_token\": \"{{access_token}}\",\n  \"homework_id\": {{homework_id}}\n}"
+        },
+        "url": "{{base_url}}/api/batch/homework-delete"
+      }
+    },
+    {
+      "name": "Homework Submit (Student, text only)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"access_token\": \"{{access_token}}\",\n  \"homework_id\": {{homework_id}},\n  \"submission_text\": \"My answers are attached in notebook.\"\n}"
+        },
+        "url": "{{base_url}}/api/batch/homework-submit"
+      }
+    },
+    {
+      "name": "Homework Submit (Student, with file)",
+      "request": {
+        "method": "POST",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "access_token",
+              "value": "{{access_token}}",
+              "type": "text"
+            },
+            {
+              "key": "homework_id",
+              "value": "{{homework_id}}",
+              "type": "text"
+            },
+            {
+              "key": "submission_text",
+              "value": "Please find attached file.",
+              "type": "text"
+            },
+            {
+              "key": "submission_file",
+              "type": "file",
+              "src": ""
+            }
+          ]
+        },
+        "url": "{{base_url}}/api/batch/homework-submit"
+      }
+    },
+    {
+      "name": "Homework Submissions (Teacher)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"access_token\": \"{{access_token}}\",\n  \"homework_id\": {{homework_id}},\n  \"page\": 1,\n  \"limit\": 20\n}"
+        },
+        "url": "{{base_url}}/api/batch/homework-submissions"
+      }
+    },
+    {
+      "name": "Homework Evaluate (Teacher)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"access_token\": \"{{access_token}}\",\n  \"submission_id\": {{submission_id}},\n  \"marks\": 8.5,\n  \"remark\": \"Good attempt\",\n  \"eval_status\": 1\n}"
+        },
+        "url": "{{base_url}}/api/batch/homework-evaluate"
+      }
+    },
+    {
+      "name": "My Homework Submissions (Student)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"access_token\": \"{{access_token}}\",\n  \"page\": 1,\n  \"limit\": 20\n}"
+        },
+        "url": "{{base_url}}/api/batch/my-homework-submissions"
+      }
+    },
+    {
+      "name": "Homework Submission Details",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"access_token\": \"{{access_token}}\",\n  \"submission_id\": {{submission_id}}\n}"
+        },
+        "url": "{{base_url}}/api/batch/homework-submission-details"
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://gradmo.brancosoft.co.in"
+    },
+    {
+      "key": "access_token",
+      "value": ""
+    },
+    {
+      "key": "batch_id",
+      "value": "12"
+    },
+    {
+      "key": "subject_id",
+      "value": "5"
+    },
+    {
+      "key": "homework_id",
+      "value": "44"
+    },
+    {
+      "key": "submission_id",
+      "value": "7"
+    }
+  ]
+}

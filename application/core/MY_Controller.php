@@ -2,8 +2,8 @@
 defined('BASEPATH') OR exit('No direct script access allowed');
 
 /**
- * Base controller for shared API helpers (access tokens, timezone).
- * Used by api/user/Home, api/batch/Batch, and other API controllers.
+ * Base controller for shared API helpers (access tokens, timezone, institute batches/reviews).
+ * Used by api/user/Home, api/batch/Batch (batch_list + detail), api/institute/Institute, api/main/Main, and other API controllers.
  */
 class MY_Controller extends CI_Controller
 {
@@ -16,25 +16,112 @@ class MY_Controller extends CI_Controller
 		}
 	}
 
-	protected function generate_access_token($user_id, $user_type)
+	/**
+	 * Public site pages: common/front_header + content + common/front_footer.
+	 *
+	 * @param string $content_view Path under views/ (e.g. frontend/home)
+	 * @param array  $data         Passed to header, content, and footer
+	 */
+	protected function render_frontend_layout($content_view, $data = array())
+	{
+		if (!is_array($data)) {
+			$data = array();
+		}
+		$this->load->view('common/front_header', $data);
+		$this->load->view($content_view, $data);
+		$this->load->view('common/front_footer', $data);
+	}
+
+	/**
+	 * Auth pages: common/auth_header + content + common/auth_footer.
+	 *
+	 * @param string $content_view e.g. frontend/login
+	 * @param array  $header_data  Passed to auth_header (content view unchanged from original pattern)
+	 */
+	protected function render_auth_layout($content_view, $header_data = array())
+	{
+		if (!is_array($header_data)) {
+			$header_data = array();
+		}
+		$this->load->view('common/auth_header', $header_data);
+		$this->load->view($content_view);
+		$this->load->view('common/auth_footer');
+	}
+
+	/**
+	 * Core token builder (used when {@see generate_access_token()} returns an unexpected type).
+	 *
+	 * @return array{access_token: string, iat: int}
+	 */
+	private function _build_access_token_array($user_id, $user_type, $iat = null)
 	{
 		$secret = $this->config->item('encryption_key');
 		if (empty($secret)) {
 			$secret = 'education_api_secret_key';
 		}
 
+		$iat = ($iat !== null && (int) $iat > 0) ? (int) $iat : time();
 		$payload = array(
 			'uid' => (int) $user_id,
 			'ut' => (string) $user_type,
-			'iat' => time(),
-			'exp' => time() + (60 * 60 * 24 * 30)
+			'iat' => $iat,
+			'exp' => $iat + (60 * 60 * 24 * 30)
 		);
 
 		$payload_json = json_encode($payload);
 		$payload_b64 = rtrim(strtr(base64_encode($payload_json), '+/', '-_'), '=');
 		$signature = hash_hmac('sha256', $payload_b64, $secret);
 
-		return $payload_b64 . '.' . $signature;
+		return array(
+			'access_token' => $payload_b64 . '.' . $signature,
+			'iat' => $iat,
+		);
+	}
+
+	/**
+	 * @return array{access_token: string, iat: int}
+	 */
+	protected function generate_access_token($user_id, $user_type, $iat = null)
+	{
+		return $this->_build_access_token_array($user_id, $user_type, $iat);
+	}
+
+	/**
+	 * Normalize token output for login/profile flows.
+	 * Handles legacy overrides that return only the token string instead of array{access_token, iat}.
+	 *
+	 * @return array{access_token: string, iat: int}
+	 */
+	protected function mint_access_credentials($user_id, $user_type, $iat = null)
+	{
+		$t = $this->generate_access_token($user_id, $user_type, $iat);
+		if (is_array($t) && !empty($t['access_token'])) {
+			return array(
+				'access_token' => (string) $t['access_token'],
+				'iat' => isset($t['iat']) ? (int) $t['iat'] : time(),
+			);
+		}
+		if (is_string($t) && $t !== '') {
+			return array('access_token' => $t, 'iat' => time());
+		}
+		return $this->_build_access_token_array((int) $user_id, (string) $user_type, $iat);
+	}
+
+	/**
+	 * Strictly-increasing issued-at for single-session logins. Guarantees each new login's
+	 * token has an iat greater than the previously stored app_token_iat, so the prior token
+	 * is rejected even when two logins land in the same wall-clock second.
+	 *
+	 * @param string $table   'students' or 'users'
+	 * @param int    $user_id
+	 * @return int
+	 */
+	protected function next_session_iat($table, $user_id)
+	{
+		$now = time();
+		$rows = $this->db_model->select_data('app_token_iat', $table, array('id' => (int) $user_id), 1);
+		$prev = (!empty($rows) && isset($rows[0]['app_token_iat'])) ? (int) $rows[0]['app_token_iat'] : 0;
+		return ($prev >= $now) ? $prev + 1 : $now;
 	}
 
 	protected function parse_access_token($token)
@@ -63,7 +150,7 @@ class MY_Controller extends CI_Controller
 		$payload_json = base64_decode(strtr($payload_b64, '-_', '+/'));
 		$payload = json_decode($payload_json, true);
 
-		if (!is_array($payload) || empty($payload['uid']) || empty($payload['ut']) || empty($payload['exp'])) {
+		if (!is_array($payload) || empty($payload['uid']) || empty($payload['ut']) || empty($payload['exp']) || empty($payload['iat'])) {
 			return false;
 		}
 
@@ -71,21 +158,42 @@ class MY_Controller extends CI_Controller
 			return false;
 		}
 
-		// Server-side session validation for student tokens.
-		// Without this, a signed token stays "valid" until expiry even after logout.
-		if ((string) $payload['ut'] === 'student') {
-			$student_id = (int) $payload['uid'];
-			$rows = $this->db_model->select_data('id, token, login_status', 'students', array('id' => $student_id));
-			if (empty($rows) || !isset($rows[0]['token'])) {
+		$user_type = (string) $payload['ut'];
+		$user_id = (int) $payload['uid'];
+
+		// Server-side session validation (account active + not logged out + latest session only).
+		if ($user_type === 'student') {
+			$rows = $this->db_model->select_data('id, login_status, app_token_iat', 'students', array('id' => $user_id), 1);
+			if (empty($rows)) {
 				return false;
 			}
 
 			$db_login_status = isset($rows[0]['login_status']) ? (int) $rows[0]['login_status'] : 0;
-
-			// If user logged out, reject immediately.
-			// NOTE: `students.token` is used as device token in this codebase (not the API access token),
-			// so we validate using `login_status` only.
 			if ($db_login_status !== 1) {
+				return false;
+			}
+
+			// Single-session: only the most recently issued token is valid. Each login records
+			// app_token_iat; any token issued before the latest login (smaller iat) is rejected.
+			$db_token_iat = isset($rows[0]['app_token_iat']) ? (int) $rows[0]['app_token_iat'] : 0;
+			if ($db_token_iat > 0 && (int) $payload['iat'] < $db_token_iat) {
+				return false;
+			}
+		} else {
+			// Teacher/Institute/Admin users
+			$rows = $this->db_model->select_data('id, login_status, app_token_iat', 'users', array('id' => $user_id), 1);
+			if (empty($rows)) {
+				return false;
+			}
+
+			// If login_status column exists and is 0, reject.
+			if (isset($rows[0]['login_status']) && (int) $rows[0]['login_status'] === 0) {
+				return false;
+			}
+
+			// Single-session: reject any token older than the latest login (see student branch).
+			$db_token_iat = isset($rows[0]['app_token_iat']) ? (int) $rows[0]['app_token_iat'] : 0;
+			if ($db_token_iat > 0 && (int) $payload['iat'] < $db_token_iat) {
 				return false;
 			}
 		}
@@ -93,37 +201,879 @@ class MY_Controller extends CI_Controller
 		return $payload;
 	}
 
-	protected function get_access_token_from_request()
+	/**
+	 * Resolve bearer token without using $_REQUEST for access_token/token.
+	 * $_REQUEST merges cookies (per php.ini): an old access_token cookie would override
+	 * a new login when the client does not send Authorization — use GET/POST/JSON only after the header.
+	 *
+	 * @param array|null $json_body Decoded JSON body (e.g. attendance-list); may contain access_token.
+	 */
+	protected function get_access_token_from_request(array $json_body = null)
 	{
 		$auth_header = $this->input->get_request_header('Authorization', true);
 		if (!empty($auth_header) && preg_match('/Bearer\s*:?\s*(.+)/i', $auth_header, $matches)) {
 			return trim($matches[1]);
 		}
 
-		if (!empty($_REQUEST['access_token'])) {
-			return trim(preg_replace('/^Bearer\s*:?\s*/i', '', $_REQUEST['access_token']));
+		if (!empty($_POST['access_token'])) {
+			return trim(preg_replace('/^Bearer\s*:?\s*/i', '', (string) $_POST['access_token']));
+		}
+		if (!empty($_GET['access_token'])) {
+			return trim(preg_replace('/^Bearer\s*:?\s*/i', '', (string) $_GET['access_token']));
+		}
+		if (!empty($_POST['token'])) {
+			return trim(preg_replace('/^Bearer\s*:?\s*/i', '', (string) $_POST['token']));
+		}
+		if (!empty($_GET['token'])) {
+			return trim(preg_replace('/^Bearer\s*:?\s*/i', '', (string) $_GET['token']));
 		}
 
-		if (!empty($_REQUEST['token'])) {
-			return trim(preg_replace('/^Bearer\s*:?\s*/i', '', $_REQUEST['token']));
+		if (is_array($json_body)) {
+			if (!empty($json_body['access_token'])) {
+				return trim(preg_replace('/^Bearer\s*:?\s*/i', '', (string) $json_body['access_token']));
+			}
+			if (!empty($json_body['token'])) {
+				return trim(preg_replace('/^Bearer\s*:?\s*/i', '', (string) $json_body['token']));
+			}
 		}
 
 		return '';
 	}
 
-	protected function authorize_student_request($student_id)
+	/**
+	 * @param array|null $request_data Same merged request body as {@see require_auth_payload()} (JSON/POST/GET),
+	 *                    so access_token in the body is honored when Authorization is missing (e.g. internal CURL).
+	 */
+	protected function authorize_student_request($student_id, $request_data = null)
 	{
-		$token = $this->get_access_token_from_request();
+		$token = $this->get_access_token_from_request(is_array($request_data) ? $request_data : null);
 		$payload = $this->parse_access_token($token);
 
 		if ($payload === false || $payload['ut'] !== 'student' || (int) $payload['uid'] !== (int) $student_id) {
 			echo json_encode(array(
+				'statusCode' => 1008,
 				'status' => 'false',
-				'msg' => 'Unauthorized: invalid or expired access token'
+				'msg' => 'Authentication failed. Please log in again.'
 			));
 			return false;
 		}
 
 		return true;
+	}
+
+	/**
+	 * Central auth helper to avoid repeating token parsing in every endpoint.
+	 * @param array|string $allowed_types Example: ['student'] or ['student','teacher']
+	 * @param array|null $json_body Optional decoded JSON body for access_token when using JSON POST without header.
+	 * @return array|false Payload array on success, false on failure (response already echoed).
+	 */
+	protected function require_auth_payload($allowed_types = array(), array $json_body = null)
+	{
+		$token = $this->get_access_token_from_request($json_body);
+		$payload = $this->parse_access_token($token);
+		if ($payload === false) {
+			echo json_encode(array(
+				'statusCode' => 1008,
+				'status' => 'false',
+				'msg' => 'Authentication failed. Please log in again.'
+			));
+			return false;
+		}
+
+		if (!empty($allowed_types)) {
+			if (is_string($allowed_types)) {
+				$allowed_types = array($allowed_types);
+			}
+			$ut_raw = isset($payload['ut']) ? (string) $payload['ut'] : '';
+			$ut = strtolower(trim($ut_raw));
+			$allowed_norm = array();
+			foreach ($allowed_types as $t) {
+				$allowed_norm[] = strtolower(trim((string) $t));
+			}
+			$ok = in_array($ut, $allowed_norm, true);
+			if (!$ok && $ut === '3' && in_array('teacher', $allowed_norm, true)) {
+				$ok = true;
+			}
+			if (!$ok && $ut === '4' && in_array('institute', $allowed_norm, true)) {
+				$ok = true;
+			}
+			if (!$ok) {
+				echo json_encode(array(
+					'statusCode' => 1008,
+					'status' => 'false',
+					'msg' => 'Unauthorized: invalid token user'
+				));
+				return false;
+			}
+		}
+
+		return $payload;
+	}
+
+	/**
+	 * Map JWT ut to canonical role string (teacher tokens may use "3", institute "4").
+	 */
+	protected function normalize_payload_ut(array $payload)
+	{
+		$ut = strtolower(trim((string) (isset($payload['ut']) ? $payload['ut'] : '')));
+		if ($ut === '3') {
+			return 'teacher';
+		}
+		if ($ut === '4') {
+			return 'institute';
+		}
+		return $ut;
+	}
+
+	/**
+	 * Active payment_gateway_api_credentials row (same selection as api/main/get_defaults_requirements).
+	 *
+	 * @return array<string, mixed>
+	 */
+	protected function get_payment_gateway_api_credentials_row()
+	{
+		$payment = $this->db_model->select_data(
+			'*',
+			'payment_gateway_api_credentials',
+			array('status' => 1),
+			1,
+			array('id', 'desc')
+		);
+		if (empty($payment)) {
+			$payment = $this->db_model->select_data('*', 'payment_gateway_api_credentials', '', 1, array('id', 'desc'));
+		}
+
+		return !empty($payment[0]) && is_array($payment[0]) ? $payment[0] : array();
+	}
+
+	/**
+	 * Latest zoom_api_credentials row (same selection as api/main/get_defaults_requirements).
+	 *
+	 * @return array<string, mixed>
+	 */
+	protected function get_zoom_api_credentials_row()
+	{
+		$zoom = $this->db_model->select_data('*', 'zoom_api_credentials', '', 1, array('id', 'desc'));
+
+		return !empty($zoom[0]) && is_array($zoom[0]) ? $zoom[0] : array();
+	}
+
+	/**
+	 * Fan-out in-app notifications to all students enrolled in a batch (table `notifications`).
+	 * @return int number of rows inserted
+	 */
+	protected function save_batch_student_notifications($batch_id, $notification_type, $msg, $url = '')
+	{
+		$this->load->library('notification_service');
+		return $this->notification_service->fan_out_batch_students((int) $batch_id, (string) $notification_type, (string) $msg, (string) $url);
+	}
+
+	/**
+	 * A "free institute" (users.paid = '0') lets students enroll in its batches without paying,
+	 * even paid (batch_type = 2) batches. Normal institutes (users.paid = '1', the default) are
+	 * unaffected. The institute is resolved from batches.institute_id, falling back to admin_id.
+	 *
+	 * @param int $institute_user_id users.id of the institute / batch owner
+	 * @return bool true when that institute is free (paid = 0)
+	 */
+	protected function institute_is_free($institute_user_id)
+	{
+		$institute_user_id = (int) $institute_user_id;
+		if ($institute_user_id < 1 || !$this->db->field_exists('paid', 'users')) {
+			return false;
+		}
+		$row = $this->db_model->select_data('paid', 'users use index (id)', array('id' => $institute_user_id), 1);
+		// enum('1','0'); only an explicit '0' means free.
+		return !empty($row) && isset($row[0]['paid']) && (string) $row[0]['paid'] === '0';
+	}
+
+	/**
+	 * Does enrolling in this batch require a payment? False when the batch is free (batch_type != 2)
+	 * OR the owning institute is free (users.paid = '0'). Use this everywhere instead of a bare
+	 * `batch_type == 2` check so free institutes skip the payment step.
+	 *
+	 * @param int|array $batch  batch id, or an already-loaded batch row (needs batch_type + institute_id/admin_id)
+	 * @return bool
+	 */
+	protected function batch_requires_payment($batch)
+	{
+		if (!is_array($batch)) {
+			$batch = $this->db_model->select_data('id,batch_type,institute_id,admin_id', 'batches use index (id)', array('id' => (int) $batch), 1);
+			$batch = !empty($batch[0]) ? $batch[0] : array();
+		}
+		if (empty($batch)) {
+			return false;
+		}
+		$batch_type = isset($batch['batch_type']) ? (int) $batch['batch_type'] : 0;
+		if ($batch_type !== 2) {
+			return false; // batch is already free
+		}
+		$institute_id = !empty($batch['institute_id']) ? (int) $batch['institute_id'] : (isset($batch['admin_id']) ? (int) $batch['admin_id'] : 0);
+		return !$this->institute_is_free($institute_id);
+	}
+
+	/**
+	 * Standard list pagination from request (page, limit, per_page).
+	 *
+	 * @param array $data Merged request body / query
+	 * @return array{ page: int, limit: int, offset: int }
+	 */
+	protected function parse_api_list_pagination(array $data, $default_limit = 20, $max_limit = 100)
+	{
+		$page = isset($data['page']) ? (int) $data['page'] : 1;
+		if ($page < 1) {
+			$page = 1;
+		}
+		$limit = $default_limit;
+		if (isset($data['limit']) && $data['limit'] !== '' && is_numeric($data['limit'])) {
+			$limit = (int) $data['limit'];
+		} elseif (isset($data['per_page']) && $data['per_page'] !== '' && is_numeric($data['per_page'])) {
+			$limit = (int) $data['per_page'];
+		}
+		if ($limit < 1) {
+			$limit = $default_limit;
+		}
+		if ($limit > $max_limit) {
+			$limit = $max_limit;
+		}
+		$offset = ($page - 1) * $limit;
+		return array(
+			'page' => $page,
+			'limit' => $limit,
+			'offset' => $offset,
+		);
+	}
+
+	/**
+	 * Unified pagination block for list APIs (includes `total` for older clients).
+	 *
+	 * @param int $total_records Full result count before LIMIT
+	 * @return array{ page: int, limit: int, totalRecords: int, totalPages: int, total: int }
+	 */
+	protected function build_api_list_pagination_meta($page, $limit, $total_records)
+	{
+		$total = (int) $total_records;
+		$lim = (int) $limit;
+		$total_pages = ($lim > 0) ? (int) ceil($total / $lim) : 0;
+		return array(
+			'page' => (int) $page,
+			'limit' => $lim,
+			'totalRecords' => $total,
+			'totalPages' => $total_pages,
+			'total' => $total,
+		);
+	}
+
+	/**
+	 * Format one `batches` row for API responses (camelCase).
+	 */
+	protected function format_batch_row_for_api(array $b)
+	{
+		$img = isset($b['batch_image']) ? trim((string) $b['batch_image']) : '';
+		$out = array(
+			'batchId' => (int) (isset($b['id']) ? $b['id'] : 0),
+			'batchName' => isset($b['batch_name']) ? $b['batch_name'] : '',
+			'startDate' => isset($b['start_date']) ? $b['start_date'] : '',
+			'endDate' => isset($b['end_date']) ? $b['end_date'] : '',
+			'startTime' => isset($b['start_time']) ? $b['start_time'] : '',
+			'endTime' => isset($b['end_time']) ? $b['end_time'] : '',
+			'batchType' => isset($b['batch_type']) ? (int) $b['batch_type'] : 0,
+			'batchPrice' => isset($b['batch_price']) ? $b['batch_price'] : '',
+			'batchOfferPrice' => isset($b['batch_offer_price']) ? $b['batch_offer_price'] : '',
+			'description' => isset($b['description']) ? $b['description'] : '',
+			'batchImage' => $img,
+			'batchImageUrl' => $img !== '' ? batch_image_url($img) : '',
+			'noOfStudents' => isset($b['no_of_student']) ? (int) $b['no_of_student'] : 0,
+			'status' => isset($b['status']) ? (int) $b['status'] : 0,
+			'catId' => isset($b['cat_id']) ? (int) $b['cat_id'] : 0,
+			'subCatId' => isset($b['sub_cat_id']) ? (int) $b['sub_cat_id'] : 0,
+		);
+		if (isset($b['pay_mode'])) {
+			$out['payMode'] = $b['pay_mode'];
+		}
+		return $out;
+	}
+
+	/**
+	 * Human-readable time range for batch schedule lines (e.g. batch list / detail).
+	 */
+	protected function format_time_range($start_time, $end_time)
+	{
+		$start_ts = strtotime($start_time);
+		$end_ts = strtotime($end_time);
+		if ($start_ts && $end_ts) {
+			return date('g:i a', $start_ts) . ' - ' . date('g:i a', $end_ts);
+		}
+		return trim((string) $start_time . ' - ' . (string) $end_time);
+	}
+
+	/**
+	 * Distinct teacher names assigned to a batch (via batch_subjects).
+	 */
+	protected function teacher_names_for_batch($batch_id)
+	{
+		$batch_id = (int) $batch_id;
+		if ($batch_id < 1) {
+			return '';
+		}
+		$rows = $this->db_model->select_data(
+			'users.name',
+			'batch_subjects use index (id)',
+			array('batch_subjects.batch_id' => $batch_id),
+			'',
+			array('batch_subjects.id', 'asc'),
+			'',
+			array('users', 'users.id = batch_subjects.teacher_id')
+		);
+		if (empty($rows) || !is_array($rows)) {
+			return '';
+		}
+		$names = array();
+		foreach ($rows as $r) {
+			if (!empty($r['name']) && !in_array($r['name'], $names, true)) {
+				$names[] = $r['name'];
+			}
+		}
+		return implode(', ', $names);
+	}
+
+	/**
+	 * One row for api/batch/batch_list `enrolled_batches` payload.
+	 *
+	 * @param array $b Raw batch row (may include enrollment_status, enrolled_at from joins)
+	 * @param string $instructor Comma-separated teacher names
+	 * @param string $schedule From {@see format_time_range()}
+	 */
+	protected function format_batch_list_card_for_api(array $b, $instructor, $schedule)
+	{
+		$bid = (int) (isset($b['id']) ? $b['id'] : 0);
+		$img = isset($b['batch_image']) ? trim((string) $b['batch_image']) : '';
+		$logo = $img !== '' ? batch_image_url($img) : '';
+		$institute_id = isset($b['institute_id']) ? (int) $b['institute_id'] : 0;
+		$institute_name = $institute_id > 0 ? $this->institute_name_by_id($institute_id) : '';
+		return array(
+			'batch_id' => $bid,
+			'title' => isset($b['batch_name']) ? $b['batch_name'] : '',
+			'batchName' => isset($b['batch_name']) ? $b['batch_name'] : '',
+			'institute_id' => $institute_id,
+			'institute_name' => $institute_name,
+			'instituteName' => $institute_name,
+			'instructor' => (string) $instructor,
+			'schedule' => (string) $schedule,
+			'start_time' => isset($b['start_time']) ? $b['start_time'] : '',
+			'end_time' => isset($b['end_time']) ? $b['end_time'] : '',
+			'start_date' => isset($b['start_date']) ? $b['start_date'] : '',
+			'end_date' => isset($b['end_date']) ? $b['end_date'] : '',
+			'logo' => $logo,
+			'batchImage' => $logo,
+			'batch_type' => isset($b['batch_type']) ? (int) $b['batch_type'] : 0,
+			'description' => isset($b['description']) ? $b['description'] : '',
+			'enrollment_status' => isset($b['enrollment_status']) ? (int) $b['enrollment_status'] : 0,
+			'enrolled_at' => isset($b['enrolled_at']) && $b['enrolled_at'] !== null ? $b['enrolled_at'] : '',
+		);
+	}
+
+	/**
+	 * Institute (role 4) name by id, cached per request to avoid repeated lookups in batch loops.
+	 */
+	protected function institute_name_by_id($institute_id)
+	{
+		static $cache = array();
+		$institute_id = (int) $institute_id;
+		if ($institute_id < 1) {
+			return '';
+		}
+		if (array_key_exists($institute_id, $cache)) {
+			return $cache[$institute_id];
+		}
+		$row = $this->db_model->select_data('name', 'users use index (id)', array('id' => $institute_id, 'role' => 4), 1);
+		$name = !empty($row[0]['name']) ? (string) $row[0]['name'] : '';
+		$cache[$institute_id] = $name;
+		return $name;
+	}
+
+	/**
+	 * Count enrolled batches for a student (same filters as {@see fetch_student_enrolled_batches_raw()}).
+	 */
+	protected function count_student_enrolled_batches_raw($student_id, $search = '')
+	{
+		$student_id = (int) $student_id;
+		if ($student_id < 1) {
+			return 0;
+		}
+		$search = trim((string) $search);
+		$this->db->reset_query();
+		$this->db->select('COUNT(DISTINCT batches.id) AS c', false);
+		$this->db->from('batches');
+		$this->db->join('student_batchs', 'student_batchs.batch_id = batches.id');
+		$this->db->where('batches.status', '1');
+		$this->db->where('student_batchs.student_id', $student_id);
+		if ($search !== '') {
+			$this->db->like('batches.batch_name', $search);
+		}
+		$row = $this->db->get()->row_array();
+		return !empty($row['c']) ? (int) $row['c'] : 0;
+	}
+
+	/**
+	 * Raw enrolled batches for a student (batches + student_batchs fields).
+	 *
+	 * @param string $search Optional filter on batches.batch_name
+	 * @param int|null $limit null = no limit; positive = max rows
+	 * @param int $offset SQL offset when $limit is set
+	 * @return array<int, array>
+	 */
+	protected function fetch_student_enrolled_batches_raw($student_id, $search = '', $limit = null, $offset = 0)
+	{
+		$student_id = (int) $student_id;
+		if ($student_id < 1) {
+			return array();
+		}
+		$search = trim((string) $search);
+		$like = ($search !== '') ? array('batches.batch_name', $search) : '';
+		$db_limit = '';
+		if ($limit !== null && (int) $limit > 0) {
+			$db_limit = array((int) $limit, (int) $offset);
+		}
+		$batches = $this->db_model->select_data(
+			'batches.*, student_batchs.status as enrollment_status, student_batchs.create_at as enrolled_at',
+			'batches use index (id)',
+			array('batches.status' => '1', 'student_batchs.student_id' => $student_id),
+			$db_limit,
+			array('batches.id', 'desc'),
+			$like,
+			array('student_batchs', 'student_batchs.batch_id = batches.id')
+		);
+		return is_array($batches) ? $batches : array();
+	}
+
+	/**
+	 * Count batches assigned to a teacher (same filters as {@see fetch_teacher_assigned_batches_raw()}).
+	 */
+	protected function count_teacher_assigned_batches_raw($teacher_id, $search = '')
+	{
+		$teacher_id = (int) $teacher_id;
+		if ($teacher_id < 1) {
+			return 0;
+		}
+		$search = trim((string) $search);
+		$this->db->reset_query();
+		$this->db->select('COUNT(DISTINCT b.id) AS c', false);
+		$this->db->from('batch_subjects bs');
+		$this->db->join('batches b', 'b.id = bs.batch_id');
+		$this->db->where('bs.teacher_id', $teacher_id);
+		$this->db->where('b.status', 1);
+		if ($search !== '') {
+			$this->db->like('b.batch_name', $search);
+		}
+		$row = $this->db->get()->row_array();
+		return !empty($row['c']) ? (int) $row['c'] : 0;
+	}
+
+	/**
+	 * Raw batches assigned to a teacher (DISTINCT via batch_subjects).
+	 *
+	 * @param string $search Optional filter on batch_name
+	 * @param int|null $limit null = no limit
+	 * @param int $offset SQL offset when $limit is set
+	 * @return array<int, array>
+	 */
+	protected function fetch_teacher_assigned_batches_raw($teacher_id, $search = '', $limit = null, $offset = 0)
+	{
+		$teacher_id = (int) $teacher_id;
+		if ($teacher_id < 1) {
+			return array();
+		}
+		$search = trim((string) $search);
+		$params = array($teacher_id);
+		$like_sql = '';
+		if ($search !== '') {
+			$like_sql = ' AND b.batch_name LIKE ? ';
+			$params[] = '%' . $search . '%';
+		}
+		$sql = 'SELECT DISTINCT b.*, 1 AS enrollment_status, NULL AS enrolled_at
+			 FROM batch_subjects bs
+			 JOIN batches b ON b.id = bs.batch_id
+			 WHERE bs.teacher_id = ?
+			   AND b.status = 1
+			   ' . $like_sql . '
+			 ORDER BY b.id DESC';
+		if ($limit !== null && (int) $limit > 0) {
+			$sql .= ' LIMIT ? OFFSET ?';
+			$params[] = (int) $limit;
+			$params[] = (int) $offset;
+		}
+		$query = $this->db->query($sql, $params);
+		if ($query === false) {
+			return array();
+		}
+		$rows = $query->result_array();
+		return is_array($rows) ? $rows : array();
+	}
+
+	/**
+	 * Parse users.teach_batch (comma-separated batch ids) into unique positive ints.
+	 *
+	 * @param string $teach_batch
+	 * @return array<int>
+	 */
+	protected function parse_users_teach_batch_ids($teach_batch)
+	{
+		$teach_batch = trim((string) $teach_batch);
+		if ($teach_batch === '') {
+			return array();
+		}
+		$out = array();
+		foreach (preg_split('/\s*,\s*/', $teach_batch) as $p) {
+			$bid = (int) trim($p);
+			if ($bid > 0) {
+				$out[] = $bid;
+			}
+		}
+		return array_values(array_unique($out));
+	}
+
+	/**
+	 * Tenant admin_id for a teacher (users.admin_id, may be comma-separated text).
+	 *
+	 * @param int $teacher_user_id users.id
+	 * @return int
+	 */
+	protected function teacher_tenant_admin_id($teacher_user_id)
+	{
+		$teacher_user_id = (int) $teacher_user_id;
+		if ($teacher_user_id < 1) {
+			return 0;
+		}
+		$rows = $this->db_model->select_data('admin_id', 'users use index (id)', array('id' => $teacher_user_id), 1);
+		if (empty($rows) || !isset($rows[0]['admin_id'])) {
+			return 0;
+		}
+		$raw = trim((string) $rows[0]['admin_id']);
+		if ($raw === '') {
+			return 0;
+		}
+		if (ctype_digit($raw)) {
+			return (int) $raw;
+		}
+		$parts = preg_split('/\s*,\s*/', $raw);
+		return isset($parts[0]) && ctype_digit($parts[0]) ? (int) $parts[0] : (int) $raw;
+	}
+
+	/**
+	 * Teacher may use attendance APIs for a batch if batch_subjects links them OR users.teach_batch
+	 * lists the batch (login responses expose teach_batch as batchId; admin save keeps both in sync),
+	 * OR the batch belongs to the same coaching tenant (batches.admin_id = teacher's admin_id).
+	 *
+	 * @param int $teacher_id users.id
+	 * @param int $batch_id
+	 * @return bool
+	 */
+	protected function teacher_assigned_for_attendance_batch($teacher_id, $batch_id)
+	{
+		$teacher_id = (int) $teacher_id;
+		$batch_id = (int) $batch_id;
+		if ($teacher_id < 1 || $batch_id < 1) {
+			return false;
+		}
+		if (!empty($this->db_model->select_data('id', 'batch_subjects', array('teacher_id' => $teacher_id, 'batch_id' => $batch_id), 1))) {
+			return true;
+		}
+		$rows = $this->db_model->select_data('teach_batch', 'users use index (id)', array('id' => $teacher_id), 1);
+		if (!empty($rows)) {
+			$ids = $this->parse_users_teach_batch_ids(isset($rows[0]['teach_batch']) ? $rows[0]['teach_batch'] : '');
+			if (in_array($batch_id, $ids, true)) {
+				return true;
+			}
+		}
+		$batch_row = $this->db_model->select_data('id,admin_id', 'batches use index (id)', array('id' => $batch_id), 1);
+		if (!empty($batch_row)) {
+			$b_admin = isset($batch_row[0]['admin_id']) ? (int) $batch_row[0]['admin_id'] : 0;
+			$t_admin = $this->teacher_tenant_admin_id($teacher_id);
+			if ($b_admin > 0 && $t_admin > 0 && $b_admin === $t_admin) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Batch ids a teacher may scope attendance to (batch_subjects ∪ teach_batch).
+	 *
+	 * @param int $teacher_id
+	 * @return array<int>
+	 */
+	protected function teacher_attendance_accessible_batch_ids($teacher_id)
+	{
+		$teacher_id = (int) $teacher_id;
+		if ($teacher_id < 1) {
+			return array();
+		}
+		$batch_ids = array();
+		$assigned = $this->db_model->select_data('batch_id', 'batch_subjects', array('teacher_id' => $teacher_id), '');
+		if (!empty($assigned)) {
+			foreach ($assigned as $r) {
+				$bid = isset($r['batch_id']) ? (int) $r['batch_id'] : 0;
+				if ($bid > 0) {
+					$batch_ids[] = $bid;
+				}
+			}
+		}
+		$urows = $this->db_model->select_data('teach_batch', 'users use index (id)', array('id' => $teacher_id), 1);
+		if (!empty($urows) && isset($urows[0]['teach_batch'])) {
+			foreach ($this->parse_users_teach_batch_ids($urows[0]['teach_batch']) as $bid) {
+				$batch_ids[] = $bid;
+			}
+		}
+		$batch_ids = array_values(array_unique(array_filter($batch_ids, function ($v) {
+			return (int) $v > 0;
+		})));
+		return $batch_ids;
+	}
+
+	/**
+	 * Count active batches (status = 1), optional filter on batch_name.
+	 */
+	protected function count_all_active_batches_raw($search = '')
+	{
+		$search = trim((string) $search);
+		$this->db->reset_query();
+		$this->db->from('batches');
+		$this->db->where('status', '1');
+		if ($search !== '') {
+			$this->db->like('batch_name', $search);
+		}
+		return (int) $this->db->count_all_results();
+	}
+
+	/**
+	 * Active batches only (status = 1), ordered by id desc, with optional name search.
+	 *
+	 * @param string   $search
+	 * @param int|null $limit  null = no limit
+	 * @param int      $offset
+	 * @return array<int, array>
+	 */
+	protected function fetch_all_active_batches_raw($search = '', $limit = null, $offset = 0)
+	{
+		$search = trim((string) $search);
+		$like = ($search !== '') ? array('batch_name', $search) : '';
+		$db_limit = '';
+		if ($limit !== null && (int) $limit > 0) {
+			$db_limit = array((int) $limit, (int) $offset);
+		}
+		$batches = $this->db_model->select_data(
+			'*',
+			'batches use index (id)',
+			array('status' => '1'),
+			$db_limit,
+			array('id', 'desc'),
+			$like
+		);
+		return is_array($batches) ? $batches : array();
+	}
+
+	/**
+	 * Map raw batch rows to batch_list card objects (instructor + schedule filled).
+	 *
+	 * @param array $batches Raw rows from {@see fetch_student_enrolled_batches_raw()}, {@see fetch_teacher_assigned_batches_raw()}, or {@see fetch_all_active_batches_raw()}
+	 * @return array<int, array>
+	 */
+	protected function map_batches_to_dashboard_list_cards(array $batches)
+	{
+		$list = array();
+		if (empty($batches)) {
+			return $list;
+		}
+		foreach ($batches as $b) {
+			if (!is_array($b)) {
+				continue;
+			}
+			$bid = (int) (isset($b['id']) ? $b['id'] : 0);
+			if ($bid < 1) {
+				continue;
+			}
+			$list[] = $this->format_batch_list_card_for_api(
+				$b,
+				$this->teacher_names_for_batch($bid),
+				$this->format_time_range(
+					isset($b['start_time']) ? $b['start_time'] : '',
+					isset($b['end_time']) ? $b['end_time'] : ''
+				)
+			);
+		}
+		return $list;
+	}
+
+	/**
+	 * User ids that may appear on `batches.admin_id` for an institute account.
+	 * Includes the institute login id, optional `users.parent_id`, and the first numeric id from `users.admin_id` (tenant field, same idea as teacher tenant resolution).
+	 *
+	 * @param int $institute_user_id users.id for the institute row
+	 * @param array|null $user_row Optional institute row with admin_id, parent_id
+	 * @return list<int>
+	 */
+	protected function resolve_institute_batch_owner_user_ids($institute_user_id, array $user_row = null)
+	{
+		$ids = array();
+		$uid = (int) $institute_user_id;
+		if ($uid > 0) {
+			$ids[] = $uid;
+		}
+		if ($user_row !== null) {
+			if (!empty($user_row['parent_id'])) {
+				$pid = (int) $user_row['parent_id'];
+				if ($pid > 0) {
+					$ids[] = $pid;
+				}
+			}
+			if (isset($user_row['admin_id'])) {
+				$raw = trim((string) $user_row['admin_id']);
+				if ($raw !== '' && ctype_digit($raw)) {
+					$ids[] = (int) $raw;
+				} elseif ($raw !== '') {
+					$parts = preg_split('/\s*,\s*/', $raw);
+					$first = isset($parts[0]) ? trim((string) $parts[0]) : '';
+					if ($first !== '' && ctype_digit($first)) {
+						$ids[] = (int) $first;
+					}
+				}
+			}
+		}
+		$out = array();
+		foreach ($ids as $x) {
+			$x = (int) $x;
+			if ($x > 0 && !in_array($x, $out, true)) {
+				$out[] = $x;
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * Batches tied to an institute (`batches.admin_id` IN resolved owner user ids).
+	 *
+	 * @param int $institute_user_id Fallback when options.owner_ids omitted
+	 * @param array $options
+	 *   - owner_ids: int[] — if set, used for where_in(admin_id); else [institute_user_id]
+	 *   - active_only (bool, default true) — status 1 or '1'
+	 * @return list<array> formatted batch rows
+	 */
+	protected function fetch_institute_batches_for_api($institute_user_id, array $options = null)
+	{
+		$uid = (int) $institute_user_id;
+		if ($uid < 1) {
+			return array();
+		}
+		$opts = is_array($options) ? $options : array();
+		$active_only = !array_key_exists('active_only', $opts) || $opts['active_only'];
+		$owner_ids = isset($opts['owner_ids']) && is_array($opts['owner_ids']) ? $opts['owner_ids'] : array();
+		$owner_ids = array_values(array_unique(array_map('intval', $owner_ids)));
+		$owner_ids = array_values(array_filter($owner_ids, function ($x) {
+			return $x > 0;
+		}));
+		$this->db->reset_query();
+		$this->db->from('batches');
+		$this->db->group_start();
+		$this->db->where('institute_id', $uid);
+		if (!empty($owner_ids)) {
+			$this->db->or_where_in('admin_id', $owner_ids);
+		}
+		$this->db->group_end();
+		if ($active_only) {
+			$this->db->group_start();
+			$this->db->where('status', 1);
+			$this->db->or_where('status', '1');
+			$this->db->group_end();
+		}
+		$this->db->order_by('id', 'desc');
+		$rows = $this->db->get()->result_array();
+		return !empty($rows) && is_array($rows) ? $rows : array();
+	}
+
+	/**
+	 * Approved institute reviews (review.status = 1) plus aggregate rating.
+	 *
+	 * @param int $institute_id
+	 * @param array $options
+	 *   - reviews_limit: null = no row limit (all approved); int 1..5000 caps list length (aggregate still full set)
+	 *   - reviews_offset: int, used only when reviews_limit is set (SQL OFFSET)
+	 * @return array Keys: averageRating (float), totalReviews (int), reviews (list of review rows).
+	 */
+	protected function fetch_institute_approved_reviews_for_api($institute_id, array $options = array())
+	{
+		$institute_id = (int) $institute_id;
+		$empty = array(
+			'averageRating' => 0.0,
+			'totalReviews' => 0,
+			'reviews' => array(),
+		);
+		if ($institute_id < 1) {
+			return $empty;
+		}
+		$offset = 0;
+		if (array_key_exists('reviews_offset', $options)) {
+			$offset = (int) $options['reviews_offset'];
+			if ($offset < 0) {
+				$offset = 0;
+			}
+		}
+		$limit = null;
+		if (array_key_exists('reviews_limit', $options)) {
+			if ($options['reviews_limit'] === null || $options['reviews_limit'] === '') {
+				$limit = null;
+			} else {
+				$limit = (int) $options['reviews_limit'];
+				if ($limit < 1) {
+					$limit = null;
+				} elseif ($limit > 5000) {
+					$limit = 5000;
+				}
+			}
+		}
+		$this->db->reset_query();
+		$this->db->select('AVG(rating) as avgRating, COUNT(id) as totalReviews', false);
+		$this->db->from('review');
+		$this->db->where('institute_id', $institute_id);
+		//$this->db->where('status', 1);
+		$agg = $this->db->get()->row_array();
+		$avg = 0.0;
+		$total = 0;
+		if (!empty($agg)) {
+			$avg = isset($agg['avgRating']) && $agg['avgRating'] !== null && $agg['avgRating'] !== ''
+				? (float) $agg['avgRating'] : 0.0;
+			$total = isset($agg['totalReviews']) ? (int) $agg['totalReviews'] : 0;
+		}
+		$this->db->reset_query();
+		$this->db->select('id,user_id,user_type,institute_id,rating,msg,approved_by,status,created_at', false);
+		$this->db->from('review');
+		$this->db->where('institute_id', $institute_id);
+		//$this->db->where('status', 1);
+		$this->db->order_by('id', 'desc');
+		if ($limit !== null) {
+			$this->db->limit($limit, $offset);
+		}
+		$rows = $this->db->get()->result_array();
+		$reviews = array();
+		if (!empty($rows)) {
+			foreach ($rows as $r) {
+				$reviews[] = array(
+					'id' => (int) (isset($r['id']) ? $r['id'] : 0),
+					'userId' => (int) (isset($r['user_id']) ? $r['user_id'] : 0),
+					'userType' => isset($r['user_type']) ? $r['user_type'] : '',
+					'instituteId' => (int) (isset($r['institute_id']) ? $r['institute_id'] : $institute_id),
+					'rating' => isset($r['rating']) ? (int) $r['rating'] : 0,
+					'msg' => isset($r['msg']) ? $r['msg'] : '',
+					'approvedBy' => isset($r['approved_by']) ? (int) $r['approved_by'] : 0,
+					'status' => isset($r['status']) ? (int) $r['status'] : 0,
+					'createdAt' => isset($r['created_at']) ? $r['created_at'] : '',
+				);
+			}
+		}
+		return array(
+			'averageRating' => round($avg, 2),
+			'totalReviews' => $total,
+			'reviews' => $reviews,
+		);
 	}
 }

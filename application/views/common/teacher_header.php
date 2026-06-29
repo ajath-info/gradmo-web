@@ -178,6 +178,7 @@
         var ltr_batch_price_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_batch_price_msg')); ?>";
         var ltr_payment_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_payment_msg')); ?>";
         var ltr_something_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_something_msg')); ?>";
+        var ltr_contest_name_required_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_contest_name_required_msg')); ?>";
         var ltr_live_class_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_live_class_msg')); ?>";
 		var ltr_add_book  ="<?php echo html_escape($this->common->languageTranslator('ltr_add_book')); ?>";
 		var ltr_edit_book  ="<?php echo html_escape($this->common->languageTranslator('ltr_edit_book')); ?>";
@@ -209,34 +210,48 @@ if(isset($timezoneDB[0]['timezone']) && !empty($timezoneDB[0]['timezone'])){
 	date_default_timezone_set($timezoneDB[0]['timezone']);
 } 
 
-$admin_id = $this->session->userdata('admin_id');
-$teacher_id = $this->session->userdata('uid');
-$condN = "admin_id = $admin_id AND teacher_id = $teacher_id AND status = 1 AND read_status = 0";
-$notice_count = $this->db_model->countAll('notices use index(id)',$condN);
-
-
-$cur_arr = explode('/',$_SERVER['REQUEST_URI']);
-$timezoneDB = $this->db_model->select_data('timezone','site_details',array('id'=>1));
-
-if(isset($timezoneDB[0]['timezone']) && !empty($timezoneDB[0]['timezone'])){
-    date_default_timezone_set($timezoneDB[0]['timezone']);
-} 
-
-$admin_id = $this->session->userdata('admin_id');
-$teacher_id = $this->session->userdata('uid');
-$condN = "admin_id = $admin_id AND teacher_id = $teacher_id AND status = 1 AND read_status = 0";
-$notice_count = $this->db_model->countAll('notices use index(id)',$condN);
-$logo = current($this->db_model->select_data('*','users use index (id)',array('id'=>$admin_id)));
-    $lastrecord = current($this->db_model->select_data('access','users',array('id' => $this->session->userdata('uid')),1,array('id','desc')));
-    if(isset($lastrecord['access']))
-    $access = json_decode($lastrecord['access']);
-    
+$admin_id = (int) $this->session->userdata('admin_id');
+$teacher_id = (int) $this->session->userdata('uid');
+if ($admin_id < 1) {
+	$admin_id = $teacher_id;
+}
+$notice_count = 0;
+if ($admin_id > 0 && $teacher_id > 0) {
+	$condN = 'admin_id = ' . $admin_id . ' AND teacher_id = ' . $teacher_id . ' AND status = 1 AND read_status = 0';
+	$notice_count = $this->db_model->countAll('notices use index(id)', $condN);
+}
+$logo = array();
+if ($admin_id > 0) {
+	$logo_row = $this->db_model->select_data('*', 'users use index (id)', array('id' => $admin_id), 1);
+	$logo = is_array($logo_row) && ! empty($logo_row) ? current($logo_row) : array();
+}
+if ( ! is_array($logo)) {
+	$logo = array();
+}
+$uid_for_access = (int) $this->session->userdata('uid');
+$lastrecord = array();
+if ($uid_for_access > 0) {
+	$lr = $this->db_model->select_data('access', 'users', array('id' => $uid_for_access), 1, array('id', 'desc'));
+	if (is_array($lr) && ! empty($lr)) {
+		$lastrecord = current($lr);
+	}
+}
+if ( ! is_array($lastrecord)) {
+	$lastrecord = array();
+}
+$access = new stdClass();
+if ( ! empty($lastrecord['access'])) {
+	$decoded = json_decode($lastrecord['access']);
+	if (is_object($decoded)) {
+		$access = $decoded;
+	}
+}
 ?>
 <div class="edu_header_sidebar">
     <header class="edu_left_header">
         <div class="edu_admin_header_left" >
             <div class="edu_admin_logo">
-                <a href="<?php echo base_url('teacher/dashboard')?>"><img src="<?php if(!empty($logo['teach_image'])){ echo base_url('uploads/admin/'.$logo['teach_image']); }else{
+                <a href="<?php echo base_url('teacher/dashboard')?>"><img src="<?php if(!empty($logo['teach_image'])){ echo profile_image_url($logo['teach_image'], 1, 'admin'); }else{
                     echo html_escape($this->common->siteLogo);
                 } ?>" class="logoRelativeCls main_logo" alt="Logo"></a>
                 <a href="#"><img src="<?=base_url()?>assets/images/mini_logo.png" class="mini_logo" alt="Minilogo"></a>
@@ -274,48 +289,9 @@ $logo = current($this->db_model->select_data('*','users use index (id)',array('i
                         </svg>  
                         <span><?php echo html_escape($this->common->languageTranslator('ltr_dashboard')); ?> </span>
                      </a></li>
-                     <?php 
-                      if(isset($access->assignment)){
-                      if($access->assignment == '1'){ ?>
-                    <li <?php echo in_array("homework-manage",$cur_arr)?'class="active"':'';?>><a href="<?php echo base_url();?>teacher/homework-manage">
-                        <svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" viewBox="0 0 512 512" xml:space="preserve">
-                            <g>
-                                <g>
-                                    <path d="M509.071,86.613l-39.176-39.176c-3.904-3.905-10.236-3.903-14.142,0l-26.085,26.085c-1.318-3.99-5.08-6.875-9.508-6.875
-                                        H279.817c-19.155,0-36.105,9.62-46.273,24.283c-10.168-14.663-27.118-24.283-46.273-24.283H46.917
-                                        c-5.523,0-10.012,4.489-10.012,10.012v16.697H10c-5.523,0-10,4.478-10,10v354.135c0,5.522,4.477,10,10,10h447.076
-                                        c5.523,0,10-4.478,10-10V142.752l41.996-41.996C512.977,96.85,512.976,90.518,509.071,86.613z M223.538,447.491H20V113.356h16.905
-                                        v292.909c0,5.522,4.477,10,10,10h176.633V447.491z M223.538,396.265H56.905v-28.357h130.366c13.677,0,26.413,4.944,36.267,14
-                                        V396.265z M187.271,347.907H56.905V86.647h130.366c20.002,0,36.273,16.272,36.273,36.273v167.481c0,5.522,4.477,10,10,10
-                                        s10-4.478,10-10v-167.48c0-20.001,16.272-36.273,36.273-36.273H410.17v6.371L297.345,205.844c-1.367,1.367-2.309,3.102-2.71,4.993
-                                        l-10.568,49.744c-0.704,3.312,0.316,6.755,2.71,9.149c1.895,1.895,5.723,3.269,9.149,2.71l49.744-10.567
-                                        c1.891-0.401,3.625-1.343,4.993-2.71l59.507-59.507v148.251H279.817c-16.901,0-33.297,5.837-46.273,16.26
-                                        C220.567,353.743,204.172,347.907,187.271,347.907z M313.586,220.054c4.063,4.063,9.122,6.848,14.753,8.198
-                                        c1.239,5.485,4.009,10.563,8.115,14.67c0.129,0.128,0.258,0.256,0.389,0.382l-30.014,6.376l6.376-30.014
-                                        C313.331,219.796,313.457,219.926,313.586,220.054z M410.171,367.908v28.357H243.538v-14.346
-                                        c9.856-9.063,22.597-14.011,36.28-14.011H410.171z M447.076,447.491H243.538v-31.226h176.633c5.523,0,10-4.478,10-10V179.997
-                                        c0-0.112-0.003-0.223-0.006-0.334l16.911-16.911V447.491z M351.76,229.783c-0.409-0.303-0.797-0.638-1.163-1.003
-                                        c-2.228-2.229-3.293-5.306-2.92-8.443c0.347-2.923-0.611-5.85-2.619-8.002c-1.896-2.032-4.546-3.178-7.311-3.178
-                                        c-0.163,0-0.326,0.004-0.49,0.012c-2.729,0.143-6.595-0.323-9.529-3.258c-0.365-0.365-0.7-0.754-1.002-1.162L431.883,99.592
-                                        l25.034,25.034L351.76,229.783z M471.059,110.483l-25.034-25.034l16.799-16.799l25.034,25.034L471.059,110.483z"></path>
-                                </g>
-                            </g>
-                            <g>
-                                <g>
-                                    <path d="M243.35,327.121c-0.13-0.641-0.32-1.271-0.57-1.88c-0.25-0.601-0.56-1.181-0.92-1.721c-0.37-0.55-0.78-1.06-1.24-1.52
-                                        c-0.47-0.46-0.98-0.88-1.52-1.25c-0.55-0.36-1.13-0.66-1.73-0.91c-0.6-0.25-1.23-0.45-1.87-0.57c-1.29-0.26-2.62-0.26-3.91,0
-                                        c-0.64,0.12-1.27,0.32-1.87,0.57c-0.6,0.25-1.18,0.55-1.73,0.91c-0.54,0.37-1.06,0.79-1.52,1.25c-0.46,0.46-0.88,0.97-1.24,1.52
-                                        c-0.361,0.54-0.67,1.12-0.92,1.721c-0.25,0.609-0.44,1.239-0.57,1.88c-0.13,0.64-0.2,1.3-0.2,1.949c0,0.65,0.07,1.31,0.2,1.95
-                                        c0.129,0.641,0.32,1.27,0.57,1.87c0.25,0.61,0.56,1.19,0.92,1.73c0.36,0.55,0.78,1.06,1.24,1.52c0.46,0.46,0.98,0.88,1.52,1.24
-                                        c0.55,0.36,1.13,0.67,1.73,0.92c0.6,0.25,1.23,0.44,1.87,0.57c0.65,0.13,1.3,0.199,1.95,0.199c0.66,0,1.31-0.069,1.96-0.199
-                                        c0.64-0.13,1.27-0.32,1.87-0.57c0.6-0.25,1.18-0.56,1.73-0.92c0.54-0.36,1.05-0.78,1.52-1.24c1.86-1.86,2.93-4.439,2.93-7.07
-                                        C243.55,328.421,243.48,327.761,243.35,327.121z"></path>
-                                </g>
-                            </g>
-                        </svg>
-                         <span><?php echo html_escape($this->common->languageTranslator('ltr_assignment_manager')); ?></span>
-                     </a></li>
-                     <?php }} if(isset($access->live_class)){
+                     <?php
+                      // REMOVED: Assignments/Homework menu item (per user request)
+                      if(isset($access->live_class)){
                       if($access->live_class == '1'){ ?>
                 <li <?php echo in_array("live-class",$cur_arr)?'class="active"':'';?>><a href="<?php echo base_url();?>teacher/live-class">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><g><path d="M472,72H376V40a8,8,0,0,0-11.97-6.95L320,58.21V40a8,8,0,0,0-8-8H144a8,8,0,0,0-8,8V72H40A32.036,32.036,0,0,0,8,104V376a32.036,32.036,0,0,0,32,32H204.9l-10.67,32H168a8,8,0,0,0-8,8v24a8,8,0,0,0,8,8H344a8,8,0,0,0,8-8V448a8,8,0,0,0-8-8H317.77L307.1,408H472a32.042,32.042,0,0,0,32-32V104A32.042,32.042,0,0,0,472,72ZM320,76.64l40-22.85V154.21l-40-22.85ZM152,48H304V160H152ZM336,456v8H176v-8ZM211.1,440l10.67-32h68.46l10.67,32ZM488,376a16.021,16.021,0,0,1-16,16H40a16.021,16.021,0,0,1-16-16V360H488Zm0-32H24V104A16.021,16.021,0,0,1,40,88h96v80a8,8,0,0,0,8,8H312a8,8,0,0,0,8-8V149.79l44.03,25.16A8,8,0,0,0,376,168V88h96a16.021,16.021,0,0,1,16,16Z"/><path d="M96,368H48a8,8,0,0,0,0,16H96a8,8,0,0,0,0-16Z"/><path d="M128,368h-8a8,8,0,0,0,0,16h8a8,8,0,0,0,0-16Z"/><path d="M160,312H352a32.036,32.036,0,0,0,32-32V224a32.036,32.036,0,0,0-32-32H160a32.036,32.036,0,0,0-32,32v56A32.036,32.036,0,0,0,160,312Zm-16-88a16.019,16.019,0,0,1,16-16H352a16.019,16.019,0,0,1,16,16v56a16.019,16.019,0,0,1-16,16H160a16.019,16.019,0,0,1-16-16Z"/><path d="M168,288h32a8,8,0,0,0,0-16H176V224a8,8,0,0,0-16,0v56A8,8,0,0,0,168,288Z"/><path d="M224,288a8,8,0,0,0,8-8V224a8,8,0,0,0-16,0v56A8,8,0,0,0,224,288Z"/><path d="M312,288h32a8,8,0,0,0,0-16H320V256h8a8,8,0,0,0,0-16h-8v-8h24a8,8,0,0,0,0-16H312a8,8,0,0,0-8,8v56A8,8,0,0,0,312,288Z"/><path d="M264.308,282.2a8,8,0,0,0,15.384,0l16-56a8,8,0,1,0-15.384-4.4L272,250.88,263.692,221.8a8,8,0,1,0-15.384,4.4Z"/></g></svg>
@@ -703,7 +679,7 @@ $logo = current($this->db_model->select_data('*','users use index (id)',array('i
                 <a class="edu_admin_bar edu_admin_with_img" href="javascript:void(0);"> 
 					<?php 
 					if(isset($this->session->userdata['profile_img']) && !empty($this->session->userdata['profile_img'])){
-						echo '<img src="'.base_url('uploads/teachers/').$this->session->userdata['profile_img'].'" />';
+						echo '<img src="'.profile_image_url($this->session->userdata['profile_img'], 3, 'teacher').'" data-fallback-type="teacher" data-has-fallback="1" />';
 					}else{
 						echo '<span class="icofont-user-alt-4"></span>';
 					} 

@@ -7,9 +7,53 @@ class Db_model extends CI_Model {
 		$this->load->database();		 # load the database
 		$this->setCode();
 	} 
+
+	private function has_empty_in_clause($where)
+	{
+		if (is_string($where) && preg_match('/\bin\s*\(\s*\)/i', $where)) {
+			return true;
+		}
+		if (is_array($where)) {
+			foreach ($where as $key => $value) {
+				if (is_string($key) && preg_match('/\bin\s*\(\s*\)/i', $key)) {
+					return true;
+				}
+				if (is_string($value) && preg_match('/\bin\s*\(\s*\)/i', $value)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	private function normalize_where_in_values($where_in)
+	{
+		if ($where_in == '' || !is_array($where_in) || !isset($where_in[1])) {
+			return array();
+		}
+		$raw_values = explode(',', (string) $where_in[1]);
+		$values = array();
+		foreach ($raw_values as $value) {
+			$value = trim((string) $value);
+			if ($value !== '') {
+				$values[] = $value;
+			}
+		}
+		return $values;
+	}
 	
 	# function for select data from database , with condition , limit , order , like and join clause
 	function select_data($field , $table , $where = '' , $limit = '' , $order = '' , $like = '' , $join_array = '' , $group = '', $or_like = '',$where_in =''){ 
+		if ($this->has_empty_in_clause($where)) {
+			return array();
+		}
+		$where_in_values = $this->normalize_where_in_values($where_in);
+		if ($where_in != '' && empty($where_in_values)) {
+			return array();
+		}
+		// Reset QB so this query is never merged with a half-built query on the same DB instance
+		// (e.g. api/main/notifications_list sets select/from then calls select_data for batch_subjects).
+		$this->db->reset_query();
 		$this->db->select($field);
 		$this->db->from($table);
 		if($where != ""){ 
@@ -17,7 +61,7 @@ class Db_model extends CI_Model {
 		}
 	    if($where_in !='' ){
            
-           $this->db->where_in($where_in[0],explode(',',$where_in[1]));
+           $this->db->where_in($where_in[0],$where_in_values);
         }
 		if($join_array != ''){
 			if(in_array('multiple',$join_array)){
@@ -202,12 +246,20 @@ class Db_model extends CI_Model {
 	}
 	
 	function select_track($field , $table , $where = '' , $wherein = array()){
+		if ($this->has_empty_in_clause($where)) {
+			return array();
+		}
 		$this->db->select($field);
 		$this->db->from($table);
 		if($where != "")
 			$this->db->where($where);
-		if(!empty($wherein))
-			$this->db->where_in($wherein[0],explode(',',$wherein[1]));
+		if(!empty($wherein)){
+			$where_in_values = $this->normalize_where_in_values($wherein);
+			if (empty($where_in_values)) {
+				return array();
+			}
+			$this->db->where_in($wherein[0],$where_in_values);
+		}
 		
 		return $this->db->get()->result_array();
 		die();
@@ -255,6 +307,13 @@ class Db_model extends CI_Model {
 	}
 
 	public function countAll($tbl_name,$where='',$like='',$where1='',$likes='',$join_array='',$group='',$or_like='',$where_in=''){
+        if ($this->has_empty_in_clause($where) || $this->has_empty_in_clause($where1)) {
+            return 0;
+        }
+        $where_in_values = $this->normalize_where_in_values($where_in);
+        if($where_in !='' && empty($where_in_values)){
+            return 0;
+        }
         $this->db->from($tbl_name);
         if($where !=''){
             $this->db->where($where);
@@ -268,7 +327,7 @@ class Db_model extends CI_Model {
         }
         if($where_in !='' ){
            
-           $this->db->where_in($where_in[0],explode(',',$where_in[1]));
+           $this->db->where_in($where_in[0],$where_in_values);
         }
         
 		
@@ -403,4 +462,57 @@ class Db_model extends CI_Model {
 	    }
 	}
 	
+	public function otp_account_exists($mobile, $user_type) {
+		if ($user_type === 'student') {
+			return $this->db
+				->where('mobile', $mobile)
+				->count_all_results('students') > 0;
+		} else {
+			return $this->db
+				->where('mobile', $mobile)
+				->where('user_type', $user_type)
+				->count_all_results('users') > 0;
+		}
+	}
+
+	/**
+	 * Resolve 10-digit mobile stored on the account for OTP APIs when the client sends email only.
+	 *
+	 * @param string $email
+	 * @param string $user_type student|teacher|institute
+	 * @return string|null 10-digit mobile or null
+	 */
+	public function resolve_otp_mobile_from_email($email, $user_type)
+	{
+		$email = trim((string) $email);
+		$user_type = strtolower(trim((string) $user_type));
+		if ($email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+			return null;
+		}
+		if ($user_type === 'student') {
+			$row = $this->db->where('email', $email)->get('students', 1)->row_array();
+			if (empty($row)) {
+				return null;
+			}
+			$raw = isset($row['mobile']) ? trim((string) $row['mobile']) : '';
+			if ($raw === '' && ! empty($row['contact_no'])) {
+				$raw = trim((string) $row['contact_no']);
+			}
+		} else {
+			$row = $this->db->where('email', $email)->where('user_type', $user_type)->get('users', 1)->row_array();
+			if (empty($row)) {
+				return null;
+			}
+			$raw = isset($row['mobile']) ? trim((string) $row['mobile']) : '';
+		}
+		$digits = preg_replace('/\D/', '', $raw);
+		if (strlen($digits) > 10) {
+			$digits = substr($digits, -10);
+		}
+		if (strlen($digits) === 11 && $digits[0] === '0') {
+			$digits = substr($digits, 1);
+		}
+		return strlen($digits) === 10 ? $digits : null;
+	}
+
 }

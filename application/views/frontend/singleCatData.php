@@ -31,7 +31,7 @@
                     	  <div class="col-lg-3 col-sm-6">
                         <div class="edu-course-box">
                             <div class="edu-course-img">
-                                <img src="<?php if(!empty($bat['batch_image'])) { echo base_url('uploads\batch_image/').$bat['batch_image'] ; }else{ echo base_url('uploads/site_data/'.$site_Details['0']['site_logo']); } ?>" alt="image">
+                                <img src="<?php if(!empty($bat['batch_image'])) { echo base_url('uploads\batch_image/').$bat['batch_image'] ; }else{ echo ''; } ?>" alt="image" data-fallback-type="batch" data-has-fallback="1">
                                	 	<?php if(!empty($bat['batch_offer_price'])){ ?> <span class="edu-course-offer"><?php echo html_escape($this->common->languageTranslator('ltr_offer')); ?></span> <?php } ?>                               <a href="<?php echo base_url('enroll-now/'.$bat['id']); ?>" class="edu-enroll-btn"><?php echo html_escape($this->common->languageTranslator('ltr_enroll_now'));?></a>
                             </div> 
                             <div class="edu-course-content">

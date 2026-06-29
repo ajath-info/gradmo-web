@@ -132,7 +132,7 @@
 
     		    	<div class="form-group edu_bottom_20">
 							<span>
-                                <select class="form-control filter_batches_teacher edu_selectbox_with_search" name="filter_batches_teacher" data-placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_select_batch'));?>" data-count="no">
+                                <select class="form-control filter_batches_teacher edu_selectbox_without_search" name="filter_batches_teacher" data-placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_select_batch'));?>" data-count="no">
                                     <option value=""><?php echo html_escape($this->common->languageTranslator('ltr_select_batch'));?></option>
                                     <?php
                                     if(!empty($all_batches)){

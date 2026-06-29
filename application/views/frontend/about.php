@@ -27,7 +27,7 @@
 					</div>
 					<div class="col-lg-6 col-md-12 col-sm-12 col-12">
 						<div class="edu_about_detail mb_30">
-							<h4 class="edu_subTitle"><?php echo !empty($frontend_details[0]['abt_frst_sub_heading'])?$frontend_details[0]['abt_frst_sub_heading']:'About E-Academy';?></h4>
+							<h4 class="edu_subTitle"><?php echo !empty($frontend_details[0]['abt_frst_sub_heading'])?$frontend_details[0]['abt_frst_sub_heading']:'About Gradmo';?></h4>
 							<h2 class="edu_heading"><?php echo !empty($frontend_details[0]['abt_frst_heading'])?$frontend_details[0]['abt_frst_heading']:'Why Choose Us From thousands';?></h2>
 							<p class="mb-3"><?php echo !empty($frontend_details[0]['abt_frst_desc'])?$frontend_details[0]['abt_frst_desc']:'Consectetur adipisicing elit sed do eiusmod tempor incididunt ut labore eesdoeit dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation and in ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum.
 							Excepteur sint occaecat cupidatat noesn proident sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut peerspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantiuws totam rem aperiam, eaque ipsa quae.';?></p>

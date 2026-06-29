@@ -17,8 +17,12 @@
 	<link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/magnific-popup.css">
     <link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/swiper.min.css">
 	<link rel="stylesheet" type="text/css" href="<?php echo base_url().'assets/css/toastr.min.css';?>"/>
-	<link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/frontend-rtl.css?<?php echo time();?>">
-    <link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/frontend-style.css?<?php echo time();?>">
+	<?php
+		$_fa_ver = trim((string) $this->config->item('frontend_asset_version'));
+		$_fa_q = ($_fa_ver !== '') ? ('?v=' . rawurlencode($_fa_ver)) : '';
+	?>
+	<link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/frontend-rtl.css<?php echo $_fa_q; ?>">
+    <link rel="stylesheet" type="text/css" href="<?php echo base_url();?>assets/css/frontend-style.css<?php echo $_fa_q; ?>">
     
 	<!----- Favicon ----->
 	<link rel="shortcut icon" type="image/ico" href="<?php echo html_escape($this->common->siteFavicon); ?>" />
@@ -157,6 +161,7 @@
         var ltr_fecherd  ="<?php echo html_escape($this->common->languageTranslator('ltr_fecherd')); ?>";
         var ltr_email  ="<?php echo html_escape($this->common->languageTranslator('ltr_email')); ?>";
         var ltr_wrong_credentials_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_wrong_credentials_msg')); ?>";
+        var ltr_benefit  ="<?php echo html_escape($this->common->languageTranslator('ltr_benefit')); ?>";
         var ltr_batch_spe_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_batch_spe_msg')); ?>";
         var ltr_you_delete  ="<?php echo html_escape($this->common->languageTranslator('ltr_you_delete')); ?>";
         var ltr_i_learn  ="<?php echo html_escape($this->common->languageTranslator('ltr_i_learn')); ?>";
@@ -185,66 +190,85 @@
 	</div>
 	<!----- Preloader Box ----->
 	<?php
-	$timezoneDB = $this->db_model->select_data('timezone','site_details',array('id'=>1));
-
-	if(isset($timezoneDB[0]['timezone']) && !empty($timezoneDB[0]['timezone'])){
-		date_default_timezone_set($timezoneDB[0]['timezone']);
-	}
+		$front_logo_src = trim((string) $this->common->siteminiLogo);
+		if ($front_logo_src === '') {
+			$front_logo_src = base_url('assets/images/logo.png');
+		}
 	?>
 	<!----- Main Wraapper ----->
 	<section class="main_wrapper">
 		<!----- Header Start ----->
-		<header>
+		<header class="edu-header-gradmo">
 			<div class="edu_header_top edu_header_top1">
 				<div class="container-fluid">
-					<div class="row">
-						<div class="col-xl-4 col-lg-4 col-md-4 col-sm-12 col-12">
-							<div class="edu_social_wrapper edu_social_wrapper_preheader">
-								<ul>
-									<li><?php echo html_escape($this->common->languageTranslator('ltr_follow_us_on')); ?></li>
-									<?php 
-									if(!empty($frontend_details[0]['facebook']))
-										echo ' <li><a href="'.$frontend_details[0]['facebook'].'" class="edu_social_icon" target="_blank"><i class="fab fa-facebook-f"></i></a></li>';
-									
-									if(!empty($frontend_details[0]['youtube']))
-										echo ' <li><a href="'.$frontend_details[0]['youtube'].'" class="edu_social_icon" target="_blank"><i class="fab fa-youtube"></i></a></li>';
-
-									if(!empty($frontend_details[0]['twitter']))
-										echo ' <li><a href="'.$frontend_details[0]['twitter'].'" class="edu_social_icon" target="_blank"><i class="fab fa-twitter"></i></a></li>';
-
-									if(!empty($frontend_details[0]['instagram']))
-										echo ' <li><a href="'.$frontend_details[0]['instagram'].'" class="edu_social_icon" target="_blank"><i class="fab fa-instagram"></i></a></li>';
-
-									if(!empty($frontend_details[0]['linkedin']))
-										echo ' <li><a href="'.$frontend_details[0]['linkedin'].'" class="edu_social_icon" target="_blank"><i class="fab fa-linkedin"></i></a></li>';
-									?>
-                                </ul>
+					<div class="row align-items-center">
+						<div class="col-xl-2 col-lg-2 col-md-4 col-sm-6 col-6">
+							<div class="edu_logo">
+								<a href="<?php echo base_url();?>"><img class="front_logo" src="<?php echo html_escape($front_logo_src); ?>" alt="logo" /></a>
 							</div>
 						</div>
-						<div class="col-xl-8 col-lg-8 col-md-8 col-sm-12 col-12">
-							<div class="edu_header_info">
+						<div class="col-xl-8 col-lg-8 d-none d-lg-block">
+							<div class="edu_main_menu main_menu_parent">
+								<div class="edu_nav_items main_menu_wrapper text-left">
+									<?php $this->load->view('common/partials/front_primary_nav_ul'); ?>
+								</div>
+							</div>
+						</div>
+						<div class="col-xl-2 col-lg-2 col-md-8 col-sm-6 col-6">
+							<div class="edu_header_info edu_header_info--with-mobile-toggle">
+								<div class="menu_btn_wrap d-lg-none">
+									<a href="javascript:void(0);" class="menu_btn" id="frontMobileNavToggle" aria-label="Open menu" aria-expanded="false" aria-controls="eduFrontMobileNavDrawer"><span></span><span></span><span></span></a>
+								</div>
 								<ul>
 									<li>
-										<?php
-										if(!empty($frontend_details[0]['email']))
-											echo '<a href="mailto:'.$frontend_details[0]['email'].'"><i class="fas fa-envelope"></i>'.$frontend_details[0]['email'].'</a>';
-										else
-											echo '<a href="mailto:example@email.com"><i class="fas fa-envelope"></i>example@email.com</a>';
-										?>
-									</li>
-									<li>
-										<?php
-										if(!empty($frontend_details[0]['mobile']))
-											echo '<a href="tel:+'.$frontend_details[0]['mobile'].'"><i class="fas fa-phone-volume"></i>'.$frontend_details[0]['mobile'].'</a>';
-										else
-											echo '<a href="tel:+91 9999999999"><i class="fas fa-phone-volume"></i>+91 9999999999</a>';
-										?>
-									</li>
-									<li>
 									  <?php if(!empty($_SESSION['role'])){ ?>
-									    <a href="javascript:void(0);" title="<?php echo html_escape($this->common->languageTranslator('ltr_logout')); ?>" class="cnfmlogOutBtn"><i class="icofont-logout"></i><span><?php echo html_escape($this->common->languageTranslator('ltr_logout')); ?></span></a>
+										<?php
+											$front_user_name = trim((string) $this->session->userdata('name'));
+											if ($front_user_name === '') {
+												$front_user_name = 'User';
+											}
+											$front_api_ut = strtolower(trim((string) $this->session->userdata('api_user_type')));
+											$front_role_raw = $this->session->userdata('role');
+											$front_role_s = strtolower(trim((string) $front_role_raw));
+											$is_front_student = ($front_api_ut === 'student' || $front_role_s === 'student' || $front_role_raw === 2 || $front_role_raw === '2');
+											$is_front_teacher = ($front_api_ut === 'teacher' || $front_role_s === 'teacher' || $front_role_raw === 3 || $front_role_raw === '3');
+											$front_my_institutes_url = base_url('institute/list');
+											$front_my_batches_url = base_url('batch/list');
+											if ($is_front_student || $is_front_teacher) {
+												$front_my_batches_url = base_url('batch/mylist');
+											    $front_my_institutes_url = base_url('institute/list');
+                                            }
+											$front_notifications_url = base_url('notifications');
+											$front_profile_img = trim((string) $this->session->userdata('profile_img'));
+											$front_avatar_url = ($front_profile_img !== '') ? profile_image_url($front_profile_img, $front_role_raw, $front_api_ut) : '';
+										?>
+										<div class="dropdown d-inline-block front-profile-wrap">
+											<a href="javascript:void(0);" class="dropdown-toggle front-profile-trigger" id="frontUserMenu" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+												<?php if ($front_avatar_url !== '') { ?>
+													<span class="front-profile-trigger-avatar"><img src="<?php echo html_escape($front_avatar_url); ?>" alt=""></span>
+												<?php } else { ?>
+													<span class="front-profile-trigger-avatar front-profile-trigger-avatar--ph"><i class="fas fa-user"></i></span>
+												<?php } ?>
+												<span class="front-profile-trigger-name">Hello, <?php echo html_escape($front_user_name); ?>!</span>
+											</a>
+											<div class="dropdown-menu dropdown-menu-right front-profile-dropdown" aria-labelledby="frontUserMenu">
+												<div class="front-profile-dropdown-inner">
+													<nav class="front-profile-links" aria-label="Account menu">
+														<a class="front-profile-link" href="<?php echo base_url('update-profile'); ?>"><i class="fas fa-user-circle"></i> View Profile</a>
+                                                        <a class="front-profile-link" href="<?php echo html_escape($front_my_institutes_url); ?>"><i class="fas fa-chalkboard-teacher"></i>My Institutes</a>
+														<a class="front-profile-link" href="<?php echo html_escape($front_my_batches_url); ?>"><i class="fas fa-layer-group"></i>My Batches</a>
+														<a class="front-profile-link" href="<?php echo base_url('payment-history'); ?>"><i class="fas fa-receipt"></i> Payment History</a>
+														<a class="front-profile-link" href="<?php echo base_url('update-password'); ?>"><i class="fas fa-key"></i> Update Password</a>
+														<a class="front-profile-link" href="<?php echo html_escape($front_notifications_url); ?>"><i class="fas fa-bell"></i> Notifications</a>
+														<div class="front-profile-divider"></div>
+														<a class="front-profile-link front-profile-link--danger" href="<?php echo base_url('delete-account'); ?>"><i class="fas fa-user-times"></i> Delete Account</a>
+														<a class="front-profile-link cnfmlogOutBtn" href="javascript:void(0);"><i class="icofont-logout"></i> <?php echo html_escape($this->common->languageTranslator('ltr_logout')); ?></a>
+													</nav>
+												</div>
+											</div>
+										</div>
 									  <?php }else{ ?>
-										<a href="<?php echo base_url('login');?>"><i class="fas fa-sign-in-alt"></i><?php echo html_escape($this->common->languageTranslator('ltr_login')); ?></a>
+										<a class="edu-header-login-link" href="<?php echo base_url('login');?>"><i class="fas fa-sign-in-alt"></i><?php echo html_escape($this->common->languageTranslator('ltr_login')); ?></a>
 									<?php } ?>
 									</li>
 								</ul>
@@ -253,48 +277,10 @@
 					</div>
 				</div>
 			</div>
-			<div class="edu_header_wrapper">
-				<div class="container-fluid">
-					<div class="row align-items-center">
-						<div class="col-lg-3 col-md-4 col-sm-4 col-10">
-							<div class="edu_logo">
-								<a href="<?php echo base_url();?>"><img class="front_logo" src="<?php echo html_escape($this->common->siteLogo); ?>" alt="logo" /></a>
-							</div>
-						</div>
-						<div class="col-lg-9 col-md-8 col-sm-8 col-2">
-							<div class="edu_main_menu main_menu_parent">
-								<!----- Header Menus ----->
-								<div class="edu_nav_items main_menu_wrapper text-right">
-									<ul>
-										<li><a href="<?php echo base_url();?>"><?php echo html_escape($this->common->languageTranslator('ltr_home')); ?></a></li>
-										<li><a href="<?php echo base_url('about-us');?>"><?php echo html_escape($this->common->languageTranslator('ltr_about_us')); ?></a></li>
-										<li><a href="<?php echo base_url('courses-offered');?>"><?php echo html_escape($this->common->languageTranslator('ltr_courses_offered')); ?></a></li>
-										<li><a href="<?php echo base_url('blog');?>"><?php echo html_escape($this->common->languageTranslator('ltr_blog')); ?></a></li>
-										<li class="has_submenu">
-											<a href="javascript:void(0);"><?php echo html_escape($this->common->languageTranslator('ltr_gallery')); ?></a>
-											<ul class="sub_menu">
-												<li><a href="<?php echo base_url('gallery');?>"><?php echo html_escape($this->common->languageTranslator('ltr_image')); ?></a></li>
-												<li><a href="<?php echo base_url('video-gallery');?>"><?php echo html_escape($this->common->languageTranslator('ltr_video')); ?></a></li>
-											</ul>
-										</li>
-										<li><a href="<?php echo base_url('facilities');?>"><?php echo html_escape($this->common->languageTranslator('ltr_facilities')); ?></a></li>
-										<li><a href="<?php echo base_url('contact-us');?>"><?php echo html_escape($this->common->languageTranslator('ltr_contact_us')); ?></a></li>
-									</ul>
-								</div>
-								<div class="menu_btn_wrap">
-								<?php 
-								if(!empty($frontend_details[0]['header_btn_txt']) && !empty($frontend_details[0]['header_btn_url'])){
-									echo '<a class="edu_btn" href="'.$frontend_details[0]['header_btn_url'].'">'.$frontend_details[0]['header_btn_txt'].'</a>';
-								}
-								?>
-									<a href="javascript:void(0);" class="menu_btn">
-										<span></span>
-										<span></span>
-										<span></span>
-									</a>
-								</div>
-							</div>
-						</div>
+			<div class="d-lg-none edu-front-mobile-nav-drawer" id="eduFrontMobileNavDrawer" aria-hidden="true">
+				<div class="edu_main_menu main_menu_parent">
+					<div class="edu_nav_items main_menu_wrapper text-left">
+						<?php $this->load->view('common/partials/front_primary_nav_ul'); ?>
 					</div>
 				</div>
 			</div>

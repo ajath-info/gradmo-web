@@ -1,38 +1,98 @@
-<div class="pxn_login_main">
-    <div class="pxn_login_box">
-        <div class="pxn_login_box_inner">
-            <div class="pxn_logo">
-                <img src="<?php echo base_url();?>assets/images/logo.png" class="img-fluid">
-            </div>
-            <div class="pxn_login_data">
-                <h4><?php echo html_escape($this->common->languageTranslator('ltr_p_register_continue'));?></h4>
-                <form class="form" method="post" action="<?php echo base_url().'front_ajax/register'; ?>" data-redirect="yes">
-                    <div class="edu_field_holder">
-                        <input type="text" name="name" class="require edu_form_field" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_name'));?>">
-                    </div>
-                    <div class="edu_field_holder">
-                        <input type="text" class="edu_form_field require" name="email" data-valid="email" data-error="Please enter a valid email address." placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_email'));?>" autocomplete="off">
-                    </div>
-                    <div class="edu_field_holder">
-                        <input type="text" name="mobile" class="require edu_form_field" data-valid="mobile" data-error="Please enter a valid contact number." placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_mobile'));?>">
-                    </div>
-                    <!--<div class="form-group">-->
-                    <!--    <div class="g-recaptcha" data-sitekey="6LePAccfAAAAAHlT0kDWIaiUMp5xnyrGiwLkuC5y"></div>-->
-                    <!--</div>-->
-                    <div class="login_btn_wrapper">
-                        <div class="row align-items-center">
-                            <div class="col-lg-6 col-md-6 col-sm-12 col-12">
-                               
-                                <p class="edu-register-account"><?php echo html_escape($this->common->languageTranslator('ltr_already_account'));?><span><a href="<?php echo base_url().'home/login';?>"> <?php echo html_escape($this->common->languageTranslator('ltr_login_now'));?></a></span></p>
-                            </div>
-                            <div class="col-lg-6 col-md-6 col-sm-12 col-12 text-md-right">
-                                <button class="edu_btn edu_btn_black" id="auth_login" type="button" data-action="submitThisForm"><?php echo html_escape($this->common->languageTranslator('ltr_register'));?></button>
-                            </div>
-                        </div>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-    
+<section class="edu-auth-page">
+	<div class="container py-4 py-md-5">
+		<div class="row justify-content-center">
+			<div class="col-xl-6 col-lg-7 col-md-10">
+				<div class="edu-auth-shell">
+					<div class="edu-auth-main">
+						<div class="edu-auth-main-inner">
+							<nav class="edu-auth-breadcrumb" aria-label="Breadcrumb">
+								<a href="<?php echo base_url(); ?>"><?php echo html_escape($this->common->languageTranslator('ltr_home')); ?></a>
+								<span class="edu-auth-breadcrumb-sep" aria-hidden="true">/</span>
+								<span><?php echo html_escape($this->common->languageTranslator('ltr_register')); ?></span>
+							</nav>
+							<h1 class="edu-auth-heading"><?php echo html_escape($title); ?></h1>
+							<p class="edu-auth-sub"><?php echo html_escape($this->common->languageTranslator('ltr_p_register_continue')); ?></p>
+
+							<div class="edu-auth-form-card edu_form_container_main edu_form_container withoutMapFrm" id="registerPageRoot">
+								<p class="edu-auth-otp-intro mb-3" id="registerStepHint"><?php echo html_escape($this->common->languageTranslator('ltr_register')); ?> — step 1: enter your details. We will send an OTP to verify your mobile.</p>
+								<div id="registerStep1">
+									<div class="row">
+										<div class="col-lg-6 col-md-6 col-sm-12 col-12">
+											<div class="edu-auth-field">
+												<label class="edu-auth-label" for="reg_name"><?php echo html_escape($this->common->languageTranslator('ltr_name')); ?></label>
+												<div class="edu_field_holder">
+													<input type="text" id="reg_name" class="edu_form_field edu-auth-input" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_name'));?> *" name="name" autocomplete="given-name">
+												</div>
+											</div>
+										</div>
+										<div class="col-lg-6 col-md-6 col-sm-12 col-12">
+											<div class="edu-auth-field">
+												<label class="edu-auth-label" for="reg_last_name"><?php echo html_escape($this->common->languageTranslator('ltr_last_name')); ?></label>
+												<div class="edu_field_holder">
+													<input type="text" id="reg_last_name" class="edu_form_field edu-auth-input" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_last_name'));?>" name="last_name" autocomplete="family-name">
+												</div>
+											</div>
+										</div>
+										<div class="col-lg-6 col-md-6 col-sm-12 col-12">
+											<div class="edu-auth-field">
+												<label class="edu-auth-label" for="reg_email"><?php echo html_escape($this->common->languageTranslator('ltr_email')); ?></label>
+												<div class="edu_field_holder">
+													<input type="text" id="reg_email" class="edu_form_field edu-auth-input" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_email'));?> *" autocomplete="email">
+												</div>
+											</div>
+										</div>
+										<div class="col-lg-6 col-md-6 col-sm-12 col-12">
+											<div class="edu-auth-field">
+												<label class="edu-auth-label" for="reg_mobile"><?php echo html_escape($this->common->languageTranslator('ltr_mobile')); ?></label>
+												<div class="edu_field_holder">
+													<input type="text" id="reg_mobile" class="edu_form_field edu-auth-input" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_mobile'));?> (10 digits) *" inputmode="numeric" maxlength="10" autocomplete="tel">
+												</div>
+											</div>
+										</div>
+										<div class="col-lg-6 col-md-6 col-sm-12 col-12">
+											<div class="edu-auth-field">
+												<label class="edu-auth-label" for="reg_user_type">Account type</label>
+												<div class="edu_field_holder">
+													<select id="reg_user_type" class="edu_form_field edu-auth-input" title="Account type">
+														<option value="student"><?php echo html_escape($this->common->languageTranslator('ltr_student')); ?></option>
+														<option value="teacher"><?php echo html_escape($this->common->languageTranslator('ltr_teacher')); ?></option>
+													</select>
+												</div>
+											</div>
+										</div>
+										<div class="col-lg-12 col-md-12 col-sm-12 col-12">
+											<div class="edu-auth-field">
+												<label class="edu-auth-label" for="reg_password"><?php echo html_escape($this->common->languageTranslator('ltr_password')); ?></label>
+												<div class="edu_field_holder edu-auth-password-wrap">
+													<input type="password" id="reg_password" class="edu_form_field edu-auth-input" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_password'));?> *" autocomplete="new-password">
+													<button type="button" class="edu-auth-toggle-pw reg_pw_toggle" aria-label="Toggle password visibility"><i class="fas fa-eye-slash"></i></button>
+												</div>
+											</div>
+										</div>
+									</div>
+									<div class="edu-auth-actions">
+										<p class="edu-auth-register m-0"><?php echo html_escape($this->common->languageTranslator('ltr_already_account'));?> <a href="<?php echo base_url('login');?>"><?php echo html_escape($this->common->languageTranslator('ltr_login_now'));?></a></p>
+										<button type="button" class="edu-auth-btn edu-auth-btn--primary" id="reg_send_otp_btn"><?php echo html_escape($this->common->languageTranslator('ltr_register')); ?> &amp; OTP</button>
+									</div>
+								</div>
+
+								<div id="registerStep2" class="d-none">
+									<div class="edu-auth-field">
+										<label class="edu-auth-label" for="reg_otp">OTP code</label>
+										<div class="edu_field_holder">
+											<input type="text" id="reg_otp" class="edu_form_field edu-auth-input" placeholder="Enter OTP *" inputmode="numeric" maxlength="8" autocomplete="one-time-code">
+										</div>
+									</div>
+									<div class="edu-auth-actions">
+										<button type="button" class="edu-auth-btn edu-auth-btn--ghost" id="reg_back_step_btn">Previous</button>
+										<button type="button" class="edu-auth-btn edu-auth-btn--primary" id="reg_verify_otp_btn"><?php echo html_escape($this->common->languageTranslator('ltr_submit')); ?></button>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</section>

@@ -260,7 +260,7 @@ if($certificate_details[0]['template_id']==1){
 }else if($certificate_details[0]['template_id']==2){?>
     <html lang="en">
         <head>
-          <title>E-Academy Email Template 02</title>
+          <title>Gradmo Email Template 02</title>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -436,7 +436,7 @@ if($certificate_details[0]['template_id']==1){
 }else if($certificate_details[0]['template_id']==3){?>
     <html lang="en">
         <head> 
-          <title>E-Academy Email Template 02</title>
+          <title>Gradmo Email Template 02</title>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">

@@ -66,6 +66,7 @@
 <script src="https://cdn.ckeditor.com/4.15.1/standard-all/ckeditor.js"></script>
 <script src="<?php echo base_url();?>assets/js/backend.js?<?php echo time();?>"></script>
 <script src="<?php echo base_url();?>assets/js/spectrum.min.js?<?php echo time();?>"></script>
+<script src="<?php echo base_url();?>assets/js/form-submit-loader.js?<?php echo time();?>"></script>
 <script src="<?php echo base_url();?>assets/js/custom.js?<?php echo time();?>"></script>
 <script src="<?php echo base_url();?>assets/js/themes.js?<?php echo time();?>"></script>
   <script type="text/javascript"

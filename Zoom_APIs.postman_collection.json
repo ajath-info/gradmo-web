@@ -1,0 +1,465 @@
+{
+  "info": {
+    "_postman_id": "zoom-apis-collection-gradmo",
+    "name": "Gradmo — Zoom & Live Class APIs",
+    "description": "Batch Zoom REST + live class + recordings.\n\nAuth: Bearer {{access_token}} (from api/user/login). Credentials: table zoom_api_credentials. Meetings: batch_zoom_meetings.\n\nRun installer/create_batch_zoom_meetings_and_zoom_s2s.sql and add_zoom_meeting_sdk_columns.sql on DB.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost/education/"
+    },
+    {
+      "key": "access_token",
+      "value": ""
+    },
+    {
+      "key": "batch_id",
+      "value": "3"
+    },
+    {
+      "key": "live_class_id",
+      "value": "0"
+    }
+  ],
+  "item": [
+    {
+      "name": "Live class (history + join)",
+      "item": [
+        {
+          "name": "Live class list",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "batch_id", "value": "{{batch_id}}", "type": "text" },
+                { "key": "page", "value": "1", "type": "text" },
+                { "key": "limit", "value": "20", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/batch/live-class-list",
+              "host": ["{{base_url}}api"],
+              "path": ["batch", "live-class-list"]
+            },
+            "description": "List live classes for a batch (live_class_history + batch Zoom room if active)."
+          },
+          "response": []
+        },
+        {
+          "name": "Live class details (by live_class_id)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "live_class_id", "value": "1", "type": "text", "description": "live_class_history.id" },
+                { "key": "batch_id", "value": "{{batch_id}}", "type": "text", "disabled": true }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/batch/live-class-details",
+              "host": ["{{base_url}}api"],
+              "path": ["batch", "live-class-details"]
+            },
+            "description": "Join payload: meeting SDK signature, join_url, password from batch_zoom_meetings + zoom_api_credentials."
+          },
+          "response": []
+        },
+        {
+          "name": "Live class details (batch Zoom only)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "live_class_id", "value": "0", "type": "text" },
+                { "key": "batch_id", "value": "{{batch_id}}", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/batch/live-class-details",
+              "host": ["{{base_url}}api"],
+              "path": ["batch", "live-class-details"]
+            },
+            "description": "Use live_class_id=0 + batch_id when no live_class_history row yet (batch-level Zoom room)."
+          },
+          "response": []
+        },
+        {
+          "name": "Class status (poll)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "batch_id", "value": "{{batch_id}}", "type": "text" },
+                { "key": "live_class_id", "value": "{{live_class_id}}", "type": "text", "disabled": true }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/batch/class-status",
+              "host": ["{{base_url}}api"],
+              "path": ["batch", "class-status"]
+            },
+            "description": "Students poll every ~2s: classStarted, classEnded, studentCanJoin, shouldAutoDisconnect."
+          },
+          "response": []
+        },
+        {
+          "name": "Host joined (start class)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "batch_id", "value": "{{batch_id}}", "type": "text" },
+                { "key": "action", "value": "host_joined", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/batch/live-meeting-end",
+              "host": ["{{base_url}}api"],
+              "path": ["batch", "live-meeting-end"]
+            },
+            "description": "Teacher/institute: sets host_joined_at, notifies students. Auth: teacher or institute."
+          },
+          "response": []
+        },
+        {
+          "name": "End live meeting",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "batch_id", "value": "{{batch_id}}", "type": "text" },
+                { "key": "live_class_id", "value": "{{live_class_id}}", "type": "text", "description": "Optional: updates live_class_history.end_time" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/batch/live-meeting-end",
+              "host": ["{{base_url}}api"],
+              "path": ["batch", "live-meeting-end"]
+            },
+            "description": "Teacher ends class: batch_zoom_meetings status=0, recording stub, student notifications."
+          },
+          "response": []
+        },
+        {
+          "name": "Notify batch students",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "batch_id", "value": "{{batch_id}}", "type": "text" },
+                { "key": "notification_type", "value": "live", "type": "text" },
+                { "key": "msg", "value": "Live class started", "type": "text" },
+                { "key": "url", "value": "", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/batch/batch-notify-students",
+              "host": ["{{base_url}}api"],
+              "path": ["batch", "batch-notify-students"]
+            },
+            "description": "Teacher/institute: fan-out in-app notifications to enrolled students."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Zoom meeting (REST / batch_zoom_meetings)",
+      "item": [
+        {
+          "name": "Batch Zoom details",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "batch_id", "value": "{{batch_id}}", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/batch/batch-zoom-details",
+              "host": ["{{base_url}}api"],
+              "path": ["batch", "batch-zoom-details"]
+            },
+            "description": "Active linked meeting for batch. Student/teacher/institute with batch access."
+          },
+          "response": []
+        },
+        {
+          "name": "Batch Zoom create",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "batch_id", "value": "{{batch_id}}", "type": "text" },
+                { "key": "topic", "value": "Batch live class", "type": "text" },
+                { "key": "agenda", "value": "", "type": "text" },
+                { "key": "duration", "value": "60", "type": "text" },
+                { "key": "timezone", "value": "Asia/Kolkata", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/batch/batch-zoom-create",
+              "host": ["{{base_url}}api"],
+              "path": ["batch", "batch-zoom-create"]
+            },
+            "description": "Creates Zoom meeting via S2S OAuth (zoom_api_credentials). Teacher/institute only."
+          },
+          "response": []
+        },
+        {
+          "name": "Batch Zoom update",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "batch_id", "value": "{{batch_id}}", "type": "text" },
+                { "key": "topic", "value": "Updated topic", "type": "text" },
+                { "key": "duration", "value": "90", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/batch/batch-zoom-update",
+              "host": ["{{base_url}}api"],
+              "path": ["batch", "batch-zoom-update"]
+            },
+            "description": "Teacher/institute: patch topic/agenda/duration on Zoom + DB."
+          },
+          "response": []
+        },
+        {
+          "name": "Batch Zoom delete",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "batch_id", "value": "{{batch_id}}", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/batch/batch-zoom-delete",
+              "host": ["{{base_url}}api"],
+              "path": ["batch", "batch-zoom-delete"]
+            },
+            "description": "Teacher/institute: delete on Zoom and mark batch_zoom_meetings status=0."
+          },
+          "response": []
+        },
+        {
+          "name": "Batch Zoom join",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "batch_id", "value": "{{batch_id}}", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/batch/batch-zoom-join",
+              "host": ["{{base_url}}api"],
+              "path": ["batch", "batch-zoom-join"]
+            },
+            "description": "Alias of batch-zoom-details (validated join info)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Recordings",
+      "item": [
+        {
+          "name": "Recorded meeting list",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "batch_id", "value": "{{batch_id}}", "type": "text" },
+                { "key": "sync", "value": "1", "type": "text", "description": "1 = force sync from Zoom" },
+                { "key": "page", "value": "1", "type": "text" },
+                { "key": "limit", "value": "20", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/batch/recorded-meeting-list",
+              "host": ["{{base_url}}api"],
+              "path": ["batch", "recorded-meeting-list"]
+            },
+            "description": "List batch_zoom_recordings; auto-syncs processing rows when needed."
+          },
+          "response": []
+        },
+        {
+          "name": "Recorded meeting details",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "recorded_meeting_id", "value": "1", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/batch/recorded-meeting-details",
+              "host": ["{{base_url}}api"],
+              "path": ["batch", "recorded-meeting-details"]
+            },
+            "description": "Single recording with playback URL when ready."
+          },
+          "response": []
+        },
+        {
+          "name": "Recorded meeting sync (manual)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "batch_id", "value": "{{batch_id}}", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}api/batch/recorded-meeting-sync",
+              "host": ["{{base_url}}api"],
+              "path": ["batch", "recorded-meeting-sync"]
+            },
+            "description": "Teacher/institute: pull recordings from Zoom for one batch."
+          },
+          "response": []
+        },
+        {
+          "name": "Zoom CRON sync (all processing)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}api/batch/zoom-cron-sync",
+              "host": ["{{base_url}}api"],
+              "path": ["batch", "zoom-cron-sync"]
+            },
+            "description": "No auth. Run every 5 minutes via cron/scheduler."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Webhook & debug",
+      "item": [
+        {
+          "name": "Zoom webhook",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"endpoint.url_validation\",\n  \"payload\": {\n    \"plainToken\": \"test_token_here\"\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}api/batch/zoom-webhook",
+              "host": ["{{base_url}}api"],
+              "path": ["batch", "zoom-webhook"]
+            },
+            "description": "Configure in Zoom app: {{base_url}}api/batch/zoom-webhook. Verifies webhook_secret from zoom_api_credentials."
+          },
+          "response": []
+        },
+        {
+          "name": "Zoom debug",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}api/batch/zoom-debug?batch_id={{batch_id}}",
+              "host": ["{{base_url}}api"],
+              "path": ["batch", "zoom-debug"],
+              "query": [
+                { "key": "batch_id", "value": "{{batch_id}}" }
+              ]
+            },
+            "description": "Raw Zoom API response for troubleshooting meeting/recordings."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Admin (website — zoom_api_credentials)",
+      "description": "Not REST api/batch — save global Zoom keys via admin session (Ajax).",
+      "item": [
+        {
+          "name": "Save zoom_api_credentials (ajax)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "X-Requested-With", "value": "XMLHttpRequest" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "meeting_sdk_key", "value": "", "type": "text", "description": "General app Client ID" },
+                { "key": "meeting_sdk_secret", "value": "", "type": "text", "description": "General app Client Secret" },
+                { "key": "s2s_account_id", "value": "", "type": "text" },
+                { "key": "s2s_client_id", "value": "", "type": "text" },
+                { "key": "s2s_client_secret", "value": "", "type": "text" },
+                { "key": "zoom_host_email", "value": "", "type": "text" },
+                { "key": "zoom_host_user_id", "value": "", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}ajaxcall/save_zoom_api_credentials",
+              "host": ["{{base_url}}"],
+              "path": ["ajaxcall", "save_zoom_api_credentials"]
+            },
+            "description": "Admin Live Class page. Requires admin PHP session cookie (not Bearer token)."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

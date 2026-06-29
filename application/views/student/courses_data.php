@@ -58,7 +58,7 @@
                             <h3><?php if($value['batch_type']==2){ if(!empty($value['batch_offer_price'])){ echo '<s>'.$currency_decimal.' '.$value['batch_price'].'</s> / '.$currency_decimal.' '.$value['batch_offer_price']; }else{ echo $currency_decimal.' '.$value['batch_price'];} }else{ echo html_escape($this->common->languageTranslator('ltr_free'));} ?></h3>
                         </div>
                         <div class="edu_dash_box_icon">
-                            <img src="<?php if(!empty($value['batch_image'])) { echo base_url('uploads\batch_image/').$value['batch_image'] ; }else{ echo base_url('uploads/site_data/'.$site_Details['0']['site_logo']); } ?>" alt="image">
+                            <img src="<?php if(!empty($value['batch_image'])) { echo base_url('uploads\batch_image/').$value['batch_image'] ; }else{ echo ''; } ?>" alt="image" data-fallback-type="batch" data-has-fallback="1">
                         </div>
                         <div class="edu_dash_content">
                             <p><?php echo $value['description']; ?></p>
@@ -67,7 +67,7 @@
     					    <ul>
 					            <li><p><a href="<?php echo base_url('courses-details/'.$value['id']); ?>" class="edu_courses_view mt-2" target="_blank"><?php echo html_escape($this->common->languageTranslator('ltr_course_view'));?> </a> </p></li>
 					            <?php 
-					              $purchase = $this->db_model->select_data('*', 'sudent_batchs',array('student_id' => $this->session->userdata('uid'),'batch_id'=>$value['id']));
+					              $purchase = $this->db_model->select_data('*', 'student_batchs',array('student_id' => $this->session->userdata('uid'),'batch_id'=>$value['id']));
 					          
 					            if(empty($purchase)){
 					             ?>

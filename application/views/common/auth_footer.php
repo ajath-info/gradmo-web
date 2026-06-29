@@ -15,6 +15,7 @@
     <script src="<?php echo base_url();?>assets/js/bootstrap.min.js"></script>
     <script src="<?php echo base_url();?>assets/js/toastr.min.js"></script>
 	<script src="<?php echo base_url();?>assets/js/jquery.magnific-popup.min.js"></script>
+	<script src="<?php echo base_url();?>assets/js/form-submit-loader.js?<?php echo time();?>"></script>
     <script src="<?php echo base_url();?>assets/js/login.js?<?php echo time();?>"></script>
     <script src="<?php echo base_url();?>assets/js/valid.js?<?php echo time();?>"></script>
 </body>

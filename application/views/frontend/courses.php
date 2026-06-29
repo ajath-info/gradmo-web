@@ -20,7 +20,7 @@
 				<div class="row">
 					<div class="col-lg-7 col-md-7 col-sm-12 col-12">
 						<div class="edu_courseInfo_detail mb_30">
-							<h4 class="edu_subTitle"><?php echo !empty($frontend_details[0]['frst_crse_sub_heading'])?$frontend_details[0]['frst_crse_sub_heading']:'E-Academy';?></h4>
+							<h4 class="edu_subTitle"><?php echo !empty($frontend_details[0]['frst_crse_sub_heading'])?$frontend_details[0]['frst_crse_sub_heading']:'Gradmo';?></h4>
 							<h2 class="edu_heading"><?php $tt =html_escape($this->common->languageTranslator('ltr_online_learning')); echo !empty($frontend_details[0]['frst_crse_heading'])?$frontend_details[0]['frst_crse_heading']: $tt;?></h2>
 							<p><?php $ttt =html_escape($this->common->languageTranslator('ltr_officia_deserunt')); echo !empty($frontend_details[0]['frst_crse_desc'])?$frontend_details[0]['frst_crse_desc']: $ttt;?></p>
 						</div>
@@ -64,7 +64,7 @@
 									<div class="col-lg-4 col-md-4 col-sm-6 col-12">
 										<div class="edu_courses_box">
 											<div class="edu_courses_imgbox">
-												<img src="<?php if(!empty($value['batch_image'])) { echo base_url('uploads\batch_image/').$value['batch_image'] ; }else{ echo base_url('uploads/site_data/'.$site_Details['0']['site_logo']); } ?>" alt="image">
+												<img src="<?php if(!empty($value['batch_image'])) { echo base_url('uploads\batch_image/').$value['batch_image'] ; }else{ echo ''; } ?>" alt="image" data-fallback-type="batch" data-has-fallback="1">
 												<a href="<?php echo base_url('enroll-now/'.$value['id']); ?>" class="courses_atc"><?php echo html_escape($this->common->languageTranslator('ltr_enroll_now'));?></a>
 												<a href="<?php echo base_url('enroll-now/'.$value['id']); ?>" class="edu_btn courses_price"><?php if($value['batch_type']==2){ if(!empty($value['batch_offer_price'])){ echo '<s>'.$currency_decimal.' '.$value['batch_price'].'</s> / '.$currency_decimal.' '.$value['batch_offer_price']; }else{ echo $currency_decimal.' '.$value['batch_price'];} }else{ echo "Free";} ?></a>
 												<?php if(!empty($value['batch_offer_price'])){ ?>
@@ -86,7 +86,7 @@
             					<!--<div class="col-lg-4 col-md-4 col-sm-6 col-12">-->
             					<!--	<div class="edu_courses_box">-->
             					<!--		<div class="edu_courses_imgbox">-->
-            					<!--		    <img src="http://themes91.in/ci/e-academy_test/assets/images/course01.jpg" alt="image">-->
+            					<!--		    <img src="http://themes91.in/ci/Gradmo_test/assets/images/course01.jpg" alt="image">-->
             					<!--		    <a href="#" class="courses_atc"><?php echo html_escape($this->common->languageTranslator('ltr_add_to_cart'));?></a>-->
             					<!--		    <a href="#" class="edu_btn courses_price"><?php echo html_escape($this->common->languageTranslator('ltr_course_price'));?></a>-->
             					<!--		    <span class="edu_courses_flag"><?php echo html_escape($this->common->languageTranslator('ltr_best_seller'));?></span>-->
@@ -94,12 +94,12 @@
             					<!--	    <div class="edu_courses_cntnbox">-->
             					<!--	    <div class="edu_courses_rwrap">-->
                 	<!--					    <ul class="edu_courses_rating">-->
-                	<!--					        <li><img src="http://themes91.in/ci/e-academy_test/assets/images/star.svg" alt="image"></li>-->
-                	<!--					        <li><img src="http://themes91.in/ci/e-academy_test/assets/images/star.svg" alt="image"></li>-->
-                	<!--					        <li><img src="http://themes91.in/ci/e-academy_test/assets/images/star.svg" alt="image"></li>-->
-                	<!--					        <li><img src="http://themes91.in/ci/e-academy_test/assets/images/blank_star.svg" alt="image"></li>-->
-                	<!--					        <li><img src="http://themes91.in/ci/e-academy_test/assets/images/blank_star.svg" alt="image"></li>-->
-                	<!--					        <li><img src="http://themes91.in/ci/e-academy_test/assets/images/blank_star.svg" alt="image"></li>-->
+                	<!--					        <li><img src="http://themes91.in/ci/Gradmo_test/assets/images/star.svg" alt="image"></li>-->
+                	<!--					        <li><img src="http://themes91.in/ci/Gradmo_test/assets/images/star.svg" alt="image"></li>-->
+                	<!--					        <li><img src="http://themes91.in/ci/Gradmo_test/assets/images/star.svg" alt="image"></li>-->
+                	<!--					        <li><img src="http://themes91.in/ci/Gradmo_test/assets/images/blank_star.svg" alt="image"></li>-->
+                	<!--					        <li><img src="http://themes91.in/ci/Gradmo_test/assets/images/blank_star.svg" alt="image"></li>-->
+                	<!--					        <li><img src="http://themes91.in/ci/Gradmo_test/assets/images/blank_star.svg" alt="image"></li>-->
                 	<!--					    </ul>-->
                 	<!--					    <p class="edu_courses_rno"><span><?php echo html_escape($this->common->languageTranslator('ltr_course_rating'));?></span> <?php echo html_escape($this->common->languageTranslator('ltr_course_rati_no'));?></p>-->
                 	<!--					</div>-->

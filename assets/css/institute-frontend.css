@@ -1,0 +1,734 @@
+/* Institute frontend pages — mobile-first, works with existing Bootstrap */
+.inst-page-wrap {
+	max-width: 1140px;
+	margin: 0 auto;
+	padding: 0 12px 48px;
+}
+.inst-hero {
+	padding: 28px 0 8px;
+	text-align: center;
+}
+.inst-hero h1 {
+	font-size: 1.5rem;
+	margin-bottom: 8px;
+}
+@media (min-width: 768px) {
+	.inst-hero h1 { font-size: 1.85rem; }
+}
+.inst-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	align-items: flex-end;
+	margin-bottom: 18px;
+}
+.inst-toolbar .form-group {
+	flex: 1 1 140px;
+	min-width: 0;
+	margin-bottom: 0;
+}
+.inst-toolbar .inst-grow {
+	flex: 2 1 220px;
+}
+.inst-card-grid {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 16px;
+	align-items: stretch;
+}
+@media (min-width: 576px) {
+	.inst-card-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (min-width: 992px) {
+	.inst-card-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (min-width: 1200px) {
+	.inst-card-grid { grid-template-columns: repeat(4, 1fr); }
+}
+.inst-card-grid > p {
+	grid-column: 1 / -1;
+}
+.inst-card-grid .inst-batch-card {
+	flex-direction: column;
+	align-items: stretch;
+	padding: 0;
+	overflow: hidden;
+	height: 100%;
+	border-radius: 16px;
+}
+.inst-card-grid .inst-batch-card .inst-mini-logo {
+	width: 100%;
+	height: 132px;
+	border-radius: 0;
+	flex-shrink: 0;
+}
+.inst-card-grid .inst-batch-card .inst-mini-logo img {
+	border-radius: 0;
+}
+.inst-card-grid .inst-batch-card .inst-card-body {
+	padding: 14px 14px 16px;
+}
+.inst-card-grid .inst-batch-card .inst-card-chevron {
+	display: none;
+}
+.inst-card {
+	background: var(--Secondary-Color, #f7f7fb);
+	border-radius: 12px;
+	padding: 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-height: 100%;
+	border: 1px solid rgba(0,0,0,.06);
+}
+.inst-card-img {
+	width: 64px;
+	height: 64px;
+	border-radius: 50%;
+	object-fit: cover;
+	background: #e8e8ef;
+}
+.inst-card-title {
+	font-weight: 600;
+	font-size: 1.05rem;
+	margin: 0;
+	word-break: break-word;
+}
+.inst-meta {
+	font-size: 0.9rem;
+	color: #555;
+	word-break: break-word;
+}
+.inst-stars {
+	color: #f5a623;
+	letter-spacing: 2px;
+}
+.inst-detail-head {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	align-items: center;
+	text-align: center;
+	padding: 20px 0;
+}
+@media (min-width: 768px) {
+	.inst-detail-head {
+		flex-direction: row;
+		text-align: left;
+		align-items: flex-start;
+	}
+}
+.inst-detail-head img {
+	width: 96px;
+	height: 96px;
+	border-radius: 12px;
+	object-fit: cover;
+	background: #e8e8ef;
+}
+.inst-section {
+	margin-top: 28px;
+}
+.inst-section h3 {
+	font-size: 1.15rem;
+	margin-bottom: 12px;
+}
+.inst-pill {
+	display: inline-block;
+	padding: 4px 10px;
+	border-radius: 999px;
+	font-size: 0.8rem;
+	background: rgba(77, 74, 129, 0.12);
+	color: var(--Primary-Color, #4d4a81);
+}
+.inst-table-wrap {
+	width: 100%;
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+	border-radius: 10px;
+	border: 1px solid rgba(0,0,0,.08);
+}
+.inst-table {
+	width: 100%;
+	min-width: 520px;
+	border-collapse: collapse;
+	font-size: 0.9rem;
+}
+.inst-table th,
+.inst-table td {
+	padding: 10px 12px;
+	border-bottom: 1px solid rgba(0,0,0,.06);
+	vertical-align: top;
+	word-break: break-word;
+}
+.inst-table th {
+	background: rgba(0,0,0,.04);
+	text-align: left;
+	white-space: nowrap;
+}
+.inst-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+.inst-btn-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	justify-content: flex-end;
+	margin-top: 16px;
+}
+.inst-muted {
+	color: #666;
+	font-size: 0.9rem;
+}
+
+/* —— Institute details (mobile-first) —— */
+.inst-detail-page {
+	padding-bottom: 56px;
+	background: #f4f6fb;
+}
+.inst-detail-mobile-bar {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	position: relative;
+	padding: 14px 48px 10px;
+	background: #fff;
+	border-bottom: 1px solid rgba(0,0,0,.06);
+}
+.inst-detail-mobile-bar .inst-back {
+	position: absolute;
+	left: 12px;
+	top: 50%;
+	transform: translateY(-50%);
+	width: 40px;
+	height: 40px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--Primary-Color, #4d4a81);
+	font-size: 1.1rem;
+	border-radius: 10px;
+}
+.inst-detail-mobile-bar .inst-back:hover {
+	background: rgba(77, 74, 129, 0.08);
+	color: var(--Primary-Color, #4d4a81);
+	text-decoration: none;
+}
+.inst-detail-mobile-title {
+	font-weight: 600;
+	font-size: 1.05rem;
+	color: #222;
+}
+.inst-detail-hero {
+	position: relative;
+	width: 100%;
+	height: 200px;
+	overflow: hidden;
+	background: linear-gradient(135deg, #e8ecf8 0%, #dce4f5 100%);
+}
+@media (min-width: 576px) {
+	.inst-detail-hero { height: 240px; }
+}
+.inst-detail-hero img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+.inst-detail-container {
+	max-width: 720px;
+	margin: 0 auto;
+	padding: 0 14px 32px;
+	position: relative;
+}
+.inst-detail-summary-card {
+	background: #fff;
+	border-radius: 16px;
+	padding: 18px 16px 20px;
+	margin-top: 0px;
+	position: relative;
+	z-index: 2;
+	box-shadow: 0 8px 28px rgba(15, 23, 42, 0.08);
+	border: 1px solid rgba(0,0,0,.04);
+}
+.inst-detail-summary-row {
+	display: flex;
+	gap: 14px;
+	align-items: flex-start;
+}
+.inst-detail-logo-lg {
+	width: 72px;
+	height: 72px;
+	border-radius: 50%;
+	object-fit: cover;
+	flex-shrink: 0;
+	background: #fff7ed;
+	border: 3px solid #fff;
+	box-shadow: 0 2px 10px rgba(0,0,0,.08);
+}
+.inst-detail-summary-main {
+	flex: 1;
+	min-width: 0;
+}
+.inst-detail-name {
+	font-size: 1.2rem;
+	font-weight: 700;
+	margin: 0 0 6px;
+	color: #1a1a2e;
+	line-height: 1.25;
+}
+.inst-detail-rating-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+	margin-bottom: 10px;
+}
+.inst-detail-rating-stars {
+	color: #f5a623;
+	font-size: 0.95rem;
+	letter-spacing: 1px;
+}
+.inst-detail-rating-num {
+	font-size: 0.9rem;
+	color: #555;
+	font-weight: 600;
+}
+.inst-detail-contact-list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.inst-detail-contact-list li {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 8px 0;
+	font-size: 0.92rem;
+	color: #444;
+	border-bottom: 1px solid rgba(0,0,0,.05);
+}
+.inst-detail-contact-list li:last-child {
+	border-bottom: 0;
+}
+.inst-detail-contact-list a {
+	color: var(--Primary-Color, #4d4a81);
+	word-break: break-all;
+}
+.inst-detail-contact-list .inst-ci {
+	width: 22px;
+	text-align: center;
+	color: var(--Primary-Color, #4d4a81);
+	flex-shrink: 0;
+	margin-top: 2px;
+}
+.inst-detail-panel {
+	background: #e8eef9;
+	border-radius: 16px;
+	padding: 14px 12px 16px;
+	margin-top: 16px;
+	border: 1px solid rgba(77, 74, 129, 0.08);
+}
+.inst-panel-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 12px;
+	padding: 0 4px;
+}
+.inst-panel-head h3 {
+	margin: 0;
+	font-size: 1rem;
+	font-weight: 700;
+	color: #1a1a2e;
+}
+.inst-see-all {
+	font-size: 0.88rem;
+	font-weight: 600;
+	color: var(--Primary-Color, #4d4a81);
+	white-space: nowrap;
+}
+.inst-see-all:hover {
+	text-decoration: none;
+	opacity: 0.85;
+}
+.inst-panel-stack {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+.inst-batch-card,
+.inst-review-card {
+	background: #fff;
+	border-radius: 14px;
+	padding: 14px 14px 14px 12px;
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	border: 1px solid rgba(0,0,0,.04);
+	box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+	text-decoration: none;
+	color: inherit;
+	transition: box-shadow 0.15s ease;
+}
+a.inst-batch-card:hover,
+a.inst-review-card:hover {
+	box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+	text-decoration: none;
+	color: inherit;
+}
+.inst-batch-card .inst-mini-logo,
+.inst-review-card .inst-avatar {
+	width: 44px;
+	height: 44px;
+	border-radius: 10px;
+	object-fit: cover;
+	flex-shrink: 0;
+	background: #fff7ed;
+}
+.inst-batch-card .inst-mini-logo {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 10px;
+}
+.inst-avatar.inst-avatar-placeholder {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 0.75rem;
+	font-weight: 700;
+	color: var(--Primary-Color, #4d4a81);
+	background: #e8ecf8;
+	border-radius: 50%;
+}
+.inst-card-body {
+	flex: 1;
+	min-width: 0;
+}
+.inst-card-title-sm {
+	font-weight: 600;
+	font-size: 0.95rem;
+	margin: 0 0 4px;
+	color: #1a1a2e;
+	line-height: 1.3;
+}
+.inst-card-sub {
+	font-size: 0.82rem;
+	color: #666;
+	margin: 0 0 2px;
+}
+.inst-card-chevron {
+	align-self: center;
+	color: #bbb;
+	font-size: 0.85rem;
+	padding-left: 4px;
+}
+.inst-review-snippet {
+	font-size: 0.86rem;
+	color: #555;
+	margin-top: 4px;
+	line-height: 1.4;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+.inst-write-review-cta {
+	display: block;
+	width: 100%;
+	margin-top: 14px;
+	padding: 14px 16px;
+	border: none;
+	border-radius: 12px;
+	font-weight: 600;
+	font-size: 1rem;
+	background: var(--Primary-Color, #4d4a81);
+	color: var(--Alternate-Text-Color, #fff);
+	text-align: center;
+	text-decoration: none;
+	box-shadow: 0 4px 14px rgba(77, 74, 129, 0.35);
+}
+.inst-write-review-cta:hover {
+	color: var(--Alternate-Text-Color, #fff);
+	text-decoration: none;
+	filter: brightness(1.05);
+}
+.inst-detail-hidden {
+	display: none !important;
+}
+
+/* —— Write review page —— */
+.inst-review-page {
+	min-height: 70vh;
+	background: #f4f6fb;
+	padding-bottom: 32px;
+}
+.inst-review-body {
+	max-width: 520px;
+	margin: 0 auto;
+	padding: 20px 16px 24px;
+}
+.inst-review-stars-wrap {
+	text-align: center;
+	padding: 8px 0 20px;
+}
+.inst-review-stars-wrap label {
+	display: block;
+	font-size: 0.85rem;
+	color: #666;
+	margin-bottom: 10px;
+	font-weight: 600;
+}
+.inst-review-stars {
+	display: inline-flex;
+	gap: 6px;
+	justify-content: center;
+	flex-wrap: wrap;
+}
+.inst-review-stars button {
+	border: none;
+	background: none;
+	padding: 4px 6px;
+	line-height: 1;
+	cursor: pointer;
+	font-size: 2rem;
+	color: #d9d9e0;
+	transition: color 0.12s ease, transform 0.12s ease;
+}
+.inst-review-stars button.is-on {
+	color: #f5a623;
+}
+.inst-review-stars button:hover,
+.inst-review-stars button:focus {
+	color: #f0b84d;
+	outline: none;
+	transform: scale(1.05);
+}
+.inst-review-text-shell {
+	background: #e8eef9;
+	border-radius: 14px;
+	padding: 12px;
+	border: 1px solid rgba(77, 74, 129, 0.1);
+}
+.inst-review-text-shell textarea {
+	width: 100%;
+	min-height: 140px;
+	border: none;
+	border-radius: 10px;
+	padding: 14px;
+	font-size: 0.95rem;
+	resize: vertical;
+	box-shadow: inset 0 1px 3px rgba(0,0,0,.04);
+}
+.inst-review-text-shell textarea:focus {
+	outline: 2px solid rgba(77, 74, 129, 0.25);
+	outline-offset: 0;
+}
+.inst-submit-full {
+	width: 100%;
+	margin-top: 20px;
+	padding: 14px 16px;
+	border: none;
+	border-radius: 12px;
+	font-weight: 600;
+	font-size: 1rem;
+	background: var(--Primary-Color, #4d4a81);
+	color: var(--Alternate-Text-Color, #fff);
+	cursor: pointer;
+	box-shadow: 0 4px 14px rgba(77, 74, 129, 0.35);
+}
+.inst-submit-full:disabled {
+	opacity: 0.65;
+	cursor: not-allowed;
+}
+.inst-submit-full:hover:not(:disabled) {
+	filter: brightness(1.05);
+}
+
+/* —— Institute listing —— */
+.inst-list-page-container .inst-list-directory-panel {
+	margin-top: 12px;
+}
+.inst-list-intro {
+	margin: -4px 4px 12px;
+	font-size: 0.86rem;
+	color: #64748b;
+	line-height: 1.4;
+}
+.inst-list-filter-bar {
+	background: #fff;
+	border-radius: 12px;
+	padding: 12px;
+	margin-bottom: 14px;
+	border: 1px solid rgba(0, 0, 0, 0.06);
+	box-shadow: 0 1px 4px rgba(15, 23, 42, 0.05);
+}
+.inst-list-filter-fields {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px 12px;
+	align-items: flex-end;
+}
+.inst-list-filter-item {
+	flex: 1 1 140px;
+	min-width: 0;
+}
+.inst-list-filter-item.inst-list-filter-grow {
+	flex: 2 1 200px;
+}
+.inst-list-filter-item label {
+	display: block;
+	font-size: 0.72rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: #64748b;
+	margin-bottom: 5px;
+}
+.inst-list-filter-item .edu_form_field {
+	width: 100%;
+	min-height: 42px;
+	border-radius: 10px;
+	font-size: 0.92rem;
+}
+.inst-list-filter-actions {
+	margin-top: 12px;
+	display: flex;
+	justify-content: stretch;
+}
+.inst-list-filter-actions .inst-list-apply-btn {
+	width: 100%;
+	min-height: 42px;
+	border-radius: 10px;
+	font-weight: 600;
+}
+@media (min-width: 768px) {
+	.inst-list-filter-bar {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-end;
+		gap: 12px 14px;
+		padding: 14px 16px;
+	}
+	.inst-list-filter-fields {
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+	.inst-list-filter-actions {
+		margin-top: 0;
+		flex: 0 0 auto;
+		align-self: flex-end;
+	}
+	.inst-list-filter-actions .inst-list-apply-btn {
+		width: auto;
+		min-width: 120px;
+	}
+}
+.inst-list-pagination {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin-top: 18px;
+	padding-top: 14px;
+	border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+.inst-list-pagination .edu_btn {
+	min-width: 108px;
+	border-radius: 12px;
+	font-weight: 600;
+}
+.inst-batch-card .inst-mini-logo img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	border-radius: 10px;
+	display: block;
+}
+
+/* Batch list (courses / enrolled batches) */
+.batch-list-meta {
+	font-size: 0.82rem;
+	color: #555;
+	margin: 2px 0 0;
+	line-height: 1.35;
+}
+.batch-list-dates {
+	font-size: 0.78rem;
+	color: #64748b;
+	margin-top: 4px;
+}
+
+/* Payment summary */
+.bp-summary-card {
+	max-width: 520px;
+	margin: 0 auto;
+}
+.bp-title {
+	margin: 0 0 14px;
+	font-size: 1.22rem;
+	font-weight: 700;
+	text-align: center;
+}
+.bp-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 6px 0;
+	font-size: 0.95rem;
+	color: #1f2937;
+}
+.bp-row-mini {
+	padding-top: 0;
+	font-size: 0.8rem;
+	color: #6b7280;
+}
+.bp-grand {
+	font-size: 1rem;
+	font-weight: 700;
+}
+.bp-break {
+	border-top: 1px solid rgba(0, 0, 0, 0.1);
+	margin: 8px 0;
+}
+.bp-code-wrap {
+	margin-top: 12px;
+}
+.bp-code-wrap label {
+	display: block;
+	font-size: 0.92rem;
+	font-weight: 600;
+	margin-bottom: 6px;
+}
+.bp-code-row {
+	display: flex;
+	gap: 8px;
+}
+.bp-code-row .edu_form_field {
+	flex: 1 1 auto;
+	min-height: 42px;
+}
+.bp-apply {
+	min-width: 80px;
+	border: 1px solid rgba(59, 130, 246, 0.3);
+	color: #3b82f6;
+	background: #fff;
+	border-radius: 10px;
+	font-weight: 600;
+	padding: 0 14px;
+}
+.bp-payfor {
+	margin-top: 12px;
+}
+.bp-plan-card {
+	background: #3b82f6;
+	color: #fff;
+}
+.bp-plan-card .inst-card-title-sm,
+.bp-plan-card .inst-card-sub {
+	color: #fff;
+}

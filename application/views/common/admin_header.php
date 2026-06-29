@@ -164,6 +164,10 @@
         var ltr_select_paper_msg ="<?php echo html_escape($this->common->languageTranslator('ltr_select_paper_msg')); ?>";
         var ltr_add_facility ="<?php echo html_escape($this->common->languageTranslator('ltr_add_facility')); ?>";
         var ltr_edit_facility ="<?php echo html_escape($this->common->languageTranslator('ltr_edit_facility')); ?>";
+        var ltr_add_cms_page ="<?php echo html_escape($this->common->languageTranslator('ltr_add_cms_page')); ?>";
+        var ltr_edit_cms_page ="<?php echo html_escape($this->common->languageTranslator('ltr_edit_cms_page')); ?>";
+        var ltr_add_template ="<?php echo html_escape($this->common->languageTranslator('ltr_add_template')); ?>";
+        var ltr_edit_template ="<?php echo html_escape($this->common->languageTranslator('ltr_edit_template')); ?>";
         var ltr_add_assignment ="<?php echo html_escape($this->common->languageTranslator('ltr_add_assignment')); ?>";
         var ltr_edit_assignment ="<?php echo html_escape($this->common->languageTranslator('ltr_edit_assignment')); ?>";
         var ltr_update_assignment ="<?php echo html_escape($this->common->languageTranslator('ltr_update_assignment')); ?>";
@@ -216,6 +220,7 @@
         var ltr_batch_price_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_batch_price_msg')); ?>";
         var ltr_payment_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_payment_msg')); ?>";
         var ltr_something_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_something_msg')); ?>";
+        var ltr_contest_name_required_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_contest_name_required_msg')); ?>";
         var ltr_live_class_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_live_class_msg')); ?>";
         var ltr_add_blog  ="<?php echo html_escape($this->common->languageTranslator('ltr_add_blog')); ?>";
         var ltr_no_result  ="<?php echo html_escape($this->common->languageTranslator('ltr_no_result')); ?>";
@@ -281,19 +286,42 @@ if(isset($timezoneDB[0]['timezone']) && !empty($timezoneDB[0]['timezone'])){
     date_default_timezone_set($timezoneDB[0]['timezone']);
 } 
 
-$admin_id = $this->session->userdata('admin_id');
-$teacher_id = $this->session->userdata('uid');
-$condN = "admin_id = $admin_id AND teacher_id = $teacher_id AND status = 1 AND read_status = 0";
-$notice_count = $this->db_model->countAll('notices use index(id)',$condN);
-$logo = current($this->db_model->select_data('*','users use index (id)',array('id'=>$admin_id)));
-    $lastrecord = current($this->db_model->select_data('access','users',array('id' => $this->session->userdata('uid')),1,array('id','desc')));
-    $access = null;
-    if (is_array($lastrecord) && ! empty($lastrecord['access'])) {
-        $access = json_decode($lastrecord['access']);
-    }
-    if ( ! is_object($access)) {
-        $access = new stdClass();
-    }
+$admin_id = (int) $this->session->userdata('admin_id');
+$teacher_id = (int) $this->session->userdata('uid');
+if ($admin_id < 1) {
+	$admin_id = $teacher_id;
+}
+$notice_count = 0;
+if ($admin_id > 0 && $teacher_id > 0) {
+	$condN = 'admin_id = ' . $admin_id . ' AND teacher_id = ' . $teacher_id . ' AND status = 1 AND read_status = 0';
+	$notice_count = $this->db_model->countAll('notices use index(id)', $condN);
+}
+$logo = array();
+if ($admin_id > 0) {
+	$logo_row = $this->db_model->select_data('*', 'users use index (id)', array('id' => $admin_id), 1);
+	$logo = is_array($logo_row) && ! empty($logo_row) ? current($logo_row) : array();
+}
+if ( ! is_array($logo)) {
+	$logo = array();
+}
+	$uid_for_access = (int) $this->session->userdata('uid');
+	$lastrecord = array();
+	if ($uid_for_access > 0) {
+		$lr = $this->db_model->select_data('access', 'users', array('id' => $uid_for_access), 1, array('id', 'desc'));
+		if (is_array($lr) && ! empty($lr)) {
+			$lastrecord = current($lr);
+		}
+	}
+	if ( ! is_array($lastrecord)) {
+		$lastrecord = array();
+	}
+	$access = null;
+	if ( ! empty($lastrecord['access'])) {
+		$access = json_decode($lastrecord['access']);
+	}
+	if ( ! is_object($access)) {
+		$access = new stdClass();
+	}
 
 if ( ! is_array($cur_arr)) {
     $cur_arr = array();
@@ -302,8 +330,8 @@ if ( ! is_array($cur_arr)) {
 <div class="edu_header_sidebar">
     <header class="edu_left_header">
         <div class="edu_admin_logo">
-            <a href="<?php echo base_url().'admin/dashboard';?>"><img src="<?php echo html_escape($this->common->siteLogo); ?>" class="logoRelativeCls main_logo" alt="Logo"></a>
-            <a href="#"><img src="<?php echo html_escape($this->common->siteminiLogo); ?>" class="mini_logo" alt="Minilogo"></a>
+            <a href="<?php echo base_url().'admin/dashboard';?>"><img src="<?php echo html_escape($this->common->siteminiLogo); ?>" class="logoRelativeCls main_logo" alt="Logo"></a>
+            <a href="<?php echo base_url().'admin/dashboard';?>"><img src="<?php echo html_escape($this->common->siteminiLogo); ?>" class="mini_logo" alt="Minilogo"></a>
             <div class="edu_header_close responsive_btn">
                 <span></span>
                 <span></span>
@@ -349,8 +377,12 @@ if ( ! is_array($cur_arr)) {
                             
                  <?php  } ?>
                 <?php
-                    if (($this->session->userdata['super_admin'] == 1) || (isset($access->academics) && $access->academics == '1')) { ?>
-                    <li class="has_sub_menu <?php echo (in_array("batch-manage",$cur_arr) || in_array("notice-manage",$cur_arr) || in_array("subject-manage",$cur_arr) || in_array("question-manage",$cur_arr)||in_array("question-manage",$cur_arr)||in_array("vacancy-manage",$cur_arr)||in_array("live-class",$cur_arr)||in_array("live-class-history",$cur_arr)||in_array("batch-cat-manage",$cur_arr)||in_array("batch-subcat-manage",$cur_arr)||in_array("jetsi",$cur_arr) )?'active':''; ?>">
+					$role_admin = ((int) $this->session->userdata('role') === 1 || (string) $this->session->userdata('role') === '1');
+					$academics_granted = isset($access->academics) && (string) $access->academics === '1';
+					$academics_revoked = isset($access->academics) && (string) $access->academics === '0';
+					$show_academics_menu = ($this->session->userdata['super_admin'] == 1) || $academics_granted || ($role_admin && ! $academics_revoked);
+                    if ($show_academics_menu) { ?>
+                    <li class="has_sub_menu <?php echo (in_array("batch-manage",$cur_arr) || in_array("notice-manage",$cur_arr) || in_array("subject-manage",$cur_arr) || in_array("question-manage",$cur_arr)||in_array("question-manage",$cur_arr)||in_array("vacancy-manage",$cur_arr)||in_array("live-class",$cur_arr)||in_array("live-class-history",$cur_arr)||in_array("batch-cat-manage",$cur_arr)||in_array("batch-subcat-manage",$cur_arr)||in_array("jetsi",$cur_arr)||in_array("institute-manage",$cur_arr)||in_array("institute-progress",$cur_arr) )?'active':''; ?>">
                         <a href="javascript:void(0);" class="">
                             <svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
                                  viewBox="0 0 30 30" enable-background="new 0 0 30 30" xml:space="preserve">
@@ -389,8 +421,8 @@ if ( ! is_array($cur_arr)) {
                             <li <?php echo (in_array("batch-cat-manage",$cur_arr) )?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/batch-cat-manage"> <?php echo html_escape($this->common->languageTranslator('ltr_batch_cat_manager')); ?></a></li>
                              <li <?php echo (in_array("batch-subcat-manage",$cur_arr) )?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/batch-subcat-manage"> <?php echo html_escape($this->common->languageTranslator('ltr_batch_subcat_manager')); ?></a></li>
                             <li <?php echo (in_array("batch-manage",$cur_arr) || in_array("add-batch",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/batch-manage"> <?php echo html_escape($this->common->languageTranslator('ltr_batch_manager')); ?></a></li>
-                        
-                            <li <?php echo (in_array("notice-manage",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/notice-manage"><?php echo html_escape($this->common->languageTranslator('ltr_notice_manager')); ?></a>
+                            <li <?php echo (in_array("institute-manage",$cur_arr) || in_array("institute-progress",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/institute-manage"><?php echo html_escape($this->common->languageTranslator('ltr_manage_institutes')); ?></a></li>
+                            <li <?php echo (in_array("notice-manage",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/notice-manage"><?php echo html_escape($this->common->languageTranslator('ltr_notice_manager')); ?></a></li>
                             <li <?php echo (in_array("subject-manage",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/subject-manage"><?php echo html_escape($this->common->languageTranslator('ltr_subject_manager')); ?></a></li>
                             <li <?php echo (in_array("question-manage",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/question-manage"><?php echo html_escape($this->common->languageTranslator('ltr_question_manager')); ?></a></li>
                             <li <?php echo (in_array("vacancy-manage",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/vacancy-manage"><?php echo html_escape($this->common->languageTranslator('ltr_upcoming_exams_manager')); ?></a></li>
@@ -1068,7 +1100,8 @@ if ( ! is_array($cur_arr)) {
                         <li <?php echo (in_array("language-settings",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/language-settings"><?php echo html_escape($this->common->languageTranslator('ltr_language_settings'));?></a></li>
                         <li <?php echo (in_array("email-settings",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/email-settings"><?php echo html_escape($this->common->languageTranslator('ltr_email_settings'));?></a></li>
                         <li <?php echo (in_array("firebase-settings",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/firebase-settings"><?php echo html_escape($this->common->languageTranslator('ltr_firebase_settings'));?></a></li>
-                    </ul> 
+                        <li <?php echo (in_array("sms-settings",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/sms-settings"><?php echo html_escape($this->common->languageTranslator('ltr_sms_settings'));?></a></li>
+                    </ul>
                 </li>
                     <?php
                 }?>
@@ -1089,6 +1122,14 @@ if ( ! is_array($cur_arr)) {
                                 C360,233.909,342.091,216,320,216z M320,280c-13.255,0-24-10.745-24-24c0-13.255,10.745-24,24-24s24,10.745,24,24
                                 C344,269.255,333.255,280,320,280z"/></g></g><g> <g> <rect x="176" y="72" width="128" height="16"/>  </g></g><g> <g> <rect x="96" y="120" width="288" height="16"/></g></g><g>   <g> <rect x="96" y="152" width="288" height="16"/></g></g><g>   <g> <rect x="104" y="256" width="104" height="16"/></g></g></svg>
                                 <span><?php echo html_escape($this->common->languageTranslator('ltr_themes_option'));?></span>
+                                </a></li>
+                                <li <?php echo in_array("cms-pages",$cur_arr)?'class="active"':'';?>><a href="<?php echo base_url();?>admin/cms-pages">
+                                <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/></svg>
+                                <span><?php echo html_escape($this->common->languageTranslator('ltr_cms_pages'));?></span>
+                                </a></li>
+                                <li <?php echo in_array("templates",$cur_arr)?'class="active"':'';?>><a href="<?php echo base_url();?>admin/templates">
+                                <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20,6C20.58,6 21.05,6.2 21.42,6.59C21.8,7.05 22,7.58 22,8V18C22,19.11 21.11,20 20,20H4C2.89,20 2,19.11 2,18V6C2,4.89 2.89,4 4,4H10L12,6H20M20,8H4V18H20V8Z"/></svg>
+                                <span><?php echo html_escape($this->common->languageTranslator('ltr_templates'));?></span>
                                 </a></li>
                         <?php 
                     }
@@ -1121,7 +1162,7 @@ if ( ! is_array($cur_arr)) {
        
         <div class="edu_admin">
             <div class="edu_admin_inner">
-                <?php if($this->session->userdata('role') == '1'){  ?> 
+                <?php if($this->session->userdata('role') == '1' || $this->session->userdata('role') == '4'){  ?>
                     <a class="edu_admin_bar" href="javascript:void(0);"> <span class="icofont-user-alt-4"></span><?php echo (isset($this->session->userdata['name']))?$this->session->userdata['name']:'';?>
                         <svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
                             viewBox="0 0 451.847 451.847" style="enable-background:new 0 0 451.847 451.847;"
@@ -1135,7 +1176,7 @@ if ( ! is_array($cur_arr)) {
                     </a>
                 <?php } ?>
                 <div class="edu_admin_option">
-                    <?php if($this->session->userdata('role') == '1'){  ?> 
+                    <?php if($this->session->userdata('role') == '1' || $this->session->userdata('role') == '4'){  ?>
                         <a href="<?php echo base_url(); ?>admin/change-password"><i class="icofont-user"></i><?php echo html_escape($this->common->languageTranslator('ltr_change_password'));?></a>
                     <?php } ?>
                     <a href="javascript:void(0);" title="Logout" class="cnfmlogOutBtn"><i class="icofont-logout"></i><span><?php echo html_escape($this->common->languageTranslator('ltr_logout'));?></span></a>

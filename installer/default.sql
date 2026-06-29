@@ -71,7 +71,9 @@ CREATE TABLE `batches` (
   `batch_image` varchar(200) NOT NULL,
   `no_of_student` int(11) NOT NULL,
   `status` int(11) NOT NULL,
-  `pay_mode` text NOT NULL
+  `pay_mode` text NOT NULL,
+  `institute_id` int(11) NOT NULL DEFAULT 0,
+  `batch_mode` varchar(20) NOT NULL DEFAULT 'Online'
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1;
 
 -- --------------------------------------------------------
@@ -441,7 +443,7 @@ CREATE TABLE `frontend_details` (
 --
 
 INSERT INTO `frontend_details` (`id`, `mobile`, `email`, `address`, `facebook`, `youtube`, `twitter`, `instagram`, `linkedin`, `map_api`, `slider_details`, `cont_heading`, `cont_sub_heading`, `cont_form_heading`, `faci_heading`, `faci_sub_heading`, `frst_crse_heading`, `frst_crse_sub_heading`, `frst_crse_desc`, `sec_crse_heading`, `sec_crse_sub_heading`, `abt_frst_heading`, `abt_frst_sub_heading`, `abt_year`, `abt_frst_desc`, `abt_frst_img`, `abt_sec_img`, `abt_sec_heading`, `abt_sec_desc`, `abt_secbtn_text`, `abt_secbtn_url`, `abt_thrd_heading`, `abt_thrd_sub_heading`, `abt_thrd_desc`, `abt_thrd_img`, `total_toppers`, `trusted_students`, `years_of_histry`, `testimonial`, `testi_heading`, `testi_subheading`, `selectn_heading`, `selectn_subheading`, `selection`, `teacher_heading`, `teacher_subheading`, `no_of_teacher`, `header_btn_txt`, `header_btn_url`, `client_imgs`) VALUES
-(1, '6280152158', 'info@google.com', 'Doha Qatar', 'https://www.facebook.com', 'https://www.youtube.com', 'https://www.twitter.com', 'https://www.instagram.com', 'https://www.linkedin.com', '', '{\"slider_heading\":[\"MGL Smart Technology\",\"Choose Best For Your Education\"],\"slider_subheading\":[\"Best Education\",\"Welcome to CSACADEMY \"],\"slider_desc\":[\"abcdefghijklmnopqrstuvwxyz\",\"Very Best Educational Academy in Pakistan rtgh\"],\"slider_img\":[\"slider31.png\",\"slider1.png\",\"slider2.png\"]}', 'Contact Us For You Query', 'START WITH US', 'Send Us A Message', 'Our Facilities are', 'Our Facilities', 'Online Learning Plateform', 'WE ARE E - ACADEMY', '', 'Data Sciencpli', 'Learn Data Science in 30 Days ', 'Why Choose Us trs', 'ABOUT E-ACADEMY', '1996', 'Consectetur adipisicing elit sed do eiusmod tempor incididunt ut labore eesdoeit dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation and in ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum<br><br>Excepteur sint occaecat cupidatat noesn proident sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut peerspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantiuws totam rem aperiam, eaque ipsa quae.Consectetur adipisicing elit sed do eiusmod tempor incididunt ut labore eesdoeit dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation.', 'about_img11.png', 'about_img2.png', 'We Take Care Of Your Careers Do Not Worry', 'We Are Very Cost Friendly And We Would Love To Be A Part Of Your Home Happiness For A Long Lorem Ipsum Dolor Sit Amet, Consectetur Adipisicing Elit Sed Eiusmod.', 'Contact Us', 'http://kamleshyadav.in/e-academy/contact-us', 'Why Choose Us From Thousands', 'OUR MISSION', 'Consectetur adipisicing elit sed do eiusmod tempor incididunt ut labore eesdoeit dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation and in ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum.<br><br>Excepteur sint occaecat cupidatat noesn proident sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut peerspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantiuws totam rem aperiam, eaque ipsa quae.', 'vission_img.png', 654, 200, 10, '{\"4\":\"Am employed \",\"3\":\"Thanks for the opportunity \",\"1\":\"Consectetur adipiscing elit, sed do eiusmod tempor incididunt uerset labore et dolore magna aliqua. Qesuis ipsum esuspendisse ultriceies gravida Risus commodo viverra andes aecenas accumsan lacus vel facilisis. \",\"2\":\"Consectetur adipiscing elit, sed do eiusmod tempor incididunt uerset labore et dolore magna aliqua. Qesuis ipsum esuspendisse ultriceies gravida Risus commodo viverra andes aecenas accumsan lacus vel facilisis. \"}', 'What Student Says', 'CSA- ACADEMY REVIEWS', 'Our Selections', 'TOPPERS ARE HERE', '{\"2\":\"student\",\"3\":\"student\",\"1\":\"student\"}', 'Qualified Teacher', 'OUR EXPERTS', 6, '', '', '[\"012.png\",\"021.png\",\"031.png\",\"041.png\",\"051.png\",\"063.png\"]');
+(1, '6280152158', 'info@google.com', 'Doha Qatar', 'https://www.facebook.com', 'https://www.youtube.com', 'https://www.twitter.com', 'https://www.instagram.com', 'https://www.linkedin.com', '', '{\"slider_heading\":[\"MGL Smart Technology\",\"Choose Best For Your Education\"],\"slider_subheading\":[\"Best Education\",\"Welcome to CSACADEMY \"],\"slider_desc\":[\"abcdefghijklmnopqrstuvwxyz\",\"Very Best Educational Academy in Pakistan rtgh\"],\"slider_img\":[\"slider31.png\",\"slider1.png\",\"slider2.png\"]}', 'Contact Us For You Query', 'START WITH US', 'Send Us A Message', 'Our Facilities are', 'Our Facilities', 'Online Learning Plateform', 'WE ARE E - ACADEMY', '', 'Data Sciencpli', 'Learn Data Science in 30 Days ', 'Why Choose Us trs', 'ABOUT Gradmo', '1996', 'Consectetur adipisicing elit sed do eiusmod tempor incididunt ut labore eesdoeit dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation and in ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum<br><br>Excepteur sint occaecat cupidatat noesn proident sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut peerspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantiuws totam rem aperiam, eaque ipsa quae.Consectetur adipisicing elit sed do eiusmod tempor incididunt ut labore eesdoeit dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation.', 'about_img11.png', 'about_img2.png', 'We Take Care Of Your Careers Do Not Worry', 'We Are Very Cost Friendly And We Would Love To Be A Part Of Your Home Happiness For A Long Lorem Ipsum Dolor Sit Amet, Consectetur Adipisicing Elit Sed Eiusmod.', 'Contact Us', 'http://kamleshyadav.in/Gradmo/contact-us', 'Why Choose Us From Thousands', 'OUR MISSION', 'Consectetur adipisicing elit sed do eiusmod tempor incididunt ut labore eesdoeit dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation and in ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum.<br><br>Excepteur sint occaecat cupidatat noesn proident sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut peerspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantiuws totam rem aperiam, eaque ipsa quae.', 'vission_img.png', 654, 200, 10, '{\"4\":\"Am employed \",\"3\":\"Thanks for the opportunity \",\"1\":\"Consectetur adipiscing elit, sed do eiusmod tempor incididunt uerset labore et dolore magna aliqua. Qesuis ipsum esuspendisse ultriceies gravida Risus commodo viverra andes aecenas accumsan lacus vel facilisis. \",\"2\":\"Consectetur adipiscing elit, sed do eiusmod tempor incididunt uerset labore et dolore magna aliqua. Qesuis ipsum esuspendisse ultriceies gravida Risus commodo viverra andes aecenas accumsan lacus vel facilisis. \"}', 'What Student Says', 'CSA- ACADEMY REVIEWS', 'Our Selections', 'TOPPERS ARE HERE', '{\"2\":\"student\",\"3\":\"student\",\"1\":\"student\"}', 'Qualified Teacher', 'OUR EXPERTS', 6, '', '', '[\"012.png\",\"021.png\",\"031.png\",\"041.png\",\"051.png\",\"063.png\"]');
 
 -- --------------------------------------------------------
 
@@ -495,7 +497,8 @@ INSERT INTO `general_settings` (`id`, `title`, `key_text`, `velue_text`) VALUES
 (14, 'smtp host mails', 'smtp_port', '587'),
 (15, 'smtp smtp encryption', 'smtp_encryption', 'tlc'),
 (16, 'sandbox accounts', 'sandbox_accounts', 'sb-jk4dj23946335@business.example.com'),
-(17, 'Firebase Accounts', 'firebase_key', 'AAAAFU0Nyks:APA91bFWu1zpzRasM60cqJjMvfcL5Uc667MP38b5CaYd5O3g-ioRYGtVSvBCdFUt5ea4H8eIDbPKNs98z5W0RxFfRsswy07p1EbSKRRlQkUA1b9sb_fBC2sHvFJZWhpILlZlOqz0_M4u');
+(17, 'Firebase Accounts', 'firebase_key', 'AAAAFU0Nyks:APA91bFWu1zpzRasM60cqJjMvfcL5Uc667MP38b5CaYd5O3g-ioRYGtVSvBCdFUt5ea4H8eIDbPKNs98z5W0RxFfRsswy07p1EbSKRRlQkUA1b9sb_fBC2sHvFJZWhpILlZlOqz0_M4u'),
+(18, 'Razorpay webhook signing secret (Dashboard → Webhooks)', 'razorpay_webhook_secret', '');
 
 -- --------------------------------------------------------
 
@@ -576,24 +579,6 @@ CREATE TABLE `live_class_history` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `live_class_setting`
---
-
-CREATE TABLE `live_class_setting` (
-  `id` int(11) NOT NULL,
-  `batch` int(11) NOT NULL,
-  `zoom_api_key` varchar(500) NOT NULL,
-  `zoom_api_secret` varchar(500) NOT NULL,
-  `meeting_number` varchar(255) NOT NULL,
-  `password` varchar(255) NOT NULL,
-  `status` int(11) NOT NULL,
-  `admin_id` int(11) NOT NULL,
-  `added_at` datetime NOT NULL
-) ENGINE=MyISAM DEFAULT CHARSET=latin1;
-
--- --------------------------------------------------------
-
---
 -- Table structure for table `mock_result`
 --
 
@@ -662,15 +647,40 @@ CREATE TABLE `notices` (
 
 CREATE TABLE `notifications` (
   `id` int(11) NOT NULL,
-  `student_id` int(11) NOT NULL,
   `batch_id` int(11) NOT NULL,
   `notification_type` varchar(255) NOT NULL,
+  `title` varchar(255) NOT NULL DEFAULT '',
   `msg` varchar(255) NOT NULL,
   `url` varchar(255) NOT NULL,
   `status` int(2) NOT NULL DEFAULT 0,
   `time` datetime DEFAULT NULL,
   `seen_by` datetime DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `push_notifications_details`
+-- Per-recipient detail/log rows for a `notifications` master (pushnotify_id -> notifications.id).
+-- One row per user the notification was fanned out to; carries the per-recipient `read` flag.
+--
+
+CREATE TABLE `push_notifications_details` (
+  `id` int(10) UNSIGNED NOT NULL,
+  `pushnotify_id` int(10) UNSIGNED NOT NULL,
+  `userid` int(10) UNSIGNED NOT NULL,
+  `user_type` tinyint(4) DEFAULT NULL COMMENT '1=>student,2=>teacher,3=>institute',
+  `status` tinyint(4) NOT NULL DEFAULT 0 COMMENT '0=>failed,1=>success',
+  `notification_logs` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `notifcations_request` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `device_token` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `delivered_status` tinyint(4) NOT NULL DEFAULT 0,
+  `delivered_time` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `events` tinyint(4) NOT NULL DEFAULT 0 COMMENT '0=>default,1=>delivered,2=>failed,3=>invalid',
+  `read` tinyint(4) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -772,7 +782,7 @@ CREATE TABLE `site_details` (
 --
 
 INSERT INTO `site_details` (`id`, `site_title`, `site_favicon`, `site_logo`, `site_minilogo`, `site_loader`, `site_author`, `site_keywords`, `site_description`, `enrollment_word`, `copyright_text`, `timezone`) VALUES
-(1, 'E-academy', 'favicon3.png', 'logo_31.png', 'favicon3.png', 'e-academy3.gif', 'kamlesh Yadav', 'e academy,academy,education academy', 'Description about e-academy', 'ACAD', 'Copyright © 2023 E Academy. All Right Reserved.', 'Asia/Irkutsk');
+(1, 'Gradmo', 'favicon3.png', 'logo_31.png', 'favicon3.png', 'Gradmo3.gif', 'kamlesh Yadav', 'e academy,academy,education academy', 'Description about Gradmo', 'ACAD', 'Copyright © 2023 E Academy. All Right Reserved.', 'Asia/Irkutsk');
 
 -- --------------------------------------------------------
 
@@ -865,10 +875,10 @@ CREATE TABLE `subjects` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `sudent_batchs`
+-- Table structure for table `student_batchs`
 --
 
-CREATE TABLE `sudent_batchs` (
+CREATE TABLE `student_batchs` (
   `id` int(11) NOT NULL,
   `student_id` int(11) NOT NULL,
   `batch_id` int(11) NOT NULL,
@@ -1216,12 +1226,6 @@ ALTER TABLE `live_class_history`
   ADD PRIMARY KEY (`id`);
 
 --
--- Indexes for table `live_class_setting`
---
-ALTER TABLE `live_class_setting`
-  ADD PRIMARY KEY (`id`);
-
---
 -- Indexes for table `mock_result`
 --
 ALTER TABLE `mock_result`
@@ -1248,6 +1252,14 @@ ALTER TABLE `notices`
 ALTER TABLE `notifications`
   ADD PRIMARY KEY (`id`),
   ADD KEY `id` (`id`);
+
+--
+-- Indexes for table `push_notifications_details`
+--
+ALTER TABLE `push_notifications_details`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_pushnotify` (`pushnotify_id`),
+  ADD KEY `idx_user` (`userid`,`user_type`);
 
 --
 -- Indexes for table `old_paper_pdf`
@@ -1309,9 +1321,9 @@ ALTER TABLE `subjects`
   ADD KEY `id` (`id`);
 
 --
--- Indexes for table `sudent_batchs`
+-- Indexes for table `student_batchs`
 --
-ALTER TABLE `sudent_batchs`
+ALTER TABLE `student_batchs`
   ADD PRIMARY KEY (`id`);
 
 --
@@ -1533,12 +1545,6 @@ ALTER TABLE `live_class_history`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `live_class_setting`
---
-ALTER TABLE `live_class_setting`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
-
---
 -- AUTO_INCREMENT for table `mock_result`
 --
 ALTER TABLE `mock_result`
@@ -1561,6 +1567,12 @@ ALTER TABLE `notices`
 --
 ALTER TABLE `notifications`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `push_notifications_details`
+--
+ALTER TABLE `push_notifications_details`
+  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `old_paper_pdf`
@@ -1617,9 +1629,9 @@ ALTER TABLE `subjects`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `sudent_batchs`
+-- AUTO_INCREMENT for table `student_batchs`
 --
-ALTER TABLE `sudent_batchs`
+ALTER TABLE `student_batchs`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --

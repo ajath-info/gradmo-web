@@ -1,0 +1,4754 @@
+{
+  "info": {
+    "_postman_id": "f81d08b8-2c8e-4e90-b8ee-4aa89372a42e",
+    "name": "Gradmo App — module wise",
+    "description": "Generated from application/config/routes.php with form-data body keys matching API controllers. Regenerate: node docs/build-gradmo-modulewise-from-routes.js\n\nSet collection variable base_url (e.g. http://localhost/education/). After login/verify-otp, set access_token from response.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "User",
+      "item": [
+        {
+          "name": "Auth",
+          "item": [
+            {
+              "name": "Login",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}api/user/login",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "login"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "username",
+                      "value": "user@example.com",
+                      "type": "text",
+                      "description": "Email or enrollment ID for students"
+                    },
+                    {
+                      "key": "password",
+                      "value": "123456",
+                      "type": "text"
+                    },
+                    {
+                      "key": "user_type",
+                      "value": "student",
+                      "type": "text",
+                      "description": "student | teacher | institute"
+                    },
+                    {
+                      "key": "device_id",
+                      "value": "device-uuid-001",
+                      "type": "text"
+                    },
+                    {
+                      "key": "device_token",
+                      "value": "fcm-token-here",
+                      "type": "text"
+                    },
+                    {
+                      "key": "device_type",
+                      "value": "android",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Logout",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/user/logout",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "logout"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "student_id",
+                      "value": "",
+                      "type": "text",
+                      "description": "Only if needed",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Send Otp",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}api/user/send-otp",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "send-otp"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "mobile",
+                      "value": "9999999999",
+                      "type": "text"
+                    },
+                    {
+                      "key": "user_type",
+                      "value": "student",
+                      "type": "text",
+                      "description": "student | teacher | institute"
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Signup",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}api/user/signup",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "signup"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "name",
+                      "value": "John Doe",
+                      "type": "text"
+                    },
+                    {
+                      "key": "email",
+                      "value": "user@example.com",
+                      "type": "text"
+                    },
+                    {
+                      "key": "mobile",
+                      "value": "9999999999",
+                      "type": "text"
+                    },
+                    {
+                      "key": "password",
+                      "value": "123456",
+                      "type": "text"
+                    },
+                    {
+                      "key": "user_type",
+                      "value": "student",
+                      "type": "text",
+                      "description": "student | teacher | institute"
+                    },
+                    {
+                      "key": "device_id",
+                      "value": "device-uuid-001",
+                      "type": "text"
+                    },
+                    {
+                      "key": "device_token",
+                      "value": "fcm-token-here",
+                      "type": "text",
+                      "description": "FCM push token"
+                    },
+                    {
+                      "key": "device_type",
+                      "value": "android",
+                      "type": "text",
+                      "description": "android | ios"
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Verify Otp",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}api/user/verify-otp",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "verify-otp"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "mobile",
+                      "value": "9999999999",
+                      "type": "text"
+                    },
+                    {
+                      "key": "otp",
+                      "value": "1234",
+                      "type": "text"
+                    },
+                    {
+                      "key": "user_type",
+                      "value": "student",
+                      "type": "text",
+                      "description": "student | teacher | institute"
+                    },
+                    {
+                      "key": "device_id",
+                      "value": "device-uuid-001",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "device_token",
+                      "value": "fcm-token-here",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "device_type",
+                      "value": "android",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Profile & account",
+          "item": [
+            {
+              "name": "Change Password",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/user/change-password",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "change-password"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "current_password",
+                      "value": "123456",
+                      "type": "text"
+                    },
+                    {
+                      "key": "new_password",
+                      "value": "newpassword123",
+                      "type": "text"
+                    },
+                    {
+                      "key": "confirm_password",
+                      "value": "newpassword123",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Account",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/user/delete-account",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "delete-account"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": []
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update Password",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}api/user/update-password",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "update-password"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "mobile",
+                      "value": "9999999999",
+                      "type": "text"
+                    },
+                    {
+                      "key": "password",
+                      "value": "newpassword123",
+                      "type": "text"
+                    },
+                    {
+                      "key": "confirm_password",
+                      "value": "newpassword123",
+                      "type": "text"
+                    },
+                    {
+                      "key": "user_type",
+                      "value": "student",
+                      "type": "text",
+                      "description": "student | teacher | institute"
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update Profile",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/user/update-profile",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "update-profile"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "name",
+                      "value": "John Doe",
+                      "type": "text"
+                    },
+                    {
+                      "key": "email",
+                      "value": "user@example.com",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "mobile",
+                      "value": "9999999999",
+                      "type": "text"
+                    },
+                    {
+                      "key": "user_type",
+                      "value": "student",
+                      "type": "text",
+                      "description": "student | teacher | institute"
+                    },
+                    {
+                      "key": "address",
+                      "value": "Street address",
+                      "type": "text"
+                    },
+                    {
+                      "key": "country",
+                      "value": "India",
+                      "type": "text"
+                    },
+                    {
+                      "key": "state",
+                      "value": "Uttar Pradesh",
+                      "type": "text"
+                    },
+                    {
+                      "key": "city",
+                      "value": "Noida",
+                      "type": "text"
+                    },
+                    {
+                      "key": "pincode",
+                      "value": "201301",
+                      "type": "text"
+                    },
+                    {
+                      "key": "school_college_name",
+                      "value": "College name",
+                      "type": "text",
+                      "description": "Students"
+                    },
+                    {
+                      "key": "grade",
+                      "value": "A",
+                      "type": "text",
+                      "description": "Students"
+                    },
+                    {
+                      "key": "image",
+                      "value": "",
+                      "type": "text",
+                      "description": "File upload or image URL",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Attendance",
+          "item": [
+            {
+              "name": "Add Attendance",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/user/add-attendance",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "add-attendance"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "student_id",
+                      "value": "20",
+                      "type": "text"
+                    },
+                    {
+                      "key": "attendance_date",
+                      "value": "2026-05-13",
+                      "type": "text",
+                      "description": "YYYY-MM-DD"
+                    },
+                    {
+                      "key": "time",
+                      "value": "10:30",
+                      "type": "text",
+                      "description": "HH:MM or HH.MM"
+                    },
+                    {
+                      "key": "day_status",
+                      "value": "present",
+                      "type": "text",
+                      "description": "present | late | absent",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Attendance List",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/user/attendance-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "attendance-list"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "date",
+                      "value": "2026-05-13",
+                      "type": "text",
+                      "description": "YYYY-MM-DD",
+                      "disabled": true
+                    },
+                    {
+                      "key": "month",
+                      "value": "5",
+                      "type": "text",
+                      "description": "1-12",
+                      "disabled": true
+                    },
+                    {
+                      "key": "year",
+                      "value": "2026",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "search",
+                      "value": "",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Other",
+          "item": [
+            {
+              "name": "Payment History",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/user/payment-history",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "payment-history"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "student_id",
+                      "value": "20",
+                      "type": "text",
+                      "description": "Student only; omit if caller is student"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "User_details",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/user/user_details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "user",
+                    "user_details"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "description": "Optional"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Main",
+      "item": [
+        {
+          "name": "Locations",
+          "item": [
+            {
+              "name": "City List",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/main/city-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "city-list"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "state_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Country List",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/main/country-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "country-list"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": []
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "State List",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/main/state-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "state-list"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "country_id",
+                      "value": "105",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Site & content",
+          "item": [
+            {
+              "name": "Get_defaults_requirements",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/main/get_defaults_requirements",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "get_defaults_requirements"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": []
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Pages",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}api/main/pages",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "pages"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "key",
+                      "value": "privacy_policy",
+                      "type": "text",
+                      "description": "pages.key slug",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Site Details",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/main/site-details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "site-details"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "zoom",
+                      "value": "1",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "payment",
+                      "value": "1",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Notifications",
+          "item": [
+            {
+              "name": "Notifications List",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/main/notifications-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "notifications-list"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Reviews & enquiry",
+          "item": [
+            {
+              "name": "Add Review",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/main/add-review",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "add-review"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "institute_id",
+                      "value": "69",
+                      "type": "text"
+                    },
+                    {
+                      "key": "rating",
+                      "value": "5",
+                      "type": "text",
+                      "description": "1-5"
+                    },
+                    {
+                      "key": "msg",
+                      "value": "Review message",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Approve Review",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/main/approve-review",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "approve-review"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "review_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Review",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/main/delete-review",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "delete-review"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "review_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Institute Reviews List",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/main/institute-reviews-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "institute-reviews-list"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    },
+                    {
+                      "key": "status",
+                      "value": "0",
+                      "type": "text",
+                      "description": "0=pending 1=approved",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Post Enquiry",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}api/main/post-enquiry",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "post-enquiry"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "name",
+                      "value": "John Doe",
+                      "type": "text"
+                    },
+                    {
+                      "key": "mobile",
+                      "value": "9999999999",
+                      "type": "text"
+                    },
+                    {
+                      "key": "email",
+                      "value": "user@example.com",
+                      "type": "text"
+                    },
+                    {
+                      "key": "subject",
+                      "value": "Enquiry subject",
+                      "type": "text"
+                    },
+                    {
+                      "key": "message",
+                      "value": "Message text",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Review Detail",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/main/review-detail",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "review-detail"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "review_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Reviews List",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/main/reviews-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "reviews-list"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "institute_id",
+                      "value": "69",
+                      "type": "text"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update Review",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/main/update-review",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "main",
+                    "update-review"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "review_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "rating",
+                      "value": "5",
+                      "type": "text"
+                    },
+                    {
+                      "key": "msg",
+                      "value": "Updated review text",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Batch",
+      "item": [
+        {
+          "name": "General",
+          "item": [
+            {
+              "name": "Categories",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/categories",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "categories"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": []
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Class Status",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/class-status",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "class-status"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Live Meeting End",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/live-meeting-end",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "live-meeting-end"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "live_class_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Subcategories",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/subcategories",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "subcategories"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "category_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Batch & chapters",
+          "item": [
+            {
+              "name": "Batch Chapters",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/batch-chapters",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "batch-chapters"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "subject_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Batch Details",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/batch-details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "batch-details"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Batch List",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/batch-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "batch-list"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    },
+                    {
+                      "key": "search",
+                      "value": "",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "list",
+                      "value": "All",
+                      "type": "text",
+                      "description": "All | My",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Batch Notify Students",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/batch-notify-students",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "batch-notify-students"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Batch Subjects",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/batch-subjects",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "batch-subjects"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Slider List",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/slider-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "slider-list"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "search",
+                      "value": "",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Attendance",
+          "item": [
+            {
+              "name": "Attendance Matrix Save",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/attendance-matrix-save",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "attendance-matrix-save"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "default_time",
+                      "value": "10:30",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "entries",
+                      "value": "[]",
+                      "type": "text",
+                      "description": "JSON array of {student_id,date,time,day_status}"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Attendance Roster",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/attendance-roster",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "attendance-roster"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "date",
+                      "value": "2026-05-13",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Attendance Roster Matrix",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/attendance-roster-matrix",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "attendance-roster-matrix"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "year",
+                      "value": "2026",
+                      "type": "text"
+                    },
+                    {
+                      "key": "month",
+                      "value": "5",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Homework",
+          "item": [
+            {
+              "name": "Homework Add",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/homework-add",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "homework-add"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "subject_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "description",
+                      "value": "Homework description",
+                      "type": "text"
+                    },
+                    {
+                      "key": "date",
+                      "value": "2026-05-13",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Homework Delete",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/homework-delete",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "homework-delete"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "homework_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Homework Details",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/homework-details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "homework-details"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "homework_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Homework Edit",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/homework-edit",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "homework-edit"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "homework_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "description",
+                      "value": "Updated text",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Homework Evaluate",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/homework-evaluate",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "homework-evaluate"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "submission_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "marks",
+                      "value": "10",
+                      "type": "text"
+                    },
+                    {
+                      "key": "remark",
+                      "value": "Good work",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Homework List",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/homework-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "homework-list"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    },
+                    {
+                      "key": "search",
+                      "value": "",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Homework Submission Details",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/homework-submission-details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "homework-submission-details"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "submission_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Homework Submissions",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/homework-submissions",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "homework-submissions"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "homework_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Homework Submit",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/homework-submit",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "homework-submit"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "homework_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "submission_text",
+                      "value": "My answer",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "My Homework Submissions",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/my-homework-submissions",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "my-homework-submissions"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Library",
+          "item": [
+            {
+              "name": "Library Add Book",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/library-add-book",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "library-add-book"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "title",
+                      "value": "Book title",
+                      "type": "text"
+                    },
+                    {
+                      "key": "author",
+                      "value": "Author",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "description",
+                      "value": "",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Library Book Details",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/library-book-details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "library-book-details"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "book_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Library Delete Book",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/library-delete-book",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "library-delete-book"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "book_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Library Edit Book",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/library-edit-book",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "library-edit-book"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "book_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "title",
+                      "value": "Updated title",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Library List",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/library-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "library-list"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Notes",
+          "item": [
+            {
+              "name": "Notes Add",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/notes-add",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "notes-add"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "title",
+                      "value": "Note title",
+                      "type": "text"
+                    },
+                    {
+                      "key": "topic",
+                      "value": "Topic",
+                      "type": "text"
+                    },
+                    {
+                      "key": "subject",
+                      "value": "Subject",
+                      "type": "text"
+                    },
+                    {
+                      "key": "description",
+                      "value": "",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Notes Delete",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/notes-delete",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "notes-delete"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "notes_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Notes Details",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/notes-details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "notes-details"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "notes_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Notes Edit",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/notes-edit",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "notes-edit"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "notes_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "title",
+                      "value": "Updated title",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Notes List",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/notes-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "notes-list"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    },
+                    {
+                      "key": "search",
+                      "value": "",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Live class",
+          "item": [
+            {
+              "name": "Batch Zoom Create",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/batch-zoom-create",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "batch-zoom-create"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Batch Zoom Delete",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/batch-zoom-delete",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "batch-zoom-delete"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Batch Zoom Details",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/batch-zoom-details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "batch-zoom-details"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Batch Zoom Join",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/batch-zoom-join",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "batch-zoom-join"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Batch Zoom Update",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/batch-zoom-update",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "batch-zoom-update"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Live Class Details",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/live-class-details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "live-class-details"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "live_class_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Live Class List",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/live-class-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "live-class-list"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Recorded Meeting Details",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/recorded-meeting-details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "recorded-meeting-details"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "recorded_meeting_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Recorded Meeting List",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/recorded-meeting-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "recorded-meeting-list"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Recorded Meeting Sync",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/recorded-meeting-sync",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "recorded-meeting-sync"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "recorded_meeting_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Zoom Cron Sync",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{base_url}}api/batch/zoom-cron-sync",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "zoom-cron-sync"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Zoom Debug",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/zoom-debug",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "zoom-debug"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Zoom Webhook",
+              "request": {
+                "method": "POST",
+                "url": {
+                  "raw": "{{base_url}}api/batch/zoom-webhook",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "zoom-webhook"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": []
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Video lectures",
+          "item": [
+            {
+              "name": "Video Lecture Add",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/video-lecture-add",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "video-lecture-add"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "title",
+                      "value": "Lecture title",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "video_url",
+                      "value": "https://example.com/video.mp4",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Video Lecture Delete",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/video-lecture-delete",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "video-lecture-delete"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "video_lecture_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Video Lecture Details",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/video-lecture-details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "video-lecture-details"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "video_lecture_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Video Lecture Edit",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/video-lecture-edit",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "video-lecture-edit"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "video_lecture_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Video Lecture List",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/video-lecture-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "video-lecture-list"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    },
+                    {
+                      "key": "search",
+                      "value": "",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Exams",
+          "item": [
+            {
+              "name": "Exam Add",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/exam-add",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "exam-add"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "name",
+                      "value": "Mock Test",
+                      "type": "text"
+                    },
+                    {
+                      "key": "type",
+                      "value": "1",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "format",
+                      "value": "1",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Exam Delete",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/exam-delete",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "exam-delete"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "exam_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Exam Edit",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/exam-edit",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "exam-edit"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "exam_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Exam Manage List",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/exam-manage-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "exam-manage-list"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    },
+                    {
+                      "key": "search",
+                      "value": "",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Exam Omr Sheet",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/exam-omr-sheet",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "exam-omr-sheet"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "exam_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Exam Submission Details",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/exam-submission-details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "exam-submission-details"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "submission_id",
+                      "value": "1",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "exam_id",
+                      "value": "1",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Exam Submission List",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/exam-submission-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "exam-submission-list"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    },
+                    {
+                      "key": "search",
+                      "value": "",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Student Exam Dashboard",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/student-exam-dashboard",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "student-exam-dashboard"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Student Exam Paper",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/student-exam-paper",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "student-exam-paper"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "exam_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Student Exam Result",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/student-exam-result",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "student-exam-result"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "exam_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Student Submit Exam",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/student-submit-exam",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "student-submit-exam"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "exam_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "started_at",
+                      "value": "2026-05-13 10:00:00",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "answers",
+                      "value": "{\"1\":\"A\"}",
+                      "type": "text",
+                      "description": "JSON map question_id => answer"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Upcoming Exam Details",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/upcoming-exam-details",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "upcoming-exam-details"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "exam_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Upcoming Exam List",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/upcoming-exam-list",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "upcoming-exam-list"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    },
+                    {
+                      "key": "search",
+                      "value": "",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Teacher batches",
+          "item": [
+            {
+              "name": "Teacher Batch Edit",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/teacher-batch-edit",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "teacher-batch-edit"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Teacher Batch Form Options",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/teacher-batch-form-options",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "teacher-batch-form-options"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": []
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Teacher Batch Subject Chapters",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/teacher-batch-subject-chapters",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "teacher-batch-subject-chapters"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    },
+                    {
+                      "key": "subject_id",
+                      "value": "1",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Teacher Batch Subjects",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/teacher-batch-subjects",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "teacher-batch-subjects"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Teacher Batches",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/teacher-batches",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "teacher-batches"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "type": "text"
+                    },
+                    {
+                      "key": "search",
+                      "value": "",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "list",
+                      "value": "All",
+                      "type": "text",
+                      "description": "All | My",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Teacher Create Batch",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/teacher-create-batch",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "teacher-create-batch"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_name",
+                      "value": "New Batch",
+                      "type": "text"
+                    },
+                    {
+                      "key": "category_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "subcategory_id",
+                      "value": "1",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "description",
+                      "value": "",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Teacher Delete Batch",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/teacher-delete-batch",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "teacher-delete-batch"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Teacher Update Batch",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{access_token}}",
+                    "description": "JWT from login/verify-otp"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}api/batch/teacher-update-batch",
+                  "host": [
+                    "{{base_url}}api"
+                  ],
+                  "path": [
+                    "batch",
+                    "teacher-update-batch"
+                  ]
+                },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "batch_id",
+                      "value": "6",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Institute",
+      "item": [
+        {
+          "name": "City List",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "description": "JWT from login/verify-otp"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}api/institute/city-list",
+              "host": [
+                "{{base_url}}api"
+              ],
+              "path": [
+                "institute",
+                "city-list"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "search",
+                  "value": "",
+                  "type": "text",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Details",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "description": "JWT from login/verify-otp"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}api/institute/details",
+              "host": [
+                "{{base_url}}api"
+              ],
+              "path": [
+                "institute",
+                "details"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "institute_id",
+                  "value": "69",
+                  "type": "text"
+                },
+                {
+                  "key": "latitude",
+                  "value": "28.6139",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "longitude",
+                  "value": "77.2090",
+                  "type": "text",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Listing",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "description": "JWT from login/verify-otp"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}api/institute/listing",
+              "host": [
+                "{{base_url}}api"
+              ],
+              "path": [
+                "institute",
+                "listing"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "type": "text"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "type": "text"
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "city",
+                  "value": "",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "list",
+                  "value": "my",
+                  "type": "text",
+                  "description": "Set to \"my\" for enrolled institutes",
+                  "disabled": true
+                },
+                {
+                  "key": "order_field",
+                  "value": "name",
+                  "type": "text",
+                  "description": "name | distance"
+                },
+                {
+                  "key": "order_type",
+                  "value": "ASC",
+                  "type": "text",
+                  "description": "ASC | DESC"
+                },
+                {
+                  "key": "latitude",
+                  "value": "28.6139",
+                  "type": "text",
+                  "description": "Required if order_field=distance"
+                },
+                {
+                  "key": "longitude",
+                  "value": "77.2090",
+                  "type": "text",
+                  "description": "Required if order_field=distance"
+                },
+                {
+                  "key": "batch_id",
+                  "value": "6",
+                  "type": "text",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Courses",
+      "item": [
+        {
+          "name": "Courses List",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "description": "JWT from login/verify-otp"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}api/courses/courses-list",
+              "host": [
+                "{{base_url}}api"
+              ],
+              "path": [
+                "courses",
+                "courses-list"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "type": "text",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Plan",
+      "item": [
+        {
+          "name": "Plans",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "description": "JWT from login/verify-otp"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}api/plan/plans",
+              "host": [
+                "{{base_url}}api"
+              ],
+              "path": [
+                "plan",
+                "plans"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "batch_id",
+                  "value": "6",
+                  "type": "text",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Promo Codes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "description": "JWT from login/verify-otp"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}api/plan/promo-codes",
+              "host": [
+                "{{base_url}}api"
+              ],
+              "path": [
+                "plan",
+                "promo-codes"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "plan_id",
+                  "value": "1",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "batch_id",
+                  "value": "6",
+                  "type": "text",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Payment",
+      "item": [
+        {
+          "name": "Create Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "description": "JWT from login/verify-otp"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}api/payment/razorpay/create-order",
+              "host": [
+                "{{base_url}}api"
+              ],
+              "path": [
+                "payment",
+                "razorpay",
+                "create-order"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "amount_in_rupees",
+                  "value": "1",
+                  "type": "text"
+                },
+                {
+                  "key": "plan_id",
+                  "value": "1",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "promo_id",
+                  "value": "1",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "batch_id",
+                  "value": "6",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Fetch Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "description": "JWT from login/verify-otp"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}api/payment/razorpay/fetch-payment",
+              "host": [
+                "{{base_url}}api"
+              ],
+              "path": [
+                "payment",
+                "razorpay",
+                "fetch-payment"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "payment_id",
+                  "value": "",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Order Status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "description": "JWT from login/verify-otp"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}api/payment/razorpay/order-status",
+              "host": [
+                "{{base_url}}api"
+              ],
+              "path": [
+                "payment",
+                "razorpay",
+                "order-status"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "order_id",
+                  "value": "",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "description": "JWT from login/verify-otp"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}api/payment/razorpay/verify-payment",
+              "host": [
+                "{{base_url}}api"
+              ],
+              "path": [
+                "payment",
+                "razorpay",
+                "verify-payment"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "razorpay_order_id",
+                  "value": "",
+                  "type": "text"
+                },
+                {
+                  "key": "razorpay_payment_id",
+                  "value": "",
+                  "type": "text"
+                },
+                {
+                  "key": "razorpay_signature",
+                  "value": "",
+                  "type": "text"
+                },
+                {
+                  "key": "student_id",
+                  "value": "20",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "batch_id",
+                  "value": "6",
+                  "type": "text",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Webhook",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}api/payment/razorpay/webhook",
+              "host": [
+                "{{base_url}}api"
+              ],
+              "path": [
+                "payment",
+                "razorpay",
+                "webhook"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "payload",
+                  "value": "{}",
+                  "type": "text",
+                  "description": "Raw JSON body",
+                  "disabled": true
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost/education/"
+    },
+    {
+      "key": "access_token",
+      "value": ""
+    }
+  ]
+}

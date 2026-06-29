@@ -23,7 +23,7 @@
                             <li><p><a href="<?php echo base_url('courses-details/'.$value['id']); ?>" class="edu_courses_view mt-2" target="_blank"><?php echo html_escape($this->common->languageTranslator('ltr_course_view'));?> </a> </p></li>
                                     <!-- <li><p><a href="#" class="cour_view"> online </a></p></li> -->
                                     <?php 
-					              $purchase = $this->db_model->select_data('*', 'sudent_batchs',array('student_id' => $this->session->userdata('uid'),'batch_id'=>$value['id']));
+					              $purchase = $this->db_model->select_data('*', 'student_batchs',array('student_id' => $this->session->userdata('uid'),'batch_id'=>$value['id']));
 					            if(empty($purchase)){
 					             ?>
 					            <li><p><a href="#" class="cour_view enrollNowSubmit" data-id="<?=$value['id'];?>" data-email="<?=$this->session->userdata('email')?>" data-name="<?=$this->session->userdata('name')?>" data-mobile="<?=$this->session->userdata('contact_no')?>"> <?php echo html_escape($this->common->languageTranslator('ltr_enroll_now'));?> </a></p></li>

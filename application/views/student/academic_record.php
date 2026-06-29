@@ -4,8 +4,8 @@
 		
 					<?php 
 					if(!empty($student_data)){
-					$join = array('batches',"batches.id = sudent_batchs.batch_id");
-                      $student_batch = $this->db_model->select_data('sudent_batchs.student_id,sudent_batchs.batch_id,batches.batch_name','sudent_batchs',array('student_id'=>$student_id),'','','',$join);
+					$join = array('batches',"batches.id = student_batchs.batch_id");
+                      $student_batch = $this->db_model->select_data('student_batchs.student_id,student_batchs.batch_id,batches.batch_name','student_batchs',array('student_id'=>$student_id),'','','',$join);
                    
                       $batch_name="";
                      
@@ -21,7 +21,7 @@
                       }  
 							echo '
 								<div class="col-xl-4 col-lg-4 col-md-4 col-sm-12 col-xs-12">
-									<img src="'.base_url('uploads/students/'.$student_data[0]['image']).'" alt="Student Image" class="noticeStImage">
+									<img src="'.profile_image_url($student_data[0]['image'], 2, 'student').'" alt="Student Image" class="noticeStImage">
 								</div>
 								<div class="col-xl-8 col-lg-8 col-md-8 col-sm-12 col-xs-12">
 								<div class="edu_extra_class padderTop20">

@@ -27,7 +27,7 @@ function closetags($html) {
                 <div class="edu_page_title_text">
                     <h1>Blog Page</h1>
                     <ul>
-                        <li><a href="http://192.168.0.5/e-academy/">Home</a></li>
+                        <li><a href="http://192.168.0.5/Gradmo/">Home</a></li>
                         <li><a href="javascript:void(0);">Blog</a></li>
                     </ul>
                 </div>

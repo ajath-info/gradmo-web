@@ -6,6 +6,18 @@ Assigned to: Theme Forest
 -------------------------------------------------------------------*/
 (function ($) {
 	"use strict";
+	function hideSharedPreloader(force) {
+		var loader = jQuery('.edu_preloader');
+		if (!loader.length) {
+			return;
+		}
+		loader.stop(true, true);
+		if (force) {
+			loader.hide();
+			return;
+		}
+		loader.fadeOut(200);
+	}
 	/*-----------------------------------------------------
 		Function  Start
 	-----------------------------------------------------*/
@@ -45,9 +57,16 @@ Assigned to: Theme Forest
 				Fix PreLoader
 			-----------------------------------------------------*/
 			preLoader: function () {
-				jQuery(window).on('load', function() {
-					jQuery(".edu_preloader").fadeOut();
-				});
+				var releasePreloader = function () {
+					hideSharedPreloader(true);
+				};
+				if (document.readyState === 'interactive' || document.readyState === 'complete') {
+					window.setTimeout(releasePreloader, 0);
+				} else {
+					document.addEventListener('DOMContentLoaded', releasePreloader);
+				}
+				jQuery(window).on('load pageshow', releasePreloader);
+				window.setTimeout(releasePreloader, 1800);
 			},
 
                 // search slider start
@@ -117,7 +136,7 @@ Assigned to: Theme Forest
 						prevEl: ".ButtonPrev"
 					},
 					autoplay: {
-						delay: 3000,
+						delay: 7000,
 					},
 					fadeEffect: {
 						crossFade: true
@@ -178,23 +197,36 @@ Assigned to: Theme Forest
 				Fix Mobile Menu 
 			-----------------------------------------------------*/
 			navMenu: function () {
-			    var w = window.innerWidth;
-                    if (w <= 1200) {
-        				$(".main_menu_wrapper>ul li").on('click', function () {
-        					$(this).find('ul.sub_menu').slideToggle();
-        					$(this).toggleClass("open");
-        				});
-        				$(".main_menu_wrapper>ul").on('click', function () {
-        					event.stopPropagation();
-        				});
-        				$(".menu_btn").on('click', function (e) {
-        					event.stopPropagation();
-        					$(".main_menu_wrapper, .menu_btn_wrap").toggleClass("open");
-        				});
-        				$("body").on('click', function () {
-        					$(".main_menu_wrapper, .menu_btn_wrap").removeClass("open");
-        				});
-                    }
+				var $doc = $(document);
+				$doc.off('click.frontNavToggle').on('click.frontNavToggle', '.menu_btn', function (e) {
+					e.preventDefault();
+					e.stopPropagation();
+					$('.menu_btn_wrap').toggleClass('open');
+					$('.main_menu_wrapper').toggleClass('open');
+					var isOpen = $('.menu_btn_wrap').first().hasClass('open');
+					$('#frontMobileNavToggle').attr('aria-expanded', isOpen ? 'true' : 'false');
+					$('#eduFrontMobileNavDrawer').attr('aria-hidden', isOpen ? 'false' : 'true');
+					$('body').toggleClass('front-mobile-nav-open', isOpen);
+				});
+				$doc.off('click.frontNavClose').on('click.frontNavClose', function (e) {
+					if ($(e.target).closest('.menu_btn_wrap, .main_menu_wrapper').length) {
+						return;
+					}
+					$('.menu_btn_wrap, .main_menu_wrapper').removeClass('open');
+					$('#frontMobileNavToggle').attr('aria-expanded', 'false');
+					$('#eduFrontMobileNavDrawer').attr('aria-hidden', 'true');
+					$('body').removeClass('front-mobile-nav-open');
+				});
+				$doc.off('click.frontNavPanel').on('click.frontNavPanel', '.main_menu_wrapper', function (e) {
+					e.stopPropagation();
+				});
+				if ($('.main_menu_wrapper li.has_submenu').length) {
+					$doc.off('click.frontNavSub').on('click.frontNavSub', '.main_menu_wrapper>ul li.has_submenu', function (e) {
+						$(this).find('ul.sub_menu').slideToggle();
+						$(this).toggleClass('open');
+						e.preventDefault();
+					});
+				}
 			},
 
 			/*-----------------------------------------------------
@@ -930,5 +962,25 @@ $(document).on('click','#singleCatData', function(e){
 				});
 		
     });
+
+	$(document).on('click', '.front-share-app-btn', function () {
+		var url = ($(this).attr('data-site-url') || (typeof base_url !== 'undefined' ? base_url : window.location.origin + '/')).toString();
+		var title = ($(this).attr('data-site-name') || document.title).toString();
+		if (navigator.share) {
+			navigator.share({ title: title, text: title, url: url }).catch(function () {});
+		} else if (navigator.clipboard && navigator.clipboard.writeText) {
+			navigator.clipboard.writeText(url).then(function () {
+				if (typeof toastr !== 'undefined') {
+					toastr.success('Link copied to clipboard');
+				} else {
+					window.alert('Link copied to clipboard');
+				}
+			}).catch(function () {
+				window.prompt('Copy this link:', url);
+			});
+		} else {
+			window.prompt('Copy this link:', url);
+		}
+	});
 
 })(jQuery);

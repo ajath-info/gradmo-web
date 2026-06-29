@@ -16,7 +16,12 @@ class Admin_profile extends CI_Controller {
 	            redirect(base_url('teacher/dashboard')); 
 	        }
 	    }else{
-	        redirect(base_url('login'));
+			// Guest: only public admin auth URLs; anything else → admin login (site login stays at `/login` → `website/login`).
+			$uri_path = strtolower(trim((string) $this->uri->uri_string(), '/'));
+			$allowed_guest_paths = array('admin/login', 'admin/register');
+			if (! in_array($uri_path, $allowed_guest_paths, true)) {
+				redirect(base_url('admin/login'));
+			}
 	    }
 		
 		// check select language
@@ -68,7 +73,7 @@ class Admin_profile extends CI_Controller {
 		   $or_like = array(array('students.admin_id',0));
 		}	
 
-// 		$data['currSin'] = $this->db_model->select_data('*','general_settings',$condd);
+		// 		$data['currSin'] = $this->db_model->select_data('*','general_settings',$condd);
 		$data['currSin'] = $this->db_model->select_data('*','general_settings');
 		$data['Amount'] = $this->db_model->aggregate_data('student_payment_history','amount','sum',$condd);
 	    $data['offline'] =	$this->db_model->countAll('student_payment_history',$cnd);
@@ -80,6 +85,37 @@ class Admin_profile extends CI_Controller {
 		$this->load->view('admin/dashboard',$data);
 		$this->load->view('common/admin_footer');
 	}
+	
+    function login(){
+		if(isset($this->session->userdata['role']))
+		{
+		  $role = $this->session->userdata['role'];
+		  if($role==1){
+			redirect(base_url().'admin/dashboard');
+		  }elseif($role==3){
+			redirect(base_url().'teacher/dashboard');
+		  }elseif($role==4){
+			redirect(base_url().'admin/dashboard');
+		  }else if($role=='student'){
+			redirect(base_url().'student/my_course');
+		  }
+		}
+		$header['title'] = $this->lang->line('ltr_login');
+		$this->load->view('common/login_admin_header', $header);
+		$this->load->view('admin/login');
+		$this->load->view('common/admin_footer');
+	  }
+  
+	  function register(){
+	   
+		$header['title']=$this->lang->line('ltr_register'); 
+		$this->load->view('common/auth_header',$header);
+		$this->load->view('frontend/register');
+		$this->load->view('common/auth_footer');
+	  }
+  
+
+
 	function student_doubts_class(){
 		$header['title']=$this->lang->line('ltr_doubts_class');
 		$admin_id = $this->session->userdata('uid');
@@ -217,8 +253,10 @@ class Admin_profile extends CI_Controller {
         }
         // $data['batch'] = $this->db_model->select_data('id,batch_name','batches  use index (id)',array('admin_id'=>$this->session->userdata('uid'),'status'=>1),'',array('id','desc'));
         $data['batch'] = $this->db_model->select_data('id,batch_name','batches  use index (id)',$cond,'',array('id','desc'),'','');
-        $data['android_key'] = $this->db_model->select_data('*','zoom_api_credentials');
-		$data['live_data'] = $this->db_model->countAll('live_class_setting',$cond);
+        $data['zoom_credentials'] = $this->db_model->select_data('*','zoom_api_credentials', '', 1, array('id', 'desc'));
+		$this->load->library('zoom_live_lib');
+		$data['zoom_sdk_ready'] = $this->zoom_live_lib->meeting_sdk_configured() ? 1 : 0;
+		$data['live_data'] = $data['zoom_sdk_ready'];
 		$data['all_user'] = $this->db_model->select_data('id,name,role,super_admin','users use index (id)',array('admin_id'=>1 , 'role'=>1));
 		$this->load->view("common/admin_header",$header); 
 		$this->load->view("admin/live_class",$data);
@@ -251,7 +289,10 @@ class Admin_profile extends CI_Controller {
 		}else{
 			$header['title']=$this->lang->line('ltr_add_batch');
 		}
-		if($this->session->userdata('role') == 1 && $this->session->userdata('super_admin') == 1){
+		if($this->session->userdata('role') == 4){
+            // Institute login: categories/subcategories/subjects belong to the parent admin.
+            $cond = array('admin_id'=>$this->session->userdata('admin_id'),'status'=>'1');
+        }else if($this->session->userdata('role') == 1 && $this->session->userdata('super_admin') == 1){
              $cond = array('admin_id'=>$this->session->userdata('uid'),'status'=>'1');
         }else{
             $cond = array('admin_id'=>$this->session->userdata('uid'),'status'=>'1');
@@ -260,6 +301,18 @@ class Admin_profile extends CI_Controller {
 		$data['subject'] = $this->db_model->select_data('id,subject_name,no_of_questions','subjects use index (id)',$cond,'',array('id','desc'));
 	    $data['category_data'] = $this->db_model->select_data('*','batch_category use index (id)',$cond,'',array('id','desc'));
 		$data['subcat_data'] = $this->db_model->select_data('*','batch_subcategory use index (id)',$cond,'',array('id','desc'));
+
+		$this->db->reset_query();
+		$this->db->select('id,name');
+		$this->db->from('users');
+		$this->db->where('admin_id', (int) $this->session->userdata('uid'));
+		$this->db->where('status', 1);
+		$this->db->group_start();
+		$this->db->where('role', 4);
+		$this->db->or_where("LOWER(TRIM(IFNULL(user_type,''))) = 'institute'", null, false);
+		$this->db->group_end();
+		$this->db->order_by('id', 'desc');
+		$data['institute_list'] = $this->db->get()->result_array();
 
 		$this->load->view("common/admin_header",$header);
 		$this->load->view("admin/add_batch",$data); 
@@ -449,14 +502,40 @@ class Admin_profile extends CI_Controller {
 
 	function teacher_manage(){
 		$header['title']=$this->lang->line('ltr_teacher_manager');
-		$data['subject'] = $this->db_model->select_data('id,subject_name','subjects use index (id)',array('admin_id'=>$this->session->userdata('uid')),'',array('id','desc'));
-		
+		$data['subject'] = $this->db_model->select_data('id,subject_name','subjects use index (id)','','',array('id','desc'));
 		$data['batch'] = $this->db_model->select_data('id,batch_name','batches  use index (id)',array('admin_id'=>$this->session->userdata('uid')),'',array('id','desc'));
 		$data['teacher_data'] = $this->db_model->countAll('users',array('role'=>3));
 		$data['all_user'] = $this->db_model->select_data('id,name,role,super_admin','users use index (id)',array('admin_id'=>1 , 'role'=>1));
 		$this->load->view("common/admin_header",$header);
 		$this->load->view("admin/teacher_manage",$data); 
 		$this->load->view("common/admin_footer");
+	}
+
+	function institute_manage(){
+		$header['title'] = 'Institute Manager';
+		$data['institute_data'] = $this->db_model->countAll('users', array('role' => 4));
+
+		$this->load->view("common/admin_header",$header);
+		$this->load->view("admin/institute_manage",$data);
+		$this->load->view("common/admin_footer");
+	}
+
+	function institute_progress($id){
+		if(!empty($id)){
+			$header['title'] = 'Institute Progress';
+			$data['id'] = $id;
+			$data['institute_data'] = $this->db_model->select_data(
+				'*',
+				'users use index (id)',
+				array('id' => $id, 'role' => 4),
+				1
+			);
+			$this->load->view('common/admin_header',$header);
+			$this->load->view('admin/institute_progress',$data);
+			$this->load->view('common/admin_footer');
+		}else{
+			redirect(base_url('admin/institute-manage'));
+		}
 	}
 
 	function teacher_progress($id){
@@ -999,10 +1078,21 @@ class Admin_profile extends CI_Controller {
 	
 	
 	function start_class(){
-		$livedata =$this->db_model->select_data('*','live_class_setting',array('id' =>$_POST['live_class_id']));
+		$batch_id = !empty($_POST['batch_id']) ? (int) $_POST['batch_id'] : (int) $_POST['live_class_id'];
+		if ($batch_id < 1) {
+			redirect('admin/live-class');
+			return;
+		}
+		$this->load->library('zoom_live_lib');
+		$zoom = $this->zoom_live_lib->prepare_legacy_embed_view_data($batch_id, 1);
+		if (empty($zoom['ok'])) {
+			$this->session->set_flashdata('error', $zoom['msg']);
+			redirect('admin/live-class');
+			return;
+		}
 		$data=array(
 			'uid'=>$this->session->userdata('uid'),
-			'batch_id'=>$livedata[0]['batch'],
+			'batch_id'=>$batch_id,
 			'subject_id'=>$_POST['subject_id'],
 			'chapter_id'=>$_POST['chapter_id'],
 			'start_time'=>date('h:i:s a'),
@@ -1010,7 +1100,6 @@ class Admin_profile extends CI_Controller {
 			'date'=>date('Y-m-d'),
 			'type_class'=>1,
 			);
-		$batch_id = $livedata[0]['batch'];
 		$student_data = $this->db_model->select_data('id','students', array('batch_id'=> $batch_id,'status'=>'1'));
 			$title = 'Live Class';
 			$where = 'live';
@@ -1021,12 +1110,12 @@ class Admin_profile extends CI_Controller {
 		$this->push_notification_android($batch_id,$title,$where,$student_id);
         $ins = $this->db_model->insert_data('live_class_history',$data);
     	$data['inser_id']=$ins;
-		$data['signature'] = $this->generate_signature($livedata[0]['zoom_api_key'], $livedata[0]['zoom_api_secret'],$livedata[0]['meeting_number'],1);
-		$data['sdk_key']=$livedata[0]['zoom_api_key'];
-		$data['sdk_secret']=$livedata[0]['zoom_api_secret'];
+		$data['signature'] = $zoom['signature'];
+		$data['sdk_key']=$zoom['sdk_key'];
+		$data['sdk_secret']=$zoom['sdk_secret'];
 		$data['display_name']=$this->session->userdata('name');
-		$data['meeting_number']=$livedata[0]['meeting_number'];
-		$data['password']=$livedata[0]['password'];
+		$data['meeting_number']=$zoom['meeting_number'];
+		$data['password']=$zoom['password'];
 		$this->load->view("admin/start_live_class",$data);
 	}
 	
@@ -1067,6 +1156,20 @@ class Admin_profile extends CI_Controller {
 		}
 		$this->load->view("common/admin_header",$header);
 		$this->load->view("admin/certificate",$data); 
+		$this->load->view("common/admin_footer");
+	}
+
+	function cms_pages(){
+		$header['title'] = $this->lang->line('ltr_cms_pages');
+		$this->load->view("common/admin_header", $header);
+		$this->load->view("admin/cms_pages");
+		$this->load->view("common/admin_footer");
+	}
+
+	function templates(){
+		$header['title'] = $this->lang->line('ltr_templates');
+		$this->load->view("common/admin_header", $header);
+		$this->load->view("admin/templates");
 		$this->load->view("common/admin_footer");
 	}
 	
@@ -1200,6 +1303,8 @@ class Admin_profile extends CI_Controller {
 		$data['payment_type'] = $this->general_settings('payment_type');
 		$data['razorpay_key_id'] = $this->general_settings('razorpay_key_id');
 		$data['razorpay_secret_key'] = $this->general_settings('razorpay_secret_key');
+		$wh = $this->db_model->select_data('velue_text', 'general_settings', array('key_text' => 'razorpay_webhook_secret'), 1);
+		$data['razorpay_webhook_secret'] = !empty($wh[0]['velue_text']) ? $wh[0]['velue_text'] : '';
 		$data['paypal_client_id'] = $this->general_settings('paypal_client_id');
 		$data['paypal_secret_key'] = $this->general_settings('paypal_secret_key');
 		$data['currency_converter_api'] = $this->general_settings('currency_converter_api');
@@ -1247,14 +1352,28 @@ class Admin_profile extends CI_Controller {
 	}
 	
 	function firebase_settings(){
-		
+
         $data['firebase_key'] =$this->general_settings('firebase_key');
-	    $header['title']=$this->lang->line('ltr_firebase_settings');	
+	    $header['title']=$this->lang->line('ltr_firebase_settings');
 		$data['firebase_settings'] = $this->general_settings('language_name');
 		$this->load->view("common/admin_header",$header);
-		$this->load->view("admin/front/firebase_settings",$data); 
+		$this->load->view("admin/front/firebase_settings",$data);
 		$this->load->view("common/admin_footer");
-		
+
+	}
+
+	function sms_settings(){
+
+		$data['msg91_authkey']     = $this->general_settings('msg91_authkey');
+		$data['msg91_sender']      = $this->general_settings('msg91_sender');
+		$data['msg91_route']       = $this->general_settings('msg91_route');
+		$data['msg91_country']     = $this->general_settings('msg91_country');
+		$data['msg91_template_id'] = $this->general_settings('msg91_template_id');
+		$header['title']           = $this->lang->line('ltr_sms_settings');
+		$this->load->view("common/admin_header",$header);
+		$this->load->view("admin/front/sms_settings",$data);
+		$this->load->view("common/admin_footer");
+
 	}
 	
 	public function SendMail($tomail='', $subject='', $msg=''){
@@ -1285,8 +1404,69 @@ class Admin_profile extends CI_Controller {
             return true;
 
         }
-        
-        //new update 
+
+        /**
+         * Diagnostic route: send a test email using the saved SMTP settings and
+         * print the full SMTP conversation so failures are visible.
+         * URL: admin/test-email  (optionally ?to=someone@example.com)
+         */
+        public function test_email(){
+            header('Content-Type: text/plain; charset=utf-8');
+
+            $frommail = $this->general_settings('smtp_mail');
+            $frompwd  = $this->general_settings('smtp_pwd');
+            $to       = $this->input->get('to', TRUE);
+            if(empty($to)){
+                $to = $frommail; // default: send to the configured sender address
+            }
+            $titleRow = $this->db_model->select_data('site_title','site_details','',1,array('id','desc'));
+            $title    = !empty($titleRow) ? $titleRow[0]['site_title'] : 'Test';
+
+            echo "=== SMTP Test Email ===\n";
+            echo "Protocol   : ".$this->general_settings('server_type')."\n";
+            echo "Host       : ".$this->general_settings('smtp_host')."\n";
+            echo "Port       : ".$this->general_settings('smtp_port')."\n";
+            echo "Encryption : ".$this->general_settings('smtp_encryption')."\n";
+            echo "From       : ".$frommail."\n";
+            echo "Password   : ".(empty($frompwd) ? '(EMPTY!)' : str_repeat('*', strlen($frompwd)).' ('.strlen($frompwd).' chars)')."\n";
+            echo "To         : ".$to."\n";
+            echo "=======================\n\n";
+
+            if(empty($frommail) || empty($frompwd)){
+                echo "RESULT: ABORTED - smtp_mail or smtp_pwd is empty in general settings.\n";
+                return;
+            }
+
+            $this->load->library('email');
+            $config = array(
+                'protocol'     => $this->general_settings('server_type'),
+                'smtp_host'    => $this->general_settings('smtp_host'),
+                'smtp_port'    => $this->general_settings('smtp_port'),
+                'smtp_user'    => $frommail,
+                'smtp_pass'    => $frompwd,
+                'smtp_crypto'  => $this->general_settings('smtp_encryption'),
+                'smtp_timeout' => 15,
+                'charset'      => 'utf-8',
+                'mailtype'     => 'html',
+                'newline'      => "\r\n",
+                'crlf'         => "\r\n",
+            );
+            $this->email->clear(TRUE);
+            $this->email->initialize($config);
+            $this->email->from($frommail, $title);
+            $this->email->to($to);
+            $this->email->subject('Test email from '.$title.' - '.date('Y-m-d H:i:s'));
+            $this->email->message('<p>This is a <b>test email</b> sent at '.date('Y-m-d H:i:s').' to verify SMTP settings.</p>');
+
+            // Pass FALSE so the debug buffer is preserved for print_debugger().
+            $ok = $this->email->send(FALSE);
+
+            echo "RESULT: ".($ok ? 'SUCCESS - email accepted by the SMTP server.' : 'FAILED - see the SMTP debug log below.')."\n\n";
+            echo "----- SMTP debugger -----\n";
+            echo $this->email->print_debugger(array('headers'));
+        }
+
+        //new update
         
         function book_manage(){
 			$header['title']=$this->lang->line('ltr_book_manage');

@@ -7,7 +7,7 @@
                     <div class="row">
                         <div class="col-xl-7 col-lg-5 col-md-12 col-sm-12 col-12 align-self-center">
                             <div class="edu_courses_imgbox edu_courses_imgbox01">
-                                <img src="<?php if(!empty($singel_batches[0]['batch_image'])) { echo base_url('uploads\batch_image/').$singel_batches[0]['batch_image'] ; }else{ echo base_url('uploads/site_data/'.$site_Details['0']['site_logo']); } ?>" alt="image">
+                                <img src="<?php if(!empty($singel_batches[0]['batch_image'])) { echo base_url('uploads\batch_image/').$singel_batches[0]['batch_image'] ; }else{ echo ''; } ?>" alt="image" data-fallback-type="batch" data-has-fallback="1">
                             </div>
                         </div>
                         <div class="col-xl-5 col-lg-7 col-md-12 col-sm-12 col-12 align-self-center">
@@ -18,7 +18,7 @@
                                 <h2 class="edu_courses_title"><?php echo $singel_batches[0]['batch_name']; ?></h2>
                                 <p class="edu_courses_des mb_30 edu_para_ellipse"><?php echo $singel_batches[0]['description']; ?></p>
                                  <?php 
-                                  $purchase = $this->db_model->select_data('*', 'sudent_batchs',array('student_id' => $this->session->userdata('uid'),'batch_id'=>$singel_batches[0]['id']));
+                                  $purchase = $this->db_model->select_data('*', 'student_batchs',array('student_id' => $this->session->userdata('uid'),'batch_id'=>$singel_batches[0]['id']));
                                 if(empty($purchase)){
                                  ?>
                                 <a href="<?php echo base_url('enroll-now/'.$singel_batches[0]['id']); ?>" class="edu_btn"><?php echo html_escape($this->common->languageTranslator('ltr_enroll_now'));?></a>
@@ -283,7 +283,7 @@
                             <div class="edu-course-box edu-course-box_blog">
                                 <div class="edu-course-img">
                                     <div class="edu_course_image_box">
-                                        <img src="<?php if(!empty($value['batch_image'])) { echo base_url('uploads\batch_image/').$value['batch_image'] ; }else{ echo base_url('uploads/site_data/'.$site_Details['0']['site_logo']); } ?>" alt="image">
+                                        <img src="<?php if(!empty($value['batch_image'])) { echo base_url('uploads\batch_image/').$value['batch_image'] ; }else{ echo ''; } ?>" alt="image" data-fallback-type="batch" data-has-fallback="1">
                                     </div>
                                     
                                         <?php if(!empty($value['batch_offer_price'])){ ?> <span class="edu-course-offer edu-course-offer-color"><?php echo html_escape($this->common->languageTranslator('ltr_offer')); ?></span> <?php } ?>

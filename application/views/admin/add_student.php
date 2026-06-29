@@ -17,13 +17,19 @@
                         </div>
                     </div>
                     <div class="col-lg-6 col-md-6 col-sm-12 col-12 edu_bottom_20">
-                        <div class="form-group"> 
+                        <div class="form-group">
                             <label><?php echo html_escape($this->common->languageTranslator('ltr_name'));?><sup>*</sup></label>
                             <input type="text" class="form-control require alphaField" name="name" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_name'));?>" value="<?php echo !empty($student_data)?$student_data[0]['name']:'';?>">
                         </div>
                     </div>
                     <div class="col-lg-6 col-md-6 col-sm-12 col-12 edu_bottom_20">
-                        <div class="form-group"> 
+                        <div class="form-group">
+                            <label><?php echo html_escape($this->common->languageTranslator('ltr_last_name'));?></label>
+                            <input type="text" class="form-control alphaField" name="last_name" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_last_name'));?>" value="<?php echo !empty($student_data) && isset($student_data[0]['last_name'])?$student_data[0]['last_name']:'';?>">
+                        </div>
+                    </div>
+                    <div class="col-lg-6 col-md-6 col-sm-12 col-12 edu_bottom_20">
+                        <div class="form-group">
                             <label><?php echo html_escape($this->common->languageTranslator('ltr_father_name'));?></label>
                            <input type="text" class="form-control alphaField" name="father_name" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_father_name'));?>" value="<?php echo !empty($student_data)?$student_data[0]['father_name']:'';?>">
                         </div>
@@ -114,6 +120,7 @@
                             <textarea name="address" rows="3" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_address'));?>" class="form-control"><?php echo !empty($student_data)?$student_data[0]['address']:'';?></textarea>
                         </div>
                     </div>
+                    <?php if (false): /* HIDDEN: BATCH INFORMATION + Batch + Old Batch section. Change false -> true to restore. */ ?>
                     <div class="col-lg-12 col-md-12 col-sm-12 col-12 edu_bottom_20" >
                         <div class="edu_title_wrapper">
                             <h4 class="edu_sub_title"><?php echo html_escape($this->common->languageTranslator('ltr_BATCH_INFORMATION'));?></h4>
@@ -133,7 +140,7 @@
                                  $bName = "";
                                 // print_r($student_batch_dtail);
                                   foreach($batch_name_online as $batch){
-                                     $student_batch_dtail = $this->db_model->select_data('batch_id','sudent_batchs',array('student_id'=>$student_id,'batch_id'=>$batch['id']));
+                                     $student_batch_dtail = $this->db_model->select_data('batch_id','student_batchs',array('student_id'=>$student_id,'batch_id'=>$batch['id']));
                                  
                                     if(!empty($student_batch_dtail))
                                       {
@@ -165,7 +172,7 @@
                                     if(!empty($batch_name_offline)){
                                     
                                           foreach($batch_name_offline as $batch){
-                                             $student_batch_dtail = $this->db_model->select_data('batch_id','sudent_batchs',array('student_id'=>$student_id,'batch_id'=>$batch['id']));
+                                             $student_batch_dtail = $this->db_model->select_data('batch_id','student_batchs',array('student_id'=>$student_id,'batch_id'=>$batch['id']));
                                          
                                             if(!empty($student_batch_dtail))
                                               {
@@ -199,8 +206,9 @@
                             </h4>
                            <span><?php echo rtrim($bName,','); ?></span>
                         </div>
-                    </div> 
-                    <div class="batch_new_fields_add col-lg-12 col-md-12 col-sm-12 col-12">                   
+                    </div>
+                    <?php endif; /* end hidden BATCH INFORMATION / Batch / Old Batch section */ ?>
+                    <div class="batch_new_fields_add col-lg-12 col-md-12 col-sm-12 col-12">
                     </div>
                 </div>
                 <?php if(!empty($student_id)){

@@ -45,6 +45,233 @@ class Home extends MY_Controller {
                         );
         echo json_encode($arr);
 	}
+
+	private function is_valid_password($plain_password, $stored_password)
+	{
+		$plain_password = (string) $plain_password;
+		$stored_password = trim((string) $stored_password);
+		if ($stored_password === '') {
+			return false;
+		}
+
+		// Preferred: modern hash (bcrypt/argon).
+		if (password_verify($plain_password, $stored_password)) {
+			return true;
+		}
+
+		// Backward compatibility: legacy MD5/plain text records.
+		$md5_plain = md5($plain_password);
+		if (strcasecmp($md5_plain, $stored_password) === 0 || $plain_password === $stored_password) {
+			return true;
+		}
+
+		// Some admin flows use SHA1.
+		if (strlen($stored_password) === 40 && ctype_xdigit($stored_password)) {
+			if (strcasecmp(sha1($plain_password), $stored_password) === 0) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/** Read password column from DB row regardless of key casing (PASSWORD vs password). */
+	private function row_password_value(array $row)
+	{
+		foreach ($row as $key => $val) {
+			if (strtolower((string) $key) === 'password') {
+				return (string) $val;
+			}
+		}
+		return '';
+	}
+
+	/**
+	 * Nominatim HTTP GET (HTTPS). cURL first — more reliable on Windows/XAMPP than file_get_contents.
+	 * User-Agent must identify the app (https://operations.osmfoundation.org/policies/nominatim/).
+	 *
+	 * @return string Raw JSON body or empty string on failure
+	 */
+	private function nominatim_http_get($search_query)
+	{
+		$search_query = trim((string) $search_query);
+		if ($search_query === '') {
+			return '';
+		}
+		$base = rtrim((string) base_url(), '/');
+		if ($base === '') {
+			$base = 'https://localhost';
+		}
+		$userAgent = 'GradmoEducation/1.0 (institute profile; +' . $base . ')';
+
+		$url = 'https://nominatim.openstreetmap.org/search?' . http_build_query(array(
+			'q' => $search_query,
+			'format' => 'json',
+			'limit' => 1,
+			'addressdetails' => 0,
+		), '', '&', PHP_QUERY_RFC3986);
+
+		if (function_exists('curl_init')) {
+			$headers = array(
+				'User-Agent: ' . $userAgent,
+				'Accept: application/json',
+				'Accept-Language: en',
+			);
+			$do = function ($verifySsl) use ($url, $headers) {
+				$ch = curl_init($url);
+				curl_setopt_array($ch, array(
+					CURLOPT_RETURNTRANSFER => true,
+					CURLOPT_TIMEOUT => 20,
+					CURLOPT_CONNECTTIMEOUT => 10,
+					CURLOPT_FOLLOWLOCATION => true,
+					CURLOPT_HTTPHEADER => $headers,
+					CURLOPT_SSL_VERIFYPEER => $verifySsl,
+					CURLOPT_SSL_VERIFYHOST => $verifySsl ? 2 : 0,
+				));
+				$body = curl_exec($ch);
+				$errno = curl_errno($ch);
+				curl_close($ch);
+				return array($body === false ? '' : (string) $body, $errno);
+			};
+
+			list($raw, $errno) = $do(true);
+			if ($raw === '' && in_array($errno, array(60, 77, 35, 51, 58, 59), true)) {
+				list($raw,) = $do(false);
+			}
+			if ($raw !== '') {
+				return $raw;
+			}
+		}
+
+		if (ini_get('allow_url_fopen')) {
+			$ctx = stream_context_create(array(
+				'http' => array(
+					'method' => 'GET',
+					'timeout' => 20,
+					'header' => 'User-Agent: ' . $userAgent . "\r\nAccept: application/json\r\nAccept-Language: en\r\n",
+					'ignore_errors' => true,
+				),
+				'ssl' => array(
+					'verify_peer' => true,
+					'verify_peer_name' => true,
+				),
+			));
+			$raw = @file_get_contents($url, false, $ctx);
+			if ($raw !== false && $raw !== '') {
+				return (string) $raw;
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * Geocode institute address for profile update (OpenStreetMap Nominatim; no API key).
+	 *
+	 * @return array{lat: string, long: string}|null
+	 */
+	private function geocode_institute_address($address, $city, $state, $country, $pincode)
+	{
+		$address = trim((string) $address);
+		$city = trim((string) $city);
+		$state = trim((string) $state);
+		$country = trim((string) $country);
+		$pincode = trim((string) $pincode);
+
+		$attempts = array();
+		$full = array_filter(array($address, $city, $state, $pincode, $country), function ($p) {
+			return $p !== '';
+		});
+		if (!empty($full)) {
+			$attempts[] = implode(', ', $full);
+		}
+		$attempts[] = trim(implode(', ', array_filter(array($city, $state, $pincode, $country))));
+		$attempts[] = trim(implode(', ', array_filter(array($city, $state, $country))));
+		$attempts[] = trim(implode(', ', array_filter(array($pincode, $country))));
+		$attempts = array_values(array_unique(array_filter(array_map('trim', $attempts))));
+
+		foreach ($attempts as $i => $query) {
+			if ($query === '') {
+				continue;
+			}
+			if ($i > 0) {
+				usleep(1100000);
+			}
+			$raw = $this->nominatim_http_get($query);
+			if ($raw === '') {
+				continue;
+			}
+			$decoded = json_decode($raw, true);
+			if (!is_array($decoded) || !isset($decoded[0]['lat'], $decoded[0]['lon'])) {
+				continue;
+			}
+			$lat = (float) $decoded[0]['lat'];
+			$lon = (float) $decoded[0]['lon'];
+			if ($lat < -90 || $lat > 90 || $lon < -180 || $lon > 180) {
+				continue;
+			}
+			return array('lat' => (string) $lat, 'long' => (string) $lon);
+		}
+
+		return null;
+	}
+
+	/**
+	 * multipart/form-data often uses mixed-case keys (City, Address). PHP keys are case-sensitive.
+	 * Also strips wrapping quotes from tools like curl --form 'name="value"'.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function normalize_multi_user_registration_data(array $data)
+	{
+		$out = array();
+		foreach ($data as $k => $v) {
+			if (!is_string($k) && !is_int($k)) {
+				continue;
+			}
+			$key = strtolower(trim((string) $k));
+			if ($key === '') {
+				continue;
+			}
+			if (is_string($v)) {
+				$v = trim($v);
+				$v = trim($v, "\"' \t\n\r\0\x0B");
+			}
+			$out[$key] = $v;
+		}
+		return $out;
+	}
+
+	/**
+	 * Email and mobile must be unique across users (teacher/institute) and students.
+	 *
+	 * @return string|null Error message or null if OK
+	 */
+	private function registration_duplicate_message($email, $mobile)
+	{
+		$email = trim((string) $email);
+		$mobile = trim((string) $mobile);
+		if ($email === '' || $mobile === '') {
+			return null;
+		}
+		if ($this->db->get_where('users', array('email' => $email), 1)->row_array()) {
+			return 'Email already exists';
+		}
+		if ($this->db->get_where('users', array('mobile' => $mobile), 1)->row_array()) {
+			return 'Mobile number already exists';
+		}
+		if ($this->db->get_where('students', array('email' => $email), 1)->row_array()) {
+			return 'Email already exists';
+		}
+		$this->db->group_start();
+		$this->db->where('mobile', $mobile);
+		$this->db->or_where('contact_no', $mobile);
+		$this->db->group_end();
+		if ($this->db->limit(1)->get('students')->row_array()) {
+			return 'Mobile number already exists';
+		}
+		return null;
+	}
 	
     function chekLogin(){
         $data = $_REQUEST;
@@ -133,27 +360,34 @@ class Home extends MY_Controller {
 	        $student = $student[0];
 
 	        // VERIFY PASSWORD
-	        if (!password_verify($password, $student['password'])) {
+	        if (!$this->is_valid_password($password, isset($student['password']) ? $student['password'] : '')) {
 	            echo json_encode(['status' => 'false', 'msg' => 'Invalid password']);
 	            return;
 	        }
+            // Deleted accounts (deleted=1) cannot log in.
+            if (isset($student['deleted']) && (string) $student['deleted'] === '1') {
+                echo json_encode(['status' => 'false', 'msg' => 'This account has been deleted']);
+                return;
+            }
             if ($student['status'] == 0) {
 	            echo json_encode(['status' => 'false', 'msg' => 'Student is not active']);
 	            return;
 	        }
 
-	        // UPDATE LOGIN STATUS
-	        $now = date('Y-m-d H:i:s');
+	        // Issue token; last_login_app is still updated for analytics / "since last login" features, not for single-device token binding.
+	        $tok = $this->mint_access_credentials($student['id'], 'student', $this->next_session_iat('students', $student['id']));
+	        $access_token = $tok['access_token'];
+	        $now = date('Y-m-d H:i:s', $tok['iat']);
 	        $this->db_model->update_data_limit('students', [
 	            'login_status' => 1,
 	            'last_login_app' => $now,
+	            'app_token_iat' => (int) $tok['iat'],
 	            'token' => $device_token,
 				'device_id' => $device_id,
 				'device_token' => $device_token,
 				'device_type' => $device_type,
 	        ], ['id' => $student['id']], 1);
 
-            $access_token = $this->generate_access_token($student['id'], 'student');
 	        $response = $this->build_student_login_data_array($student, $device_id, $device_token, $device_type, $now, $access_token);
 	    }
 
@@ -173,17 +407,37 @@ class Home extends MY_Controller {
 	        }
 
 	        $user = $user[0];
-
 	        // VERIFY PASSWORD
-	        if (!password_verify($password, $user['password'])) {
+	        if (!$this->is_valid_password($password, isset($user['password']) ? $user['password'] : '')) {
 	            echo json_encode(['status' => 'false', 'msg' => 'Invalid password']);
 	            return;
 	        }
+	        // Deleted accounts (deleted=1) cannot log in.
+	        if (isset($user['deleted']) && (string) $user['deleted'] === '1') {
+	            echo json_encode(['status' => 'false', 'msg' => 'This account has been deleted']);
+	            return;
+	        }
 
-	        // UPDATE LOGIN STATUS
+	        $token_ut = isset($user['user_type']) ? strtolower(trim((string) $user['user_type'])) : '';
+	        if ($token_ut === '') {
+	            $rid = isset($user['role']) ? (int) $user['role'] : 0;
+	            if ($rid === 3) {
+	                $token_ut = 'teacher';
+	            } elseif ($rid === 4) {
+	                $token_ut = 'institute';
+	            } else {
+	                $token_ut = $user_type;
+	            }
+	        }
+
+	        $tok = $this->mint_access_credentials($user['id'], $token_ut, $this->next_session_iat('users', $user['id']));
+	        $access_token = $tok['access_token'];
+	        $now = date('Y-m-d H:i:s', $tok['iat']);
 	        $this->db_model->update_data_limit('users', [
+				'login_status' => 1,
 	            'device_token' => $device_token,
-	            'updated_at'   => date("Y-m-d H:i:s")
+	            'app_token_iat' => (int) $tok['iat'],
+	            'updated_at'   => $now
 	        ], ['id' => $user['id']], 1);
 			
 			if(empty($user['city'])){
@@ -192,20 +446,7 @@ class Home extends MY_Controller {
 				$profile_completed = 1;
 			}
 
-            $access_token = $this->generate_access_token($user['id'], $user['user_type']);
-
-	        $response = [
-	            'userType' => $user['user_type'],
-	            'userId'   => $user['id'],
-	            'name'     => $user['name'],
-	            'email'    => $user['email'],
-	            'mobile'   => $user['mobile'],
-	            'image'    => base_url('uploads/users/') . $user['image'],
-	            'role'     => $user['role'],
-				'is_profile_completed' => $profile_completed,
-                'access_token' => $access_token,
-                'token_type' => 'Bearer'
-	        ];
+	        $response = $this->build_non_student_login_data_array($user, $device_id, $device_token, $device_type, $now, $access_token, $profile_completed);
 	    }
 
 	    // ==============================
@@ -215,14 +456,8 @@ class Home extends MY_Controller {
 	}
    
 	function logout(){
-        $token = $this->get_access_token_from_request();
-        $payload = $this->parse_access_token($token);
-       
+        $payload = $this->require_auth_payload();
         if ($payload === false) {
-            echo json_encode(array(
-                'status' => 'false',
-                'msg' => 'Unauthorized: invalid or expired access token'
-            ));
             return;
         }
 
@@ -231,15 +466,15 @@ class Home extends MY_Controller {
             $user_id = (int) $payload['uid'];
             $ins = $this->db_model->update_data_limit(
                 'users use index (id)',
-                array('login_status' => 0, 'token' => ''),
+                array('login_status' => 0, 'token' => '', 'app_token_iat' => 0),
                 array('id' => $user_id),
                 1
             );
-        } else { 
+        } else {
                 $student_id = (int) $payload['uid'];
                 $ins = $this->db_model->update_data_limit(
                     'students use index (id)',
-                    array('login_status' => 0, 'token' => ''),
+                    array('login_status' => 0, 'token' => '', 'app_token_iat' => 0),
                     array('id' => $student_id),
                     1
                 );
@@ -256,11 +491,12 @@ class Home extends MY_Controller {
 	
 	public function multi_user_registration()
 	{
-	    // Get JSON input
-	    $data = json_decode(file_get_contents("php://input"), true);
-	    if (empty($data)) {
-	        $data = $this->input->post();
+	    $raw = file_get_contents('php://input');
+	    $data = json_decode($raw, true);
+	    if (!is_array($data) || empty($data)) {
+	        $data = array_merge($this->input->get(), $this->input->post());
 	    }
+	    $data = $this->normalize_multi_user_registration_data($data);
 
 	    if (
 	        empty($data['name']) ||
@@ -276,7 +512,24 @@ class Home extends MY_Controller {
 	        return;
 	    }
 
-	    $user_type = strtolower(trim($data['user_type']));
+	    $name_check      = trim((string) $data['name']);
+	    $last_name_check = isset($data['last_name']) ? trim((string) $data['last_name']) : (isset($data['lastname']) ? trim((string) $data['lastname']) : '');
+	    if (mb_strlen($name_check) > 10) {
+	        echo json_encode([
+	            'status' => 'false',
+	            'msg' => 'First name must be at most 10 characters.'
+	        ]);
+	        return;
+	    }
+	    if ($last_name_check !== '' && mb_strlen($last_name_check) > 10) {
+	        echo json_encode([
+	            'status' => 'false',
+	            'msg' => 'Last name must be at most 10 characters.'
+	        ]);
+	        return;
+	    }
+
+	    $user_type = strtolower(trim((string) $data['user_type']));
 
 	    if (!in_array($user_type, ['student', 'teacher', 'institute'])) {
 	        echo json_encode([
@@ -286,13 +539,24 @@ class Home extends MY_Controller {
 	        return;
 	    }
 
+	    $email = trim((string) $data['email']);
+	    $mobile = trim((string) $data['mobile']);
+	    $dupMsg = $this->registration_duplicate_message($email, $mobile);
+	    if ($dupMsg !== null) {
+	        echo json_encode(array(
+	            'status' => 'false',
+	            'msg' => $dupMsg,
+	        ));
+	        return;
+	    }
+
 	    // ==============================
 	    // 		 COMMON DATA
 	    // ==============================
-	    $name        = trim($data['name']);
-	    $email       = trim($data['email']);
-	    $mobile      = trim($data['mobile']);
-	    $password    = trim($data['password']);
+	    $name        = trim((string) $data['name']);
+	    // last_name (keys are lower-cased by normalize_multi_user_registration_data).
+	    $last_name   = isset($data['last_name']) ? trim((string) $data['last_name']) : (isset($data['lastname']) ? trim((string) $data['lastname']) : '');
+	    $password    = trim((string) $data['password']);
 	    
 	    $device_id   = $data['device_id'] ?? '';
 	    $device_token= $data['device_token'] ?? '';
@@ -305,44 +569,16 @@ class Home extends MY_Controller {
 
 	    $isNewUser = false;
 	    $insert_id = 0;
+	    $enrolid = '';
 		
 		// Generate OTP
 	    $otp = rand(1000, 9999);
 
 	    // =====================================================
-	    // 		 STUDENT TABLE (CHECK ONLY STUDENTS TABLE)
+	    // 		 STUDENT TABLE
 	    // =====================================================
 				if ($user_type == 'student') {
 
-					$existingStudent = $this->db_model->select_data(
-				'*',
-				'students',
-				"(email = '$email' OR mobile = '$mobile')",
-				1
-				);
-
-				if (!empty($existingStudent)) {
-
-				$existing = $existingStudent[0];
-				$existing_email = isset($existing['email']) ? $existing['email'] : '';
-				$existing_mobile = isset($existing['mobile']) ? $existing['mobile'] : '';
-
-				if ($existing_email === $email) {
-				$msg = 'Email already exists';
-				} elseif ($existing_mobile === $mobile) {
-				$msg = 'Mobile number already exists';
-				} else {
-				$msg = 'User already exists';
-				}
-
-				echo json_encode([
-				'status' => 'false',
-				'msg' => $msg
-				]);
-				return;
-				} else {
-
-	            // INSERT STUDENT (even if exists in users table)
 	            $isNewUser = true;
 
 	            //$batch = $this->db_model->select_data('*', 'batches', ['id' => $batch_id], 1);
@@ -353,6 +589,7 @@ class Home extends MY_Controller {
 	            $studentData = [
 	                'admin_id'        => $admin_id,
 	                'name'            => $name,
+	                'last_name'       => $last_name,
 	                'email'           => $email,
 	                'added_by'        => 'student',
 	                'status'          => 1,
@@ -375,7 +612,6 @@ class Home extends MY_Controller {
 	                'students',
 	                $this->security->xss_clean($studentData)
 	            );
-	        }
  
 	        $student = $this->db_model->select_data('*', 'students', ['id' => $insert_id], 1)[0];
 
@@ -383,6 +619,7 @@ class Home extends MY_Controller {
 	            'userType'     => 'student',
 	            'studentId'    => $student['id'],
 	            'name'         => $student['name'],
+	            'last_name'    => isset($student['last_name']) ? $student['last_name'] : '',
 	            'email'        => $student['email'],
 	            'mobile'       => $student['contact_no'],
 	            'device_id'    => $student['device_id'],
@@ -392,26 +629,17 @@ class Home extends MY_Controller {
 	    }
 
 	    // =====================================================
-	    // 		 USERS TABLE (CHECK ONLY USERS TABLE)
+	    // 		 USERS TABLE (teacher / institute)
 	    // =====================================================
 	    else {
 
 	        $role = ($user_type == 'teacher') ? 3 : 4;
 
-	        $existingUser = $this->db_model->select_data('*', 'users', ['email' => $email], 1);
-
-	        if (!empty($existingUser)) {
-
-	        echo json_encode(['status' => 'true', 'msg' => 'User already exist']);
-	        return;
-
-	        } else {
-
-	            // INSERT USER (even if exists in students table)
 	            $isNewUser = true;
 
 	            $userData = [
 	                'name'         => $name,
+	                'last_name'    => $last_name,
 	                'email'        => $email,
 	                'mobile'       => $mobile,
 	                'user_type'    => $user_type,
@@ -431,7 +659,6 @@ class Home extends MY_Controller {
 	                'users',
 	                $this->security->xss_clean($userData)
 	            );
-	        }
 
 	        $user = $this->db_model->select_data('*', 'users', ['id' => $insert_id], 1)[0];
 
@@ -439,9 +666,10 @@ class Home extends MY_Controller {
 	            'userType' => $user['user_type'],
 	            'userId'   => $user['id'],
 	            'name'     => $user['name'],
+	            'last_name' => isset($user['last_name']) ? $user['last_name'] : '',
 	            'email'    => $user['email'],
 	            'mobile'   => $user['mobile'],
-	            'image'    => base_url('uploads/users/') . $user['image'],
+	            'image'    => profile_image_url($user['image'], isset($user['role']) ? $user['role'] : 0, isset($user['user_type']) ? $user['user_type'] : ''),
 	            'role'     => $user['role'],
 				'device_id'    => $device_id,
 	            'device_token' => $device_token,
@@ -459,6 +687,26 @@ class Home extends MY_Controller {
 	    }
 
 	    $this->db->trans_complete();
+
+	    // Self-registration: never email the password (only admin/institute-created
+	    // accounts receive their password by email, via the *_register templates).
+	    $register_vars = array(
+	        'name' => $name,
+	        'email' => $email,
+	        'mobile' => $mobile,
+	        'link' => base_url('login'),
+	        'otp' => (string) $otp,
+	    );
+	    if ($user_type === 'student' && $enrolid !== '') {
+	        $register_vars['enrollment_id'] = $enrolid;
+	    }
+	    $this->common->send_email(array(
+	        'purpose' => 'register',
+	        'user_id' => (int) $insert_id,
+	        'user_type' => $user_type,
+	        'to_email' => $email,
+	        'dynamic_var' => $register_vars,
+	    ));
 
 	    echo json_encode([
 	        'status' => "true",
@@ -529,7 +777,7 @@ class Home extends MY_Controller {
     				if(!empty($batchData)){
     					foreach($batchData as $key=>$value){
     						if(!empty($value['batchImage'])){
-    							$batchData[$key]['batchImage']= base_url('uploads/batch_image/').$value['batchImage'];
+    							$batchData[$key]['batchImage']= batch_image_url($value['batchImage']);
     						}
     						$startDate =$value['startDate'];
     						$endDate =$value['endDate'];
@@ -604,7 +852,7 @@ class Home extends MY_Controller {
                             }else{
                               $batchData[$key]['videoLectures'] = array(); 
                             }
-    					   $student_batch_dtail = $this->db_model->select_data('*','sudent_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
+    					   $student_batch_dtail = $this->db_model->select_data('*','student_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
     					   if(!empty($student_batch_dtail)){
     					        $batchData[$key]['purchase_condition'] = true;
     					   }else{
@@ -657,7 +905,7 @@ class Home extends MY_Controller {
 			
 			if(!empty($data['student_id'])){
 			    
-			    $batchs_id =$this->db_model->select_data('batch_id','sudent_batchs',array('student_id'=>$data['student_id']));
+			    $batchs_id =$this->db_model->select_data('batch_id','student_batchs',array('student_id'=>$data['student_id']));
 			       //print_r($batchs_id);
 			    if(!empty($batchs_id)){
 			        
@@ -681,7 +929,7 @@ class Home extends MY_Controller {
 			        
 			        foreach($yourBatch as $key=>$value){
 						if(!empty($value['batchImage'])){
-							$yourBatch[$key]['batchImage']= base_url('uploads/batch_image/').$value['batchImage'];
+							$yourBatch[$key]['batchImage']= batch_image_url($value['batchImage']);
 						}
 						$startDate =$value['startDate'];
 						$endDate =$value['endDate'];
@@ -779,7 +1027,7 @@ class Home extends MY_Controller {
 			        
 			        foreach($recommendedBatch as $key=>$value){
 						if(!empty($value['batchImage'])){
-							$recommendedBatch[$key]['batchImage']= base_url('uploads/batch_image/').$value['batchImage'];
+							$recommendedBatch[$key]['batchImage']= batch_image_url($value['batchImage']);
 						}
 						$startDate =$value['startDate'];
 						$endDate =$value['endDate'];
@@ -901,7 +1149,7 @@ public function otherBatchData($data){
 				if(!empty($batchData)){
 					foreach($batchData as $key=>$value){
 						if(!empty($value['batchImage'])){
-							$batchData[$key]['batchImage']= base_url('uploads/batch_image/').$value['batchImage'];
+							$batchData[$key]['batchImage']= batch_image_url($value['batchImage']);
 						}
 						$startDate =$value['startDate'];
 						$endDate =$value['endDate'];
@@ -973,7 +1221,7 @@ public function otherBatchData($data){
                         }else{
                           $batchData[$key]['videoLectures'] = array(); 
                         }
-					   $student_batch_dtail = $this->db_model->select_data('*','sudent_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
+					   $student_batch_dtail = $this->db_model->select_data('*','student_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
 					   if(!empty($student_batch_dtail)){
 					        $batchData[$key]['purchase_condition'] = true;
 					   }else{
@@ -1008,32 +1256,48 @@ public function otherBatchData($data){
 							/*Other batch functio end*/
     function profile_update()
 {
-    //error_reporting(E_ALL);
-    //ini_set('display_errors', 1);
+    $from_body = json_decode(file_get_contents('php://input'), true);
+    if (!is_array($from_body)) {
+        $from_body = array();
+    }
+    $data = array_merge($_REQUEST, $from_body);
+    if (!is_array($data)) {
+        $data = array();
+    }
+    $data = $this->normalize_multi_user_registration_data($data);
 
-    $data = $_REQUEST;
-    $token = $this->get_access_token_from_request();
-    $payload = $this->parse_access_token($token);
-
-    if ($payload === false || $payload['ut'] !== 'student') {
-        echo json_encode([
-            'status' => 'false',
-            'msg' => 'Unauthorized: invalid or expired access token'
-        ]);
+    $payload = $this->require_auth_payload(array(), is_array($data) ? $data : null);
+    if ($payload === false) {
         return;
     }
 
-    $student_id = (int) $payload['uid'];
-    if ($student_id > 0) {
-        if ($this->authorize_student_request($student_id) === false) {
+    $uid = (int) $payload['uid'];
+    $ut = strtolower(trim((string) $payload['ut']));
+
+    if ($uid < 1) {
+        echo json_encode(array('status' => 'false', 'msg' => 'Invalid token user'));
+        return;
+    }
+
+    if (isset($data['name']) && mb_strlen(trim((string) $data['name'])) > 10) {
+        echo json_encode(array('status' => 'false', 'msg' => 'First name must be at most 10 characters.'));
+        return;
+    }
+    if (isset($data['last_name']) && trim((string) $data['last_name']) !== '' && mb_strlen(trim((string) $data['last_name'])) > 10) {
+        echo json_encode(array('status' => 'false', 'msg' => 'Last name must be at most 10 characters.'));
+        return;
+    }
+
+    if ($ut === 'student') {
+        if ($this->authorize_student_request($uid, is_array($data) ? $data : null) === false) {
             return;
         }
-        $data_arr = [];
+        $data_arr = array();
 
-        $fields = [
-            'name','email','mobile','address','country',
-            'state','city','pincode','school_college_name','grade','is_complete'
-        ];
+        $fields = array(
+            'name', 'last_name', 'email', 'address', 'country',
+            'state', 'city', 'pincode', 'school_college_name', 'grade', 'is_complete',
+        );
 
         foreach ($fields as $field) {
             if (isset($data[$field]) && $data[$field] !== '') {
@@ -1041,60 +1305,67 @@ public function otherBatchData($data){
             }
         }
 
-        // Support image update via multipart file "image"
+        $mob = '';
+        if (isset($data['mobile']) && trim((string) $data['mobile']) !== '') {
+            $mob = trim((string) $data['mobile']);
+        } elseif (isset($data['contact_no']) && trim((string) $data['contact_no']) !== '') {
+            $mob = trim((string) $data['contact_no']);
+        }
+        if ($mob !== '') {
+            $data_arr['contact_no'] = $mob;
+        }
+
         if (isset($_FILES['image']) && !empty($_FILES['image']['name'])) {
-            $upload_path = FCPATH.'uploads/students/';
+            $upload_path = FCPATH . 'uploads/students/';
             if (!is_dir($upload_path)) {
                 @mkdir($upload_path, 0777, true);
             }
 
             $uploaded_image = $this->upload_media($_FILES, $upload_path, 'image');
             if (is_array($uploaded_image) && isset($uploaded_image['status']) && $uploaded_image['status'] === '2') {
-                echo json_encode([
+                echo json_encode(array(
                     'status' => 'false',
-                    'msg' => strip_tags($uploaded_image['msg'])
-                ]);
+                    'msg' => strip_tags($uploaded_image['msg']),
+                ));
                 return;
             }
 
             if (!empty($uploaded_image)) {
                 $data_arr['image'] = $uploaded_image;
             }
-        }
-        // Support image update via base64 "image" string
-        elseif (!empty($data['image']) && is_string($data['image'])) {
+        } elseif (!empty($data['image']) && is_string($data['image'])) {
             $raw_image = $data['image'];
             if (preg_match('/^data:image\/(\w+);base64,/', $raw_image, $matches)) {
                 $extension = strtolower($matches[1]);
-                if (!in_array($extension, ['jpg', 'jpeg', 'png'])) {
-                    echo json_encode([
+                if (!in_array($extension, array('jpg', 'jpeg', 'png'), true)) {
+                    echo json_encode(array(
                         'status' => 'false',
-                        'msg' => 'Only jpg, jpeg, png images are allowed'
-                    ]);
+                        'msg' => 'Only jpg, jpeg, png images are allowed',
+                    ));
                     return;
                 }
 
                 $base64_data = substr($raw_image, strpos($raw_image, ',') + 1);
                 $binary = base64_decode($base64_data, true);
                 if ($binary === false) {
-                    echo json_encode([
+                    echo json_encode(array(
                         'status' => 'false',
-                        'msg' => 'Invalid base64 image data'
-                    ]);
+                        'msg' => 'Invalid base64 image data',
+                    ));
                     return;
                 }
 
-                $upload_path = FCPATH.'uploads/students/';
+                $upload_path = FCPATH . 'uploads/students/';
                 if (!is_dir($upload_path)) {
                     @mkdir($upload_path, 0777, true);
                 }
 
-                $file_name = 'student_'.time().'_'.mt_rand(1000, 9999).'.'.$extension;
-                if (file_put_contents($upload_path.$file_name, $binary) === false) {
-                    echo json_encode([
+                $file_name = 'student_' . time() . '_' . mt_rand(1000, 9999) . '.' . $extension;
+                if (file_put_contents($upload_path . $file_name, $binary) === false) {
+                    echo json_encode(array(
                         'status' => 'false',
-                        'msg' => 'Unable to save profile image'
-                    ]);
+                        'msg' => 'Unable to save profile image',
+                    ));
                     return;
                 }
 
@@ -1102,61 +1373,305 @@ public function otherBatchData($data){
             }
         }
 
-        if (!empty($data_arr)) {
-
-            $ins = $this->db_model->update_data_limit(
-                'students',
-                $data_arr,
-                ['id' => $student_id],
-                1
-            );
-
-            if ($ins) {
-
-                $updated = $this->db_model->select_data(
-                    '*',
-                    'students',
-                    ['id' => $student_id],
-                    1
-                );
-
-                $response_data = !empty($updated) ? $updated[0] : [];
-                if (!empty($response_data)) {
-                    // Never expose password hash in API response.
-                    unset($response_data['password']);
-                    if (!empty($response_data['image']) && strpos($response_data['image'], 'http') !== 0) {
-                        $response_data['image'] = base_url('uploads/students/').$response_data['image'];
-                    }
-                }
-
-                $arr = [
-                    'status' => 'true',
-                    'data'   => $response_data,
-                    'msg'    => 'Profile updated successfully'
-                ];
-
-            } else {
-                $arr = [
-                    'status' => 'false',
-                    'msg' => 'Update failed'
-                ];
-            }
-
-        } else {
-            $arr = [
-                'status' => 'false',
-                'msg' => 'No data to update'
-            ];
+        if (empty($data_arr)) {
+            echo json_encode(array('status' => 'false', 'msg' => 'No data to update'));
+            return;
         }
 
-    } else {
-        $arr = [
-            'status' => 'false',
-            'msg' => 'Invalid token user'
-        ];
+        $ins = $this->db_model->update_data_limit(
+            'students',
+            $data_arr,
+            array('id' => $uid),
+            1
+        );
+
+        if (!$ins) {
+            echo json_encode(array('status' => 'false', 'msg' => 'Update failed'));
+            return;
+        }
+
+        $updated = $this->db_model->select_data('*', 'students', array('id' => $uid), 1);
+        if (empty($updated[0])) {
+            echo json_encode(array('status' => 'false', 'msg' => 'Unable to load updated profile'));
+            return;
+        }
+
+        $stu = $updated[0];
+        unset($stu['password']);
+
+        $access_token = trim((string) $this->get_access_token_from_request());
+        if ($access_token === '') {
+            $mint = $this->mint_access_credentials($uid, 'student');
+            $access_token = $mint['access_token'];
+            $this->db_model->update_data_limit(
+                'students use index (id)',
+                array('last_login_app' => date('Y-m-d H:i:s', $mint['iat'])),
+                array('id' => $uid),
+                1
+            );
+        }
+
+        $now = date('Y-m-d H:i:s');
+        $dev_id = isset($stu['device_id']) ? $stu['device_id'] : '';
+        $dev_tok = isset($stu['device_token']) ? $stu['device_token'] : '';
+        $dev_type = isset($stu['device_type']) ? $stu['device_type'] : '';
+
+        $response_data = $this->build_student_login_data_array(
+            $stu,
+            $dev_id,
+            $dev_tok,
+            $dev_type,
+            $now,
+            $access_token
+        );
+
+        echo json_encode(array(
+            'status' => 'true',
+            'msg' => 'Profile updated successfully',
+            'data' => $response_data,
+        ), JSON_UNESCAPED_SLASHES);
+        return;
     }
 
-    echo json_encode($arr);
+    if ($ut === 'teacher' || $ut === 'institute') {
+        $rows = $this->db_model->select_data('*', 'users', array('id' => $uid), 1);
+        if (empty($rows[0])) {
+            echo json_encode(array('status' => 'false', 'msg' => 'User not found'));
+            return;
+        }
+        $urow = $rows[0];
+        if (!empty($urow['user_type']) && strtolower(trim((string) $urow['user_type'])) !== $ut) {
+            echo json_encode(array('status' => 'false', 'msg' => 'Token does not match this account'));
+            return;
+        }
+
+        $data_arr = array();
+
+        $map = array(
+            'name' => 'name',
+            'last_name' => 'last_name',
+            'email' => 'email',
+            'mobile' => 'mobile',
+            'address' => 'address',
+            'country' => 'country',
+            'state' => 'state',
+            'city' => 'city',
+            'pincode' => 'pincode',
+        );
+        foreach ($map as $in => $col) {
+            if (isset($data[$in]) && $data[$in] !== '') {
+                $data_arr[$col] = $data[$in];
+            }
+        }
+
+        if (isset($data['gender']) && $data['gender'] !== '') {
+            $data_arr['teach_gender'] = $data['gender'];
+        }
+        if (isset($data['teach_gender']) && $data['teach_gender'] !== '') {
+            $data_arr['teach_gender'] = $data['teach_gender'];
+        }
+        if (isset($data['school_college_name']) && $data['school_college_name'] !== '') {
+            $data_arr['teach_education'] = $data['school_college_name'];
+        }
+        if (isset($data['teach_education']) && $data['teach_education'] !== '') {
+            $data_arr['teach_education'] = $data['teach_education'];
+        }
+
+        if ($ut === 'institute') {
+            $locKeys = array('address', 'city', 'state', 'country', 'pincode');
+            $locTouched = false;
+            foreach ($locKeys as $lk) {
+                if (isset($data[$lk]) && trim((string) $data[$lk]) !== '') {
+                    $locTouched = true;
+                    break;
+                }
+            }
+            if ($locTouched) {
+                $pickLoc = function ($key) use ($data_arr, $urow) {
+                    if (isset($data_arr[$key]) && trim((string) $data_arr[$key]) !== '') {
+                        return trim((string) $data_arr[$key]);
+                    }
+                    return isset($urow[$key]) ? trim((string) $urow[$key]) : '';
+                };
+                $ia = $pickLoc('address');
+                $ic = $pickLoc('city');
+                $is = $pickLoc('state');
+                $ico = $pickLoc('country');
+                $ip = $pickLoc('pincode');
+                if ($ia === '' || $ic === '' || $is === '' || $ico === '' || $ip === '') {
+                    echo json_encode(array(
+                        'status' => 'false',
+                        'msg' => 'To update location, address, city, state, country, and pincode must all be set (send missing fields or save them on your profile first).',
+                    ));
+                    return;
+                }
+                $coords = $this->geocode_institute_address($ia, $ic, $is, $ico, $ip);
+                if ($coords === null) {
+                    echo json_encode(array(
+                        'status' => 'false',
+                        'msg' => 'Could not determine latitude and longitude from the address. Please verify address, city, state, country, and pincode.',
+                    ));
+                    return;
+                }
+                try {
+                    $userColumns = $this->db->list_fields('users');
+                } catch (Exception $e) {
+                    $userColumns = array();
+                }
+                $haveCol = array_flip($userColumns);
+                if (isset($haveCol['lat'])) {
+                    $data_arr['lat'] = $coords['lat'];
+                }
+                if (isset($haveCol['long'])) {
+                    $data_arr['long'] = $coords['long'];
+                }
+                if (isset($haveCol['latitude'])) {
+                    $data_arr['latitude'] = $coords['lat'];
+                }
+                if (isset($haveCol['longitude'])) {
+                    $data_arr['longitude'] = $coords['long'];
+                }
+            }
+        }
+
+        $upload_path = FCPATH . 'uploads/users/';
+        if (!is_dir($upload_path)) {
+            @mkdir($upload_path, 0777, true);
+        }
+
+        if (isset($_FILES['image']) && !empty($_FILES['image']['name'])) {
+            $uploaded_image = $this->upload_media($_FILES, $upload_path, 'image');
+            if (is_array($uploaded_image) && isset($uploaded_image['status']) && $uploaded_image['status'] === '2') {
+                echo json_encode(array(
+                    'status' => 'false',
+                    'msg' => strip_tags($uploaded_image['msg']),
+                ));
+                return;
+            }
+            if (!empty($uploaded_image)) {
+                $data_arr['image'] = $uploaded_image;
+                $data_arr['teach_image'] = $uploaded_image;
+            }
+        } elseif (!empty($data['image']) && is_string($data['image'])) {
+            $raw_image = $data['image'];
+            if (preg_match('/^data:image\/(\w+);base64,/', $raw_image, $matches)) {
+                $extension = strtolower($matches[1]);
+                if (!in_array($extension, array('jpg', 'jpeg', 'png'), true)) {
+                    echo json_encode(array(
+                        'status' => 'false',
+                        'msg' => 'Only jpg, jpeg, png images are allowed',
+                    ));
+                    return;
+                }
+
+                $base64_data = substr($raw_image, strpos($raw_image, ',') + 1);
+                $binary = base64_decode($base64_data, true);
+                if ($binary === false) {
+                    echo json_encode(array(
+                        'status' => 'false',
+                        'msg' => 'Invalid base64 image data',
+                    ));
+                    return;
+                }
+
+                $file_name = 'user_' . $uid . '_' . time() . '_' . mt_rand(1000, 9999) . '.' . $extension;
+                if (file_put_contents($upload_path . $file_name, $binary) === false) {
+                    echo json_encode(array(
+                        'status' => 'false',
+                        'msg' => 'Unable to save profile image',
+                    ));
+                    return;
+                }
+                $data_arr['image'] = $file_name;
+                $data_arr['teach_image'] = $file_name;
+            }
+        }
+
+        if (empty($data_arr)) {
+            echo json_encode(array('status' => 'false', 'msg' => 'No data to update'));
+            return;
+        }
+
+        // Do not set users.updated_at here: JWT validation uses updated_at vs token iat for
+        // teacher/institute; bumping it on every profile save invalidates the access token.
+        $geoKeys = array('lat', 'long', 'latitude', 'longitude');
+        $geoVals = array();
+        foreach ($geoKeys as $gk) {
+            if (array_key_exists($gk, $data_arr)) {
+                $geoVals[$gk] = $data_arr[$gk];
+                unset($data_arr[$gk]);
+            }
+        }
+        $preserve_image = isset($data_arr['image']) ? $data_arr['image'] : null;
+        $preserve_teach_image = isset($data_arr['teach_image']) ? $data_arr['teach_image'] : null;
+        $data_arr = $this->security->xss_clean($data_arr);
+        if ($preserve_image !== null) {
+            $data_arr['image'] = $preserve_image;
+        }
+        if ($preserve_teach_image !== null) {
+            $data_arr['teach_image'] = $preserve_teach_image;
+        }
+        $data_arr = array_merge($data_arr, $geoVals);
+
+        $this->db->reset_query();
+        $this->db->where('id', $uid);
+        $this->db->limit(1);
+        $ins = $this->db->update('users', $data_arr);
+
+        if (!$ins) {
+            echo json_encode(array('status' => 'false', 'msg' => 'Update failed'));
+            return;
+        }
+
+        $updated = $this->db_model->select_data('*', 'users', array('id' => $uid), 1);
+        if (empty($updated[0])) {
+            echo json_encode(array('status' => 'false', 'msg' => 'Unable to load updated profile'));
+            return;
+        }
+
+        $u = $updated[0];
+        unset($u['password']);
+
+        $access_token = trim((string) $this->get_access_token_from_request());
+        if ($access_token === '') {
+            $mint = $this->mint_access_credentials($uid, isset($u['user_type']) ? $u['user_type'] : $ut);
+            $access_token = $mint['access_token'];
+            $this->db_model->update_data_limit(
+                'users use index (id)',
+                array('updated_at' => date('Y-m-d H:i:s', $mint['iat'])),
+                array('id' => $uid),
+                1
+            );
+        }
+
+        $now = date('Y-m-d H:i:s');
+        $dev_id = isset($u['device_id']) ? $u['device_id'] : '';
+        $dev_tok = isset($u['device_token']) ? $u['device_token'] : '';
+        $dev_type = isset($u['device_type']) ? $u['device_type'] : '';
+        $profile_completed = (empty($u['city']) || trim((string) $u['city']) === '') ? 0 : 1;
+
+        $response_data = $this->build_non_student_login_data_array(
+            $u,
+            $dev_id,
+            $dev_tok,
+            $dev_type,
+            $now,
+            $access_token,
+            $profile_completed
+        );
+
+        echo json_encode(array(
+            'status' => 'true',
+            'msg' => 'Profile updated successfully',
+            'data' => $response_data,
+        ), JSON_UNESCAPED_SLASHES);
+        return;
+    }
+
+    echo json_encode(array(
+        'status' => 'false',
+        'msg' => 'Profile update is not available for this account type',
+    ));
 }
 	
     function upload_media($files,$path,$file){   
@@ -1275,37 +1790,82 @@ public function otherBatchData($data){
     }
     function Homework(){ 
         $data = $_REQUEST;
-        if(isset($data['admin_id']) && isset($data['batch_id']) && isset($data['homework_date'])){
-            
-            if(!empty($data['student_id'])){
-                $this->viewNotificationStatus($data['student_id'],'homeWork');
+        $payload = $this->require_auth_payload();
+        if ($payload === false) {
+            return;
+        }
+
+        if (empty($data['batch_id'])) {
+            if ($payload['ut'] === 'student') {
+                $student_row = $this->db_model->select_data('id,batch_id,admin_id', 'students use index (id)', array('id' => (int) $payload['uid']), 1);
+                if (!empty($student_row[0]['batch_id'])) {
+                    $data['batch_id'] = $student_row[0]['batch_id'];
+                }
+                if (empty($data['admin_id']) && !empty($student_row[0]['admin_id'])) {
+                    $data['admin_id'] = $student_row[0]['admin_id'];
+                }
             }
-            $admin_id = $data['admin_id'];
-            $batch_id = $data['batch_id'];
-            $date = date('Y-m-d',strtotime($data['homework_date'])); 
-            $cond = array('homeworks.admin_id'=>$admin_id,'homeworks.date'=>date('Y-m-d',strtotime($date)),'homeworks.batch_id'=>$batch_id);
-            $homewrkData = $this->db_model->select_data('homeworks.id,homeworks.admin_id as adminId,homeworks.teacher_id teacherId, homeworks.date,homeworks.subject_id as studentId, homeworks.batch_id as batchId,homeworks.description,homeworks.added_at as addedAt,users.name,users.teach_gender as teachGender,subjects.subject_name as subjectName','homeworks use index (id)',$cond,'',array('id','desc'),'',array('multiple',array(array('users','users.id = homeworks.teacher_id'),array('subjects','subjects.id = homeworks.subject_id'))),'');
-      
+        }
+
+        if ( $payload['ut'] === 'teacher') {
+            $teacher_row = $this->db_model->select_data('id,admin_id', 'users use index (id)', array('id' => (int) $payload['uid']), 1);
+            if (!empty($teacher_row[0]['admin_id'])) {
+                $data['admin_id'] = $teacher_row[0]['admin_id'];
+            }
+        }
+
+        if ( isset($data['batch_id'])) {
+            $date = !empty($data['homework_date']) ? date('Y-m-d', strtotime($data['homework_date'])) : date('Y-m-d');
+
+            // Mark notification read for student app calls.
+            if ($payload['ut'] === 'student') {
+                $this->viewNotificationStatus((int) $payload['uid'], 'homeWork');
+            }
+
+            $cond = array(
+                'homeworks.admin_id' => $data['admin_id'],
+                //'homeworks.date' => $date,
+                'homeworks.batch_id' => $data['batch_id']
+            );
+
+            // For teacher, show only homework created by logged-in teacher.
+            if ($payload['ut'] === 'teacher') {
+                $cond['homeworks.teacher_id'] = (int) $payload['uid'];
+            }
+
+            $homewrkData = $this->db_model->select_data(
+                'homeworks.id,homeworks.admin_id as adminId,homeworks.teacher_id as teacherId,homeworks.date,homeworks.subject_id as studentId,homeworks.batch_id as batchId,homeworks.description,homeworks.added_at as addedAt,users.name,users.teach_gender as teachGender,subjects.subject_name as subjectName',
+                'homeworks use index (id)',
+                $cond,
+                '',
+                array('id', 'desc'),
+                '',
+                array('multiple', array(array('users', 'users.id = homeworks.teacher_id'), array('subjects', 'subjects.id = homeworks.subject_id'))),
+                ''
+            );
+
             if (!empty($homewrkData)) {
                 $arr = array(
                     'homeWork' => $homewrkData,
                     'status' => 'true',
                     'msg' => $this->lang->line('ltr_fetch_successfully')
                 );
-            }else{
+            } else {
                 $arr = array(
                     'status' => 'false',
                     'msg' => $this->lang->line('ltr_no_record_msg')
                 );
             }
-        }else{
+        } else {
             $arr = array(
-                'status'=>'false',
-                'msg'=>$this->lang->line('ltr_missing_parameters_msg')
+                'status' => 'false',
+                'msg' => $this->lang->line('ltr_missing_parameters_msg')
             );
         }
         echo json_encode($arr);
     }
+
+
     function get_subject(){
         $data = $_REQUEST;
         if(isset($data['admin_id']) && isset($data['batch_id'])){
@@ -1372,7 +1932,7 @@ public function otherBatchData($data){
 			 $join = array('chapters',"chapters.id = video_lectures.topic");
 			 // $videos = $this->db_model->select_data('id,admin_id as adminId,title,batch,topic,subject,url,status,added_by as addedBy,added_at as addedAt,video_type as videoType, preview_type as previewType, description','video_lectures use index (id)',array('admin_id'=>$admin_id),$limit,array('id','desc'),$like);
             $videos = $this->db_model->select_data('id,admin_id as adminId,title,batch,topic,subject,url,status,added_by as addedBy,added_at as addedAt,video_type as videoType, preview_type as previewType, description','video_lectures use index (id)',array('batch'=>$data['batch_id'],'topic'=>$data['chapter']),$limit,array('video_lectures.id','desc'),$like);
-// 			echo $this->db->last_query();		die;	
+            // 			echo $this->db->last_query();		die;	
             if(!empty($videos)){
                 foreach($videos as $key=>$value){
                     $url = $value['url'];
@@ -1787,11 +2347,23 @@ public function otherBatchData($data){
         $data = $_REQUEST;
         if(isset($data['batch_id'])){
            
-            $setting = $this->db_model->select_data('meeting_number as meetingNumber,password','live_class_setting',array('batch'=>$data['batch_id'],'status'=>1),'',array('id','desc'));
-            $datasdk = $this->db_model->select_data('zoom_api_key,zoom_api_secret','live_class_setting',array('batch'=>$data['batch_id']))[0];
-            $setting[0]['sdkKey']=$datasdk['zoom_api_key'];
-            $setting[0]['sdkSecret']=$datasdk['zoom_api_secret'];
-            if (!empty($setting)){
+            $this->load->library('zoom_live_lib');
+            $batch_id = (int) $data['batch_id'];
+            $sdk = $this->zoom_live_lib->resolve_meeting_sdk_credentials();
+            $bz = $this->zoom_live_lib->get_batch_zoom_meeting_row($batch_id);
+            $meetingNumber = '';
+            $password = '';
+            if (!empty($bz)) {
+                $meetingNumber = $this->zoom_live_lib->public_meeting_number_from_batch_zoom_row($bz);
+                $password = trim((string) (isset($bz['password']) ? $bz['password'] : ''));
+            }
+            $setting = array(array(
+                'meetingNumber' => $meetingNumber,
+                'password' => $password,
+                'sdkKey' => $sdk['sdk_key'],
+                'sdkSecret' => $sdk['sdk_secret'],
+            ));
+            if (!empty($setting[0]['sdkKey']) && !empty($setting[0]['sdkSecret']) && !empty($setting[0]['meetingNumber'])){
                 $arr = array(
                     'data' => $setting,
                     'status' => 'true',
@@ -1839,7 +2411,889 @@ public function otherBatchData($data){
         }
         echo json_encode($arr);
     }
-    
+
+	/**
+	 * Normalize clock values to minutes since midnight for late comparison.
+	 * Accepts MySQL TIME strings (09:00:00), H:i, or dotted times (10.30).
+	 */
+	private function attendance_minutes_from_midnight($t)
+	{
+		$t = trim((string) $t);
+		if ($t === '') {
+			return null;
+		}
+		if (preg_match('/^\d{1,2}\.\d{2}$/', $t)) {
+			$t = preg_replace('/^(\d{1,2})\.(\d{2})$/', '$1:$2', $t);
+		} else {
+			$t = preg_replace('/^(\d{1,2}:\d{2}(?::\d{2})?)\.\d+$/', '$1', $t);
+		}
+		if (preg_match('/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/', $t, $m)) {
+			return (int) $m[1] * 60 + (int) $m[2];
+		}
+		$ts = strtotime('1970-01-01 ' . $t);
+		if ($ts) {
+			return ((int) date('G', $ts)) * 60 + (int) date('i', $ts);
+		}
+		return null;
+	}
+
+	/** Late if attendance time is after batch start_time (same calendar day). */
+	private function attendance_is_late($attendance_time, $batch_start_time)
+	{
+		$att = $this->attendance_minutes_from_midnight($attendance_time);
+		$start = $this->attendance_minutes_from_midnight($batch_start_time);
+		if ($att === null || $start === null) {
+			return 0;
+		}
+		return $att > $start ? 1 : 0;
+	}
+
+	/** True if student is linked to batch via student_batchs, students.batch_id, or multi_batch JSON. */
+	private function attendance_student_enrolled_in_batch($student_id, $batch_id)
+	{
+		$student_id = (int) $student_id;
+		$batch_id = (int) $batch_id;
+		if ($student_id < 1 || $batch_id < 1) {
+			return false;
+		}
+		if (!empty($this->db_model->select_data('id', 'student_batchs', array('student_id' => $student_id, 'batch_id' => $batch_id), 1))) {
+			return true;
+		}
+		$rows = $this->db_model->select_data('batch_id, multi_batch', 'students', array('id' => $student_id, 'status' => 1), 1);
+		if (empty($rows)) {
+			return false;
+		}
+		$r = $rows[0];
+		$sb = isset($r['batch_id']) ? trim((string) $r['batch_id']) : '';
+		if ($sb !== '' && ((int) $sb === $batch_id || preg_match('/\b' . $batch_id . '\b/', $sb))) {
+			return true;
+		}
+		$mb = isset($r['multi_batch']) ? trim((string) $r['multi_batch']) : '';
+		if ($mb !== '') {
+			$dec = json_decode($mb, true);
+			if (is_array($dec)) {
+				foreach ($dec as $v) {
+					if ((int) $v === $batch_id) {
+						return true;
+					}
+				}
+			}
+			if (strpos($mb, '"' . $batch_id . '"') !== false || strpos($mb, (string) $batch_id) !== false) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** @var bool */
+	private $attendance_day_status_column_checked = false;
+
+	/**
+	 * Optional explicit status per attendance row: present, late, absent, half_day (legacy rows derive from time).
+	 */
+	private function ensure_attendance_day_status_column()
+	{
+		if ($this->attendance_day_status_column_checked) {
+			return;
+		}
+		$this->attendance_day_status_column_checked = true;
+		if ($this->db->field_exists('day_status', 'attendance')) {
+			return;
+		}
+		@$this->db->query('ALTER TABLE `attendance` ADD COLUMN `day_status` VARCHAR(20) NOT NULL DEFAULT \'\' AFTER `time`');
+	}
+
+	private function normalize_attendance_day_status($raw)
+	{
+		$s = strtolower(trim((string) $raw));
+		if ($s === 'halfday' || $s === 'half') {
+			$s = 'half_day';
+		}
+		$allowed = array('present', 'late', 'absent', 'half_day');
+		return in_array($s, $allowed, true) ? $s : '';
+	}
+
+	private function attendance_status_rank($status)
+	{
+		switch ($status) {
+			case 'absent':
+				return 4;
+			case 'late':
+				return 3;
+			case 'half':
+				return 2;
+			case 'present':
+				return 1;
+			default:
+				return 0;
+		}
+	}
+
+	private function attendance_status_from_rank($rank)
+	{
+		$map = array(4 => 'absent', 3 => 'late', 2 => 'half', 1 => 'present');
+		return isset($map[$rank]) ? $map[$rank] : 'none';
+	}
+
+	/**
+	 * Map DB row + late flag to calendar status: present | late | half | absent.
+	 */
+	private function derive_student_attendance_status_row(array $ar, $is_late_int)
+	{
+		$ds = isset($ar['dayStatus']) ? strtolower(trim((string) $ar['dayStatus'])) : '';
+		if ($ds === 'absent') {
+			return 'absent';
+		}
+		if ($ds === 'half_day' || $ds === 'halfday') {
+			return 'half';
+		}
+		if ($ds === 'late') {
+			return 'late';
+		}
+		if ($ds === 'present') {
+			return 'present';
+		}
+		return ((int) $is_late_int === 1) ? 'late' : 'present';
+	}
+
+	/**
+	 * Per-date status for one calendar month (Y-m-d => status).
+	 * absent inferred only when batch_id filter + batch window: weekday, not future, no attendance row.
+	 */
+	private function student_attendance_calendar_for_month($year, $month_num, array $records_by_date, $filter_batch_id, $batch_window_or_null)
+	{
+		$dim = cal_days_in_month(CAL_GREGORIAN, (int) $month_num, (int) $year);
+		$cal = array();
+		$today = date('Y-m-d');
+		for ($d = 1; $d <= $dim; $d++) {
+			$ymd = sprintf('%04d-%02d-%02d', (int) $year, (int) $month_num, $d);
+			$ts = strtotime($ymd);
+			$dow = (int) date('N', $ts);
+			if (isset($records_by_date[$ymd])) {
+				$cal[$ymd] = $records_by_date[$ymd];
+				continue;
+			}
+			if ($dow >= 6) {
+				$cal[$ymd] = 'weekend';
+				continue;
+			}
+			if ($ymd > $today) {
+				$cal[$ymd] = 'future';
+				continue;
+			}
+			if ($filter_batch_id > 0 && is_array($batch_window_or_null)) {
+				$bs = isset($batch_window_or_null['start']) ? (string) $batch_window_or_null['start'] : '';
+				$be = isset($batch_window_or_null['end']) ? (string) $batch_window_or_null['end'] : '';
+				$be_cap = ($be !== '' && $be < $today) ? $be : $today;
+				if ($bs !== '' && $be_cap !== '' && $ymd >= $bs && $ymd <= $be_cap) {
+					$cal[$ymd] = 'absent';
+					continue;
+				}
+			}
+			$cal[$ymd] = 'none';
+		}
+		return $cal;
+	}
+
+    function attendanceList()
+    {
+        $from_body = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($from_body)) {
+            $from_body = array();
+        }
+        $data = array_merge($_REQUEST, $from_body);
+        $payload = $this->require_auth_payload(array(), $from_body);
+        if ($payload === false) {
+            return;
+        }
+
+        $ut = strtolower(trim((string) $payload['ut']));
+        if ($ut === '3') {
+            $ut = 'teacher';
+        }
+        if ($ut === '4') {
+            $ut = 'institute';
+        }
+
+        // STUDENT VIEW: summary = selected month; attendance = whole year (calendar can show every month, e.g. March marks while viewing April).
+        if ($ut === 'student') {
+			$this->ensure_attendance_day_status_column();
+            $student_id = (int) $payload['uid'];
+            $month_raw = isset($data['month']) ? $data['month'] : null;
+            $year_raw = isset($data['year']) ? $data['year'] : null;
+            $year = ($year_raw !== null && $year_raw !== '' && (int) $year_raw > 2000)
+                ? (int) $year_raw
+                : (int) date('Y');
+            $m = ($month_raw !== null && $month_raw !== '' && (int) $month_raw >= 1 && (int) $month_raw <= 12)
+                ? (int) $month_raw
+                : (int) date('m');
+            $month = str_pad((string) $m, 2, '0', STR_PAD_LEFT);
+            $month_prefix = $year . '-' . $month;
+
+			$filter_batch = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+			$batch_window = null;
+			if ($filter_batch > 0) {
+				$br = $this->db_model->select_data('start_date,end_date', 'batches', array('id' => $filter_batch, 'status' => 1), 1);
+				if (!empty($br[0])) {
+					$batch_window = array(
+						'start' => isset($br[0]['start_date']) ? (string) $br[0]['start_date'] : '',
+						'end' => isset($br[0]['end_date']) ? (string) $br[0]['end_date'] : '',
+					);
+				}
+			}
+
+            $year_like = $year . '-%';
+            $sql_stu = "SELECT a.id, a.student_id AS studentId, a.added_id AS addedId, a.date, a.time, a.batch_id AS batchId,
+                    TRIM(IFNULL(a.day_status, '')) AS dayStatus,
+                    COALESCE(b.start_time, b2.start_time) AS batchStartTime
+                FROM attendance a
+                LEFT JOIN batches b ON b.id = a.batch_id AND IFNULL(a.batch_id, 0) > 0
+                LEFT JOIN students st ON st.id = a.student_id
+                LEFT JOIN batches b2 ON b2.id = st.batch_id
+                WHERE a.student_id = ?
+                  AND a.date LIKE ?";
+			$params_stu = array($student_id, $year_like);
+			if ($filter_batch > 0) {
+				$sql_stu .= ' AND a.batch_id = ?';
+				$params_stu[] = $filter_batch;
+			}
+			$sql_stu .= ' ORDER BY a.date DESC, a.id DESC';
+            $q_stu = $this->db->query($sql_stu, $params_stu);
+            $att_rows = $q_stu->result_array();
+
+            $attendance = array();
+			$records_by_date = array();
+            foreach ($att_rows as $ar) {
+                $row_date = isset($ar['date']) ? (string) $ar['date'] : '';
+				$is_late = $this->attendance_is_late($ar['time'], isset($ar['batchStartTime']) ? $ar['batchStartTime'] : '');
+				$status = $this->derive_student_attendance_status_row($ar, $is_late);
+                if ($row_date !== '' && strncmp($row_date, $month_prefix, strlen($month_prefix)) === 0) {
+					$r = $this->attendance_status_rank(isset($records_by_date[$row_date]) ? $records_by_date[$row_date] : 'none');
+					$n = $this->attendance_status_rank($status);
+					if ($n >= $r) {
+						$records_by_date[$row_date] = $this->attendance_status_from_rank($n);
+					}
+                }
+                $attendance[] = array(
+                    'id' => (int) $ar['id'],
+                    'studentId' => (int) $ar['studentId'],
+                    'addedId' => (int) $ar['addedId'],
+					'batchId' => isset($ar['batchId']) ? (int) $ar['batchId'] : 0,
+                    'date' => $ar['date'],
+                    'attendance_date' => $ar['date'],
+                    'time' => $ar['time'],
+                    'is_late' => (int) $is_late,
+					'status' => $status,
+					'dayStatus' => isset($ar['dayStatus']) ? (string) $ar['dayStatus'] : ''
+                );
+            }
+			$count_present_days = 0;
+			$count_late_days = 0;
+			$count_half_days = 0;
+			$count_absent_explicit_days = 0;
+			foreach ($records_by_date as $d => $st) {
+				if ($st === 'present') {
+					$count_present_days++;
+				} elseif ($st === 'late') {
+					$count_late_days++;
+				} elseif ($st === 'half') {
+					$count_half_days++;
+				} elseif ($st === 'absent') {
+					$count_absent_explicit_days++;
+				}
+			}
+			$days_present = $count_present_days + $count_late_days + $count_half_days;
+
+			$calendar = $this->student_attendance_calendar_for_month($year, $m, $records_by_date, $filter_batch, $batch_window);
+			$inferred_absent = 0;
+			foreach ($calendar as $ymd => $st) {
+				if ($st === 'absent') {
+					$inferred_absent++;
+				}
+			}
+			$count_absent_total = $inferred_absent;
+
+            $days_in_month = cal_days_in_month(CAL_GREGORIAN, $m, (int) $year);
+            $percentage = $days_in_month > 0 ? round(($days_present / $days_in_month) * 100, 2) : 0;
+
+            $pg = $this->parse_api_list_pagination($data);
+           	$total_att = count($attendance);
+           	$attendance_page = array_slice($attendance, $pg['offset'], $pg['limit']);
+
+            echo json_encode(array(
+                'status' => 'true',
+                'userType' => 'student',
+                'attendance' => !empty($attendance_page) ? $attendance_page : array(),
+               	'pagination' => $this->build_api_list_pagination_meta($pg['page'], $pg['limit'], $total_att),
+                'summary' => array(
+                    'year' => (int) $year,
+                    'month' => $m,
+                    'daysPresent' => (int) $days_present,
+                    'daysInMonth' => (int) $days_in_month,
+                    'attendancePercent' => (float) $percentage,
+					'countPresent' => (int) $count_present_days,
+					'countLate' => (int) $count_late_days,
+					'countHalf' => (int) $count_half_days,
+					'countAbsent' => (int) $count_absent_total
+                ),
+				'calendar' => $calendar,
+                'msg' => $this->lang->line('ltr_fetch_successfully')
+            ));
+            return;
+        }
+
+        // TEACHER VIEW: all students from teacher's accessible batch(es) for a selected date.
+        if ($ut === 'teacher') {
+            $this->ensure_attendance_day_status_column();
+            $teacher_id = (int) $payload['uid'];
+            if ($teacher_id < 1) {
+                echo json_encode(array('status' => 'false', 'msg' => 'Teacher not found'));
+                return;
+            }
+
+            $raw_date = isset($data['date']) ? trim((string) $data['date']) : '';
+            $raw_date = trim($raw_date, "\"' \t\n\r\0\x0B");
+            if ($raw_date === '' && isset($data['attendance_date'])) {
+                $raw_date = trim(trim((string) $data['attendance_date']), "\"' \t\n\r\0\x0B");
+            }
+            if ($raw_date === '') {
+                $date = date('Y-m-d');
+            } elseif (preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw_date)) {
+                $date = $raw_date;
+            } else {
+                $date = date('Y-m-d');
+            }
+
+            $batch_ids = $this->teacher_attendance_accessible_batch_ids($teacher_id);
+
+            if (isset($data['batch_id']) && trim((string) $data['batch_id'], "\"' \t\n\r\0\x0B") !== '') {
+                $want = (int) trim(trim((string) $data['batch_id']), "\"' \t\n\r\0\x0B");
+                if ($want < 1) {
+                    echo json_encode(array('status' => 'false', 'msg' => 'Invalid batch_id'));
+                    return;
+                }
+                if (!$this->teacher_assigned_for_attendance_batch($teacher_id, $want)) {
+                    echo json_encode(array(
+                        'status' => 'false',
+                        'msg' => 'You are not assigned to this batch'
+                    ));
+                    return;
+                }
+                $batch_ids = array($want);
+            }
+
+            if (empty($batch_ids)) {
+                echo json_encode(array(
+                    'status' => 'true',
+                    'userType' => 'teacher',
+                    'batchId' => 0,
+                    'batchIds' => array(),
+                    'date' => $date,
+                    'attendance_date' => $date,
+                    'students' => array(),
+                    'presentCount' => 0,
+                    'totalStudents' => 0,
+                    'summary' => array(
+                        'date' => $date,
+                        'countPresent' => 0,
+                        'countLate' => 0,
+                        'countHalf' => 0,
+                        'countAbsent' => 0,
+                        'daysPresent' => 0,
+                        'daysInMonth' => 0,
+                        'attendancePercent' => 0
+                    ),
+                    'msg' => $this->lang->line('ltr_fetch_successfully')
+                ));
+                return;
+            }
+
+            $batch_ids = array_values(array_unique(array_map('intval', $batch_ids)));
+            $single_batch_id = count($batch_ids) === 1 ? (int) $batch_ids[0] : 0;
+            $ph = implode(',', array_fill(0, count($batch_ids), '?'));
+
+            $batch_meta_rows = $this->db->query(
+                "SELECT id, batch_name, start_time FROM batches WHERE id IN (" . $ph . ")",
+                $batch_ids
+            )->result_array();
+            $batch_meta = array();
+            foreach ($batch_meta_rows as $row) {
+                $bid = isset($row['id']) ? (int) $row['id'] : 0;
+                if ($bid < 1) {
+                    continue;
+                }
+                $batch_meta[$bid] = array(
+                    'batchName' => isset($row['batch_name']) ? (string) $row['batch_name'] : ('Batch #' . $bid),
+                    'batchStartTime' => isset($row['start_time']) ? (string) $row['start_time'] : ''
+                );
+            }
+
+            $student_index = array();
+            $student_map = array();
+
+            $register_student = function ($student_id, $batch_id, $name, $image) use (&$student_map, &$student_index, $batch_meta, $date) {
+                $student_id = (int) $student_id;
+                $batch_id = (int) $batch_id;
+                if ($student_id < 1 || $batch_id < 1) {
+                    return;
+                }
+                $image_url = (is_string($image) && preg_match('#^https?://#i', $image))
+                    ? $image
+                    : (function_exists('profile_image_url')
+                        ? profile_image_url($image, 'student', 'student')
+                        : (string) $image);
+                if (!isset($student_index[$student_id])) {
+                    $student_index[$student_id] = array(
+                        'name' => (string) $name,
+                        'image' => $image_url
+                    );
+                } elseif ($student_index[$student_id]['name'] === '' && $name !== '') {
+                    $student_index[$student_id]['name'] = (string) $name;
+                    $student_index[$student_id]['image'] = $image_url;
+                }
+                $key = $student_id . ':' . $batch_id;
+                if (isset($student_map[$key])) {
+                    return;
+                }
+                $batch_name = isset($batch_meta[$batch_id]['batchName']) ? $batch_meta[$batch_id]['batchName'] : ('Batch #' . $batch_id);
+                $student_map[$key] = array(
+                    'studentId' => $student_id,
+                    'name' => (string) $name,
+                    'image' => $image_url,
+                    'batchId' => $batch_id,
+                    'batchName' => $batch_name,
+                    'isPresent' => 0,
+                    'is_late' => 0,
+                    'attendanceId' => 0,
+                    'date' => $date,
+                    'attendance_date' => $date,
+                    'time' => '',
+                    'dayStatus' => '',
+                    'status' => 'absent'
+                );
+            };
+
+            $student_batch_rows = $this->db->query(
+                "SELECT DISTINCT s.id AS studentId, s.name, s.image, sb.batch_id AS batchId
+                 FROM student_batchs sb
+                 INNER JOIN students s ON s.id = sb.student_id AND s.status = 1
+                 WHERE sb.batch_id IN (" . $ph . ")
+                 ORDER BY s.name ASC",
+                $batch_ids
+            )->result_array();
+            foreach ($student_batch_rows as $row) {
+                $register_student(
+                    isset($row['studentId']) ? $row['studentId'] : 0,
+                    isset($row['batchId']) ? $row['batchId'] : 0,
+                    isset($row['name']) ? $row['name'] : '',
+                    isset($row['image']) ? $row['image'] : ''
+                );
+            }
+
+            $legacy_students = $this->db_model->select_data('id,name,image,batch_id,multi_batch', 'students', array('status' => 1), '');
+            if (!empty($legacy_students)) {
+                foreach ($legacy_students as $student_row) {
+                    $sid = isset($student_row['id']) ? (int) $student_row['id'] : 0;
+                    if ($sid < 1) {
+                        continue;
+                    }
+                    $candidate_batch_ids = array();
+
+                    $sb = isset($student_row['batch_id']) ? trim((string) $student_row['batch_id']) : '';
+                    if ($sb !== '') {
+                        preg_match_all('/\d+/', $sb, $sb_matches);
+                        if (!empty($sb_matches[0])) {
+                            foreach ($sb_matches[0] as $value) {
+                                $candidate_batch_ids[] = (int) $value;
+                            }
+                        }
+                    }
+
+                    $mb = isset($student_row['multi_batch']) ? trim((string) $student_row['multi_batch']) : '';
+                    if ($mb !== '') {
+                        $decoded = json_decode($mb, true);
+                        if (is_array($decoded)) {
+                            foreach ($decoded as $value) {
+                                $candidate_batch_ids[] = (int) $value;
+                            }
+                        } else {
+                            preg_match_all('/\d+/', $mb, $mb_matches);
+                            if (!empty($mb_matches[0])) {
+                                foreach ($mb_matches[0] as $value) {
+                                    $candidate_batch_ids[] = (int) $value;
+                                }
+                            }
+                        }
+                    }
+
+                    $candidate_batch_ids = array_values(array_unique(array_filter(array_map('intval', $candidate_batch_ids))));
+                    foreach ($candidate_batch_ids as $bid) {
+                        if (in_array($bid, $batch_ids, true)) {
+                            $register_student(
+                                $sid,
+                                $bid,
+                                isset($student_row['name']) ? $student_row['name'] : '',
+                                isset($student_row['image']) ? $student_row['image'] : ''
+                            );
+                        }
+                    }
+                }
+            }
+
+            $attendance_rows = $this->db->query(
+                "SELECT a.id AS attendanceId, a.student_id AS studentId, a.batch_id AS batchId, a.date, a.time,
+                        TRIM(IFNULL(a.day_status, '')) AS dayStatus
+                 FROM attendance a
+                 WHERE a.date = ?
+                   AND a.batch_id IN (" . $ph . ")",
+                array_merge(array($date), $batch_ids)
+            )->result_array();
+
+            foreach ($attendance_rows as $row) {
+                $sid = isset($row['studentId']) ? (int) $row['studentId'] : 0;
+                $bid = isset($row['batchId']) ? (int) $row['batchId'] : 0;
+                if ($sid < 1 || $bid < 1) {
+                    continue;
+                }
+
+                $key = $sid . ':' . $bid;
+                if (!isset($student_map[$key])) {
+                    $student_details = isset($student_index[$sid]) ? $student_index[$sid] : array('name' => '', 'image' => '');
+                    if ($student_details['name'] === '') {
+                        $student_row = $this->db_model->select_data('name,image', 'students', array('id' => $sid, 'status' => 1), 1);
+                        if (!empty($student_row[0])) {
+                            $student_details['name'] = isset($student_row[0]['name']) ? (string) $student_row[0]['name'] : '';
+                            $student_details['image'] = isset($student_row[0]['image']) ? (string) $student_row[0]['image'] : '';
+                        }
+                    }
+                    $register_student($sid, $bid, $student_details['name'], $student_details['image']);
+                }
+
+                $is_late = $this->attendance_is_late(
+                    isset($row['time']) ? $row['time'] : '',
+                    isset($batch_meta[$bid]['batchStartTime']) ? $batch_meta[$bid]['batchStartTime'] : ''
+                );
+                $status = $this->derive_student_attendance_status_row($row, $is_late);
+                $student_map[$key]['attendanceId'] = isset($row['attendanceId']) ? (int) $row['attendanceId'] : 0;
+                $student_map[$key]['date'] = !empty($row['date']) ? $row['date'] : $date;
+                $student_map[$key]['attendance_date'] = !empty($row['date']) ? $row['date'] : $date;
+                $student_map[$key]['time'] = !empty($row['time']) ? $row['time'] : '';
+                $student_map[$key]['dayStatus'] = isset($row['dayStatus']) ? (string) $row['dayStatus'] : '';
+                $student_map[$key]['status'] = $status;
+                $student_map[$key]['is_late'] = (int) $is_late;
+                $student_map[$key]['isPresent'] = ($status === 'absent') ? 0 : 1;
+            }
+
+            $students = array_values($student_map);
+            usort($students, function ($a, $b) {
+                $name_cmp = strcasecmp(isset($a['name']) ? (string) $a['name'] : '', isset($b['name']) ? (string) $b['name'] : '');
+                if ($name_cmp !== 0) {
+                    return $name_cmp;
+                }
+                return ((int) $a['batchId']) <=> ((int) $b['batchId']);
+            });
+
+            $count_present = 0;
+            $count_late = 0;
+            $count_half = 0;
+            $count_absent = 0;
+            foreach ($students as $student_row) {
+                $status = isset($student_row['status']) ? (string) $student_row['status'] : 'absent';
+                if ($status === 'late') {
+                    $count_late++;
+                } elseif ($status === 'half') {
+                    $count_half++;
+                } elseif ($status === 'present') {
+                    $count_present++;
+                } else {
+                    $count_absent++;
+                }
+            }
+
+            $presentish = $count_present + $count_late + $count_half;
+            $total_students = count($students);
+            $attendance_percent = $total_students > 0 ? round(($presentish / $total_students) * 100, 2) : 0;
+            $pg = $this->parse_api_list_pagination($data);
+            $students_page = array_slice($students, $pg['offset'], $pg['limit']);
+
+            echo json_encode(array(
+                'status' => 'true',
+                'userType' => 'teacher',
+                'batchId' => $single_batch_id,
+                'batchIds' => $batch_ids,
+                'date' => $date,
+                'attendance_date' => $date,
+                'students' => $students_page,
+                'presentCount' => $presentish,
+                'totalStudents' => $total_students,
+                'summary' => array(
+                    'date' => $date,
+                    'countPresent' => $count_present,
+                    'countLate' => $count_late,
+                    'countHalf' => $count_half,
+                    'countAbsent' => $count_absent,
+                    'daysPresent' => $presentish,
+                    'daysInMonth' => $total_students,
+                    'attendancePercent' => $attendance_percent
+                ),
+               	'pagination' => $this->build_api_list_pagination_meta($pg['page'], $pg['limit'], $total_students),
+                'msg' => $this->lang->line('ltr_fetch_successfully')
+            ));
+            return;
+        }
+
+        echo json_encode(array(
+            'status' => 'false',
+            'msg' => 'Attendance list is currently available for student and teacher only'
+        ));
+    }
+
+	/**
+	 * POST/GET api/user/add-attendance
+	 * Auth: Bearer teacher. Body/JSON/form: batch_id (required), student_id or student_ids (required),
+	 * attendance_date (required, YYYY-MM-DD), time (required, e.g. 10.30 or 10:30).
+	 * Upserts on (student_id, date, batch_id). Response includes date (echo of attendance_date) and attendance_date.
+	 */
+	public function addAttendance()
+	{
+		$this->ensure_attendance_day_status_column();
+		$from_body = json_decode(file_get_contents('php://input'), true);
+		if (!is_array($from_body)) {
+			$from_body = array();
+		}
+		$data = array_merge($this->input->post(), $this->input->get(), $from_body);
+
+		$payload = $this->require_auth_payload(array('teacher'), $from_body);
+		if ($payload === false) {
+			return;
+		}
+		$teacher_id = (int) $payload['uid'];
+		if ($teacher_id < 1) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Teacher not found'));
+			return;
+		}
+
+		$batch_raw = isset($data['batch_id']) ? trim(trim((string) $data['batch_id']), "\"' \t\n\r\0\x0B") : '';
+		$batch_id = (int) $batch_raw;
+		if ($batch_id < 1) {
+			echo json_encode(array('status' => 'false', 'msg' => 'batch_id is required'));
+			return;
+		}
+
+		if (!$this->teacher_assigned_for_attendance_batch($teacher_id, $batch_id)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'You are not assigned to this batch'));
+			return;
+		}
+
+		$batch_row = $this->db_model->select_data('id,admin_id,start_time', 'batches', array('id' => $batch_id, 'status' => 1), 1);
+		if (empty($batch_row)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Batch not found'));
+			return;
+		}
+		$admin_id = isset($batch_row[0]['admin_id']) ? (int) $batch_row[0]['admin_id'] : 0;
+
+		$raw_ad = isset($data['attendance_date']) ? trim(trim((string) $data['attendance_date']), "\"' \t\n\r\0\x0B") : '';
+		if ($raw_ad === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw_ad)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'attendance_date is required (use YYYY-MM-DD)'));
+			return;
+		}
+		$date = $raw_ad;
+
+		$time_raw = isset($data['time']) ? trim(trim((string) $data['time']), "\"' \t\n\r\0\x0B") : '';
+		if ($time_raw === '') {
+			echo json_encode(array('status' => 'false', 'msg' => 'time is required'));
+			return;
+		}
+		$time = $time_raw;
+
+		$batch_start_t = !empty($batch_row[0]['start_time']) ? (string) $batch_row[0]['start_time'] : '';
+		$ds_in = isset($data['day_status']) ? $data['day_status'] : (isset($data['attendance_status']) ? $data['attendance_status'] : '');
+		$ds_norm = $this->normalize_attendance_day_status($ds_in);
+		$auto_status = ((int) $this->attendance_is_late($time, $batch_start_t) === 1) ? 'late' : 'present';
+		$final_day_status = $ds_norm !== '' ? $ds_norm : $auto_status;
+
+		$student_ids = array();
+		if (!empty($data['student_ids']) && is_array($data['student_ids'])) {
+			foreach ($data['student_ids'] as $sid) {
+				$student_ids[] = (int) $sid;
+			}
+		} elseif (!empty($data['student_ids']) && is_string($data['student_ids'])) {
+			foreach (explode(',', $data['student_ids']) as $p) {
+				$p = (int) trim($p);
+				if ($p > 0) {
+					$student_ids[] = $p;
+				}
+			}
+		} elseif (isset($data['student_id']) && trim((string) $data['student_id'], "\"' \t\n\r\0\x0B") !== '') {
+			$student_ids[] = (int) trim(trim((string) $data['student_id']), "\"' \t\n\r\0\x0B");
+		}
+		$student_ids = array_values(array_unique(array_filter($student_ids, function ($v) { return (int) $v > 0; })));
+
+		if (empty($student_ids)) {
+			echo json_encode(array('status' => 'false', 'msg' => 'student_id or student_ids is required'));
+			return;
+		}
+
+		$results = array();
+		$any_ok = false;
+		$alerts = array(); // students marked late/half_day/absent -> notify parents after the loop
+		foreach ($student_ids as $student_id) {
+			$student = $this->db_model->select_data('id,admin_id', 'students', array('id' => $student_id, 'status' => 1), 1);
+			if (empty($student)) {
+				$results[] = array('studentId' => $student_id, 'status' => 'false', 'msg' => 'Student not found');
+				continue;
+			}
+			if (!$this->attendance_student_enrolled_in_batch($student_id, $batch_id)) {
+				$prior = $this->db_model->select_data('id', 'attendance', array('student_id' => $student_id, 'batch_id' => $batch_id), 1);
+				if (empty($prior)) {
+					$results[] = array('studentId' => $student_id, 'status' => 'false', 'msg' => 'Student is not enrolled in this batch');
+					continue;
+				}
+			}
+			$use_admin = $admin_id > 0 ? $admin_id : (int) $student[0]['admin_id'];
+
+			$existing = $this->db_model->select_data('id', 'attendance', array(
+				'student_id' => $student_id,
+				'date' => $date,
+				'batch_id' => $batch_id
+			), 1);
+
+			if (!empty($existing)) {
+				$att_id = (int) $existing[0]['id'];
+				$upd = array(
+					'time' => $time,
+					'added_id' => $teacher_id,
+					'admin_id' => $use_admin
+				);
+				if ($this->db->field_exists('day_status', 'attendance')) {
+					$upd['day_status'] = $final_day_status;
+				}
+				$this->db_model->update_data_limit('attendance', $upd, array('id' => $att_id), 1);
+				$results[] = array(
+					'studentId' => $student_id,
+					'status' => 'true',
+					'msg' => 'updated',
+					'attendanceId' => $att_id,
+					'date' => $date,
+					'attendance_date' => $date,
+					'time' => $time
+				);
+			} else {
+				$ins_row = $this->security->xss_clean(array(
+					'student_id' => $student_id,
+					'added_id' => $teacher_id,
+					'date' => $date,
+					'time' => $time,
+					'batch_id' => $batch_id,
+					'admin_id' => $use_admin > 0 ? $use_admin : 1
+				));
+				if ($this->db->field_exists('day_status', 'attendance')) {
+					$ins_row['day_status'] = $final_day_status;
+				}
+				$this->db_model->insert_data('attendance', $ins_row);
+				$att_id = (int) $this->db->insert_id();
+				$results[] = array(
+					'studentId' => $student_id,
+					'status' => 'true',
+					'msg' => 'added',
+					'attendanceId' => $att_id,
+					'date' => $date,
+					'attendance_date' => $date,
+					'time' => $time
+				);
+			}
+			if (in_array($final_day_status, array('late', 'half_day', 'absent'), true)) {
+				$alerts[] = array('student_id' => $student_id, 'date' => $date, 'day_status' => $final_day_status);
+			}
+			$any_ok = true;
+		}
+
+		// Email (+ SMS via MSG91 when configured) to parents of late/half-day/absent students.
+		@$this->send_attendance_alerts($alerts, $batch_id);
+
+		$all_ok = count(array_filter($results, function ($r) { return isset($r['status']) && $r['status'] === 'true'; })) === count($results);
+
+		echo json_encode(array(
+			'status' => $any_ok ? 'true' : 'false',
+			'msg' => $all_ok
+				? 'Attendance saved successfully'
+				: ($any_ok ? 'Some attendance records could not be saved' : 'Attendance could not be saved'),
+			'batchId' => $batch_id,
+			'date' => $date,
+			'attendance_date' => $date,
+			'results' => $results
+		), JSON_UNESCAPED_SLASHES);
+	}
+
+	/**
+	 * Notify parents when a student is marked late / half-day / absent.
+	 * Email (template purpose: attendance_absent, reused for all three with a {{STATUS}} var) plus
+	 * SMS to the guardian (students.contact_no) via MSG91 when configured. Best-effort.
+	 *
+	 * @param array $alerts list of array{student_id:int,date:string,day_status:string}
+	 * @param int   $batch_id
+	 * @return int emails sent
+	 */
+	private function send_attendance_alerts(array $alerts, $batch_id)
+	{
+		if (empty($alerts)) {
+			return 0;
+		}
+		$this->load->library('common');
+		$batch_id = (int) $batch_id;
+		$batch_name = '';
+		if ($batch_id > 0) {
+			$bn = $this->db_model->select_data('batch_name', 'batches', array('id' => $batch_id), 1);
+			if (!empty($bn[0]['batch_name'])) {
+				$batch_name = (string) $bn[0]['batch_name'];
+			}
+		}
+		$labels = array('late' => 'Late', 'half_day' => 'Half-day', 'absent' => 'Absent');
+		$purposes = array('late' => 'attendance_late', 'half_day' => 'attendance_halfday', 'absent' => 'attendance_absent');
+		$sent = 0;
+		foreach ($alerts as $a) {
+			$sid = (int) $a['student_id'];
+			if ($sid < 1) {
+				continue;
+			}
+			$stu = $this->db_model->select_data('id,name,email,contact_no', 'students', array('id' => $sid), 1);
+			if (empty($stu[0])) {
+				continue;
+			}
+			$name = isset($stu[0]['name']) ? (string) $stu[0]['name'] : '';
+			$email = isset($stu[0]['email']) ? trim((string) $stu[0]['email']) : '';
+			$contact_no = isset($stu[0]['contact_no']) ? trim((string) $stu[0]['contact_no']) : '';
+			$status_label = isset($labels[$a['day_status']]) ? $labels[$a['day_status']] : ucfirst((string) $a['day_status']);
+			$purpose = isset($purposes[$a['day_status']]) ? $purposes[$a['day_status']] : 'attendance_absent';
+			$date = (string) $a['date'];
+
+			$vars = array(
+				'STUDENT_NAME' => $name,
+				'STATUS' => $status_label,
+				'DATE' => $date,
+				'BATCH_NAME' => $batch_name,
+				'CURRENT_YEAR' => date('Y'),
+			);
+			if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+				$res = $this->common->send_email(array(
+					'purpose' => $purpose,
+					'to_email' => $email,
+					'dynamic_var' => $vars,
+				));
+				if (!empty($res['status'])) {
+					$sent++;
+				}
+			}
+			if ($contact_no !== '') {
+				$msg = trim($name . ' was marked ' . $status_label . ' on ' . $date
+					. ($batch_name !== '' ? ' (' . $batch_name . ')' : '') . '.');
+				@$this->common->send_sms($contact_no, $msg);
+			}
+		}
+		return $sent;
+	}
+
+
     function getTopScorer(){ 
         $data = $_REQUEST;
       
@@ -1926,6 +3380,9 @@ public function otherBatchData($data){
                 $meetingId ="";
             }
             if (!empty($class_data)) {
+                if (!empty($class_data[0]['teachImage'])) {
+                    $class_data[0]['teachImage'] = uploaded_file_resolve_name('uploads/teachers', $class_data[0]['teachImage']);
+                }
                 if(empty($class_data[0]['endTime'])){
                     $arr = array(
                     'liveClass' => $class_data[0],
@@ -1962,6 +3419,9 @@ public function otherBatchData($data){
 		    $class_data = $this->db_model->select_data('users.name,users.teach_image AS teachImage,subjects.subject_name as subjectName,chapters.chapter_name as chapterName,live_class_history.end_time as endTime','live_class_history',array('batch_id'=>$batch_id,'type_class'=>1),'1',array('live_class_history.id','desc'),'',array('multiple',array(array('users','users.id = live_class_history.uid'),array('subjects','subjects.id = live_class_history.subject_id'),array('chapters','chapters.id = live_class_history.chapter_id'))));
 		   
             if (!empty($class_data)) {
+                if (!empty($class_data[0]['teachImage'])) {
+                    $class_data[0]['teachImage'] = uploaded_file_resolve_name('uploads/teachers', $class_data[0]['teachImage']);
+                }
                 if(empty($class_data[0]['endTime'])){
                     $arr = array(
                     'liveClass' => $class_data[0],
@@ -1990,46 +3450,6 @@ public function otherBatchData($data){
         }
         echo json_encode($arr);
     }
-    // function certificate(){
-      
-    //    $data = $_REQUEST;
-    //     if(isset($data['batch_id']) && isset($data['student_id']) ){
-    //         $id=$data['student_id'];
-    //     	$batch_id = $data['batch_id'];
-    //     	$data['student_certificate']=$this->db_model->select_data('*','certificate',array('student_id'=>$id,'batch_id'=>$batch_id),1,array('id','desc'));
-    //     	if(!empty($data['student_certificate'])){
-    //     	    $data['certificate_details']=$this->db_model->select_data('*','certificate_setting','',1,array('id','desc'));
-    //         	$data['site_details_logo']=$this->db_model->select_data('site_logo','site_details','',1,array('id','desc'));
-    //         	$data['student_details']=$this->db_model->select_data('name','students',array('id'=>$id),1,array('id','desc'));
-    //         	$data['batchdata']=$this->db_model->select_data('batch_name','batches',array('id'=>$batch_id),1,array('id','desc'));
-    //         	$data['baseurl'] = base_url();
-    //             $html=	$this->load->view("student/certificate_pdf",$data,true); 
-    //             $this->load->library('pdf'); // change to pdf_ssl for ssl
-    //             $filename = "certificate_".$id."_".$batch_id;
-    //             $result=$this->pdf->create($html);
-                
-    //             $file_path= explode("application",APPPATH);
-    //             file_put_contents($file_path[0].'uploads/certificate/'.$filename.'.pdf', $result);
-    //             $arr = array(
-    //                 'fileName' => $filename.'.pdf',
-    //                 'filesUrl' => base_url('uploads/certificate/'),
-    //                 'status' => 'true',
-    //                 'msg' => $this->lang->line('ltr_fetch_successfully')
-    //             );
-    //         }else{
-    //             $arr = array(
-    //                 'status' => 'false',
-    //                 'msg' => $this->lang->line('ltr_no_record_msg')
-    //             );
-    //         }
-    //     }else{
-    //         $arr = array(
-    //             'status'=>'false',
-    //             'msg'=>$this->lang->line('ltr_missing_parameters_msg')
-    //         );
-    //     }
-    //     echo json_encode($arr);
-    // }
     
     function apply_leave(){
         $data = $_REQUEST;
@@ -2170,7 +3590,7 @@ public function otherBatchData($data){
 			}
 			
 			
-		    	 $adm_id = $this->db_model->select_data('*','sudent_batchs',array('student_id'=>$data['student_id'],'batch_id'=>$data['batch_id']));
+		    	 $adm_id = $this->db_model->select_data('*','student_batchs',array('student_id'=>$data['student_id'],'batch_id'=>$data['batch_id']));
 			$arrayData['admin_id']= $adm_id[0]['admin_id'];
 			$checkusers = $this->db_model->select_data('doubt_id','student_doubts_class',array('teacher_id'=>$data['teacher_id'],'batch_id'=>$data['batch_id'],'status'=>0,'student_id'=>$data['student_id'],'subjects_id'=>$data['subject_id'],'chapters_id'=>$data['chapter_id']),'',array('doubt_id ','desc'));
 			if(empty($checkusers)){
@@ -2258,8 +3678,9 @@ public function otherBatchData($data){
 			if(!empty($data['student_id']) && !empty($data['batch_id'])){
 				
 				$batch_type =$this->db_model->select_data('batch_type','batches use index (id)',array('id'=>$data['batch_id']),1)[0]['batch_type'];
-				
-				if($batch_type==2){
+
+				// Free institutes (users.paid = 0) enroll without payment even for paid batches.
+				if($this->batch_requires_payment($data['batch_id'])){
 					if(!empty($data['transaction_id']) && !empty($data['amount'])){
 					
 						$chackPayment =$this->db_model->select_data('*','student_payment_history ',array('batch_id'=>$data['batch_id'],'student_id'=>$data['student_id']));
@@ -2301,7 +3722,7 @@ public function otherBatchData($data){
 					
 				    $studentData =$this->db_model->select_data('id as studentId,email as userEmail,name as fullName,enrollment_id as enrollmentId,contact_no as mobile,app_version as versionCode, batch_id as batchId,admin_id as adminId,admission_date as admissionDate, image,password,token','students use index (id)',array('id'=>$data['student_id']),1);
 					$studentData[0]['batchName']=!empty($batchData)?$batchData[0]['batch_name']:'';
-					$studentData[0]['image']= base_url('uploads/students/').$studentData[0]['image'];
+					$studentData[0]['image']= profile_image_url($studentData[0]['image'], 2, 'student');
 					$studentData[0]['password'] = $studentData[0]['password'];
 					
 					$studentData[0]['transactionId'] = !empty($data['transaction_id'])?$data['transaction_id']:'';
@@ -2320,38 +3741,163 @@ public function otherBatchData($data){
     }
 	
 	function get_payment_history(){
-        $data = $_REQUEST;
-		if(!empty($data['student_id'])){
-			
-			$payData= $this->db_model->select_data('id, batch_id as batchId,transaction_id as transactionId, amount, create_at as createAt','student_payment_history',array('student_id'=>$data['student_id']),'',array('id ','desc'));
-			if(!empty($payData)){
-				foreach($payData as $key=>$value){
-					$batchData =$this->db_model->select_data('*','batches use index (id)',array('id'=>$value['batchId']),1);
-					
-					$payData[$key]['batchName'] =!empty($batchData)?$batchData[0]['batch_name']:'';
-					$payData[$key]['startDate'] =!empty($batchData)?$batchData[0]['start_date']:'';
-					$payData[$key]['endDate'] =!empty($batchData)?$batchData[0]['end_date']:'';
-					$payData[$key]['startTime'] =!empty($batchData)?$batchData[0]['start_time']:'';
-					$payData[$key]['endTime'] =!empty($batchData)?$batchData[0]['end_time']:'';
-					$payData[$key]['batchType'] =!empty($batchData)?$batchData[0]['batch_type']:'';
-					$payData[$key]['batchPrice'] =!empty($batchData)?$batchData[0]['batch_price']:'';
-					$payData[$key]['description'] =!empty($batchData)?$batchData[0]['description']:'';
-					$payData[$key]['status'] =!empty($batchData)?$batchData[0]['status']:'';
-					$payData[$key]['batchOfferPrice'] =!empty($batchData)?$batchData[0]['batch_offer_price']:'';
-					$payData[$key]['currencyCode'] = $this->general_settings('currency_code');
-					$payData[$key]['currencyDecimalCode'] = $this->general_settings('currency_decimal_code');
-				}
-				$resp = array('status'=>'true','msg'=>$this->lang->line('ltr_fetch_successfully'), 'paymentData'=>$payData);
-				
-			}else{
-				$resp = array('status'=>'false','msg'=>$this->lang->line('ltr_no_record_msg'));
+		$from_body = json_decode(file_get_contents('php://input'), true);
+		if (!is_array($from_body)) {
+			$from_body = array();
+		}
+		$data = array_merge($_REQUEST, $from_body);
+
+		$payload = $this->require_auth_payload(array('student', 'institute'), $from_body);
+		if ($payload === false) {
+			return;
+		}
+
+		$pg = $this->parse_api_list_pagination($data);
+		$user_type = isset($payload['ut']) ? strtolower(trim((string) $payload['ut'])) : '';
+		$total = 0;
+		$payData = array();
+
+		if ($user_type === 'student') {
+			$student_id = (int) $payload['uid'];
+			if ($student_id < 1) {
+				$resp = array('status' => 'false', 'msg' => $this->lang->line('ltr_missing_parameters_msg'));
+				echo json_encode($resp, JSON_UNESCAPED_SLASHES);
+				return;
 			}
-		}else{
-			$resp = array('status'=>'false','msg'=>$this->lang->line('ltr_missing_parameters_msg')); 
-		} 
-		echo json_encode($resp,JSON_UNESCAPED_SLASHES);
-        
+
+			$cond = array('student_id' => $student_id);
+			if (!empty($data['batch_id'])) {
+				$cond['batch_id'] = (int) $data['batch_id'];
+			}
+
+			$this->db->reset_query();
+			$this->db->from('student_payment_history');
+			$this->db->where($cond);
+			$total = (int) $this->db->count_all_results();
+
+			$payData = $this->db_model->select_data(
+				'id,batch_id as batchId,transaction_id as transactionId,mode,amount,create_at as createAt,admin_id as adminId',
+				'student_payment_history',
+				$cond,
+				array($pg['limit'], $pg['offset']),
+				array('id', 'desc')
+			);
+		} elseif ($user_type === 'institute') {
+			$institute_id = (int) $payload['uid'];
+			if ($institute_id < 1) {
+				$resp = array('status' => 'false', 'msg' => $this->lang->line('ltr_missing_parameters_msg'));
+				echo json_encode($resp, JSON_UNESCAPED_SLASHES);
+				return;
+			}
+
+			$batchRows = $this->db_model->select_data('id', 'batches', array('admin_id' => $institute_id));
+			$batchIds = array();
+			if (!empty($batchRows)) {
+				foreach ($batchRows as $br) {
+					$batchIds[] = (int) $br['id'];
+				}
+			}
+			if (empty($batchIds)) {
+				$resp = array('status' => 'false', 'msg' => $this->lang->line('ltr_no_record_msg'));
+				echo json_encode($resp, JSON_UNESCAPED_SLASHES);
+				return;
+			}
+
+			if (!empty($data['batch_id'])) {
+				$bid = (int) $data['batch_id'];
+				if (!in_array($bid, $batchIds, true)) {
+					$resp = array('status' => 'false', 'msg' => $this->lang->line('ltr_no_record_msg'));
+					echo json_encode($resp, JSON_UNESCAPED_SLASHES);
+					return;
+				}
+				$hist_cond = array('batch_id' => $bid);
+				$this->db->reset_query();
+				$this->db->from('student_payment_history');
+				$this->db->where($hist_cond);
+				$total = (int) $this->db->count_all_results();
+
+				$payData = $this->db_model->select_data(
+					'id,student_id as studentId,batch_id as batchId,transaction_id as transactionId,mode,amount,create_at as createAt,admin_id as adminId',
+					'student_payment_history',
+					$hist_cond,
+					array($pg['limit'], $pg['offset']),
+					array('id', 'desc')
+				);
+			} else {
+				$this->db->reset_query();
+				$this->db->from('student_payment_history');
+				$this->db->where_in('batch_id', $batchIds);
+				$total = (int) $this->db->count_all_results();
+
+				$this->db->reset_query();
+				$this->db->select('id,student_id as studentId,batch_id as batchId,transaction_id as transactionId,mode,amount,create_at as createAt,admin_id as adminId', false);
+				$this->db->from('student_payment_history');
+				$this->db->where_in('batch_id', $batchIds);
+				$this->db->order_by('id', 'desc');
+				$this->db->limit($pg['limit'], $pg['offset']);
+				$payData = $this->db->get()->result_array();
+			}
+		} else {
+			$resp = array('status' => 'false', 'msg' => 'Unauthorized: invalid token user');
+			echo json_encode($resp, JSON_UNESCAPED_SLASHES);
+			return;
+		}
+
+		if (!empty($payData)) {
+			foreach ($payData as $key => $value) {
+				$batchData = $this->db_model->select_data('*', 'batches use index (id)', array('id' => $value['batchId']), 1);
+
+				$payData[$key]['batchName'] = !empty($batchData) ? $batchData[0]['batch_name'] : '';
+				$payData[$key]['startDate'] = !empty($batchData) ? $batchData[0]['start_date'] : '';
+				$payData[$key]['endDate'] = !empty($batchData) ? $batchData[0]['end_date'] : '';
+				$payData[$key]['startTime'] = !empty($batchData) ? $batchData[0]['start_time'] : '';
+				$payData[$key]['endTime'] = !empty($batchData) ? $batchData[0]['end_time'] : '';
+				$payData[$key]['batchType'] = !empty($batchData) ? $batchData[0]['batch_type'] : '';
+				$payData[$key]['batchPrice'] = !empty($batchData) ? $batchData[0]['batch_price'] : '';
+				$payData[$key]['description'] = !empty($batchData) ? $batchData[0]['description'] : '';
+				$payData[$key]['status'] = !empty($batchData) ? $batchData[0]['status'] : '';
+				$payData[$key]['batchOfferPrice'] = !empty($batchData) ? $batchData[0]['batch_offer_price'] : '';
+				$payData[$key]['currencyCode'] = $this->general_settings('currency_code');
+				$payData[$key]['currencyDecimalCode'] = $this->general_settings('currency_decimal_code');
+
+				if ($user_type === 'institute' && isset($value['studentId'])) {
+					$stu = $this->db_model->select_data(
+						'name,email,contact_no,image',
+						'students use index (id)',
+						array('id' => (int) $value['studentId']),
+						1
+					);
+					$payData[$key]['studentName'] = !empty($stu) ? $stu[0]['name'] : '';
+					$payData[$key]['studentEmail'] = !empty($stu) ? $stu[0]['email'] : '';
+					$payData[$key]['studentMobile'] = !empty($stu) ? $stu[0]['contact_no'] : '';
+					$img = !empty($stu) ? $stu[0]['image'] : '';
+					$payData[$key]['studentImage'] = $img !== '' ? profile_image_url($img, 2, 'student') : '';
+				}
+			}
+			$resp = array(
+				'status' => 'true',
+				'msg' => $this->lang->line('ltr_fetch_successfully'),
+				'paymentData' => $payData,
+				'pagination' => $this->build_api_list_pagination_meta($pg['page'], $pg['limit'], $total),
+			);
+		} else {
+			$resp = array(
+				'status' => 'false',
+				'msg' => $this->lang->line('ltr_no_record_msg'),
+				'paymentData' => array(),
+				'pagination' => $this->build_api_list_pagination_meta($pg['page'], $pg['limit'], isset($total) ? $total : 0),
+			);
+		}
+		echo json_encode($resp, JSON_UNESCAPED_SLASHES);
     }
+
+	/**
+	 * Same as get_payment_history — REST-style name for mobile routes.
+	 */
+	function paymentHistory()
+	{
+		$this->get_payment_history();
+	}
     
     function convertCurrency($amount,$from_currency,$to_currency){
           $apikey = $this->general_settings('currency_converter_api');
@@ -2370,7 +3916,8 @@ public function otherBatchData($data){
           $total = $val * $amount;
           return number_format($total, 2, '.', '');
         }
-    public function SendMail($tomail='', $subject='', $msg=''){
+    
+        public function SendMail($tomail='', $subject='', $msg=''){
             $frommail =$this->general_settings('smtp_mail');
             $frompwd =$this->general_settings('smtp_pwd');
             $title = $this->db_model->select_data('site_title','site_details','',1,array('id','desc'))[0]['site_title'];
@@ -2425,41 +3972,140 @@ public function otherBatchData($data){
         }
          function reset_password(){
             $data = $_REQUEST;
-            if(!empty($data['email'])){
-                $check_email = $this->db_model->select_data('*','students',array('email'=>trim($_POST['email'])));
-                if(!empty($check_email)){
-                     $a=str_shuffle('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789');
-                    $pwd = substr($a, 0, 5);
-                    
-                    $subj = 'Recover your account password '.$this->common->siteTitle;
-                    $em_msg = 'Hi '.ucwords($userDetails[0]['name']).',<br/><br/>We have received your request to reset your account password.<br/><br/>Here is your new password : '.$pwd.'<br/><br/> This is an auto-generated email. Please do not reply to this email.';
-                    $response = $this->SendMail($_POST['email'],$subj, $em_msg);
-                   
-                    if($response==true){
-                        $data = array( 
-                            'password'=>md5($pwd)
-                        );
-                        $data = $this->security->xss_clean($data);
-                        $this->db_model->update_data('students',$data, array('email'=>$_POST['email']));
-    
-                        $resp = array(
-                            'status'=>'true',
-                            'msg'=>'We\'ve sent an email to '.$_POST['email'].'.' 
-                        );
-                    }
-                    else{
-                        $resp = array(
-                            'status'=>'false',
-                            'msg'=>$this->lang->line('ltr_something_msg')
-                        );
-                    }
-                }else{
-                    $resp = array('status'=>'false','msg'=>$this->lang->line('ltr_email_not_exists_msg'));
+            $email = isset($data['email']) ? trim((string) $data['email']) : trim((string) $this->input->post('email', TRUE));
+            if ($email === '') {
+                echo json_encode(array('status' => 'false', 'msg' => $this->lang->line('ltr_missing_parameters_msg')), JSON_UNESCAPED_SLASHES);
+                return;
+            }
+
+            $student = $this->db_model->select_data('id,name,email', 'students use index (id)', array('email' => $email), 1);
+            $user = $this->db_model->select_data('id,name,email,user_type', 'users use index (id)', array('email' => $email), 1);
+
+            if (empty($student) && empty($user)) {
+                echo json_encode(array('status' => 'false', 'msg' => $this->lang->line('ltr_email_not_exists_msg')), JSON_UNESCAPED_SLASHES);
+                return;
+            }
+
+            $name = !empty($student[0]['name']) ? $student[0]['name'] : $user[0]['name'];
+            $user_id = !empty($student[0]['id']) ? (int) $student[0]['id'] : (int) $user[0]['id'];
+            if (!empty($student[0])) {
+                $user_type = 'student';
+            } else {
+                $ut = isset($user[0]['user_type']) ? strtolower(trim((string) $user[0]['user_type'])) : '';
+                $user_type = in_array($ut, array('teacher', 'institute'), true) ? $ut : 'teacher';
+            }
+
+            // Secure, time-limited reset LINK (token valid 2 hours) — no password is emailed.
+            $token = $this->common->email_verify_token_create($user_id, $user_type, 2);
+            if ($token === '') {
+                echo json_encode(array('status' => 'false', 'msg' => $this->lang->line('ltr_something_msg')), JSON_UNESCAPED_SLASHES);
+                return;
+            }
+            $reset_link = site_url('reset-password/' . $token);
+
+            // DEV ONLY: on localhost Gmail filters localhost reset links, so log the link
+            // to application/logs/reset_links.log to let you test the flow without email.
+            if (!defined('ENVIRONMENT') || ENVIRONMENT !== 'production') {
+                @file_put_contents(
+                    APPPATH . 'logs/reset_links.log',
+                    date('Y-m-d H:i:s') . "  {$email}  =>  {$reset_link}\n",
+                    FILE_APPEND
+                );
+            }
+
+            $mail = $this->common->send_email(array(
+                'purpose' => 'forgot_password',
+                'user_id' => $user_id,
+                'user_type' => $user_type,
+                'to_email' => $email,
+                'dynamic_var' => array(
+                    'USER_NAME' => $name,
+                    'NAME' => $name,
+                    'RESET_PASSWORD_LINK' => $reset_link,
+                    'PASSWORD_RESET_LINK' => $reset_link,
+                    // lowercase aliases kept for backward compatibility with older template copies.
+                    'name' => $name,
+                    'link' => $reset_link,
+                ),
+            ));
+
+            if (empty($mail['status'])) {
+                echo json_encode(array('status' => 'false', 'msg' => $this->lang->line('ltr_something_msg')), JSON_UNESCAPED_SLASHES);
+                return;
+            }
+
+            echo json_encode(array(
+                'status' => 'true',
+                'msg' => 'We\'ve sent a password reset link to ' . $email . '.',
+            ), JSON_UNESCAPED_SLASHES);
+        }
+
+        /**
+         * POST api/user/set-new-password
+         * Body: token, password (new password). Validates the reset token and updates the password.
+         */
+        function set_new_password(){
+            $data = json_decode(file_get_contents('php://input'), true);
+            if (!is_array($data) || empty($data)) {
+                $data = array_merge($this->input->get(), $this->input->post());
+            }
+            $token = isset($data['token']) ? trim((string) $data['token']) : '';
+            $password = isset($data['password']) ? trim((string) $data['password']) : '';
+
+            if ($token === '' || $password === '') {
+                echo json_encode(array('status' => 'false', 'msg' => $this->lang->line('ltr_missing_parameters_msg')), JSON_UNESCAPED_SLASHES);
+                return;
+            }
+            if (strlen($password) < 4) {
+                echo json_encode(array('status' => 'false', 'msg' => 'Password must be at least 4 characters.'), JSON_UNESCAPED_SLASHES);
+                return;
+            }
+
+            $parsed = $this->common->email_verify_token_parse($token);
+            if ($parsed === false) {
+                echo json_encode(array('status' => 'false', 'msg' => 'This reset link is invalid or has expired. Please request a new one.'), JSON_UNESCAPED_SLASHES);
+                return;
+            }
+
+            $user_id = (int) $parsed['user_id'];
+            $user_type = $parsed['user_type'];
+
+            if ($user_type === 'student') {
+                $exists = $this->db_model->select_data('id,name,email', 'students use index (id)', array('id' => $user_id), 1);
+                if (empty($exists)) {
+                    echo json_encode(array('status' => 'false', 'msg' => $this->lang->line('ltr_not_found_msg')), JSON_UNESCAPED_SLASHES);
+                    return;
                 }
-            }else{
-                $resp = array('status'=>'false','msg'=>$this->lang->line('ltr_missing_parameters_msg')); 
-            } 
-            echo json_encode($resp,JSON_UNESCAPED_SLASHES);
+                $this->db_model->update_data('students', array('password' => md5($password)), array('id' => $user_id));
+            } else {
+                $exists = $this->db_model->select_data('id,name,email', 'users use index (id)', array('id' => $user_id), 1);
+                if (empty($exists)) {
+                    echo json_encode(array('status' => 'false', 'msg' => $this->lang->line('ltr_not_found_msg')), JSON_UNESCAPED_SLASHES);
+                    return;
+                }
+                $this->db_model->update_data('users', array('password' => password_hash($password, PASSWORD_DEFAULT)), array('id' => $user_id));
+            }
+
+            $notify_name = !empty($exists[0]['name']) ? $exists[0]['name'] : '';
+            $notify_email = !empty($exists[0]['email']) ? trim((string) $exists[0]['email']) : '';
+            // Confirmation email after password reset via token (best-effort).
+            @$this->common->send_email(array(
+                'purpose' => 'reset_password',
+                'user_id' => $user_id,
+                'user_type' => $user_type,
+                'to_email' => $notify_email,
+                'dynamic_var' => array(
+                    'USER_NAME' => $notify_name,
+                    'NAME' => $notify_name,
+                    'LOGIN_LINK' => site_url('login'),
+                    'link' => site_url('login'),
+                ),
+            ));
+
+            echo json_encode(array(
+                'status' => 'true',
+                'msg' => 'Your password has been updated. Please sign in with your new password.',
+            ), JSON_UNESCAPED_SLASHES);
         }
         
         //new update
@@ -2513,12 +4159,12 @@ public function otherBatchData($data){
             	$this->db_model->insert_data('temp_data',array('temp'=>json_encode($data)));
     		if(!empty($data['student_id']) && !empty($data['batch_id'])){
     		    
-    		    $checkBatch =$this->db_model->select_data('*','sudent_batchs',array('batch_id'=>$data['batch_id'],'student_id'=>$data['student_id']),1);
+    		    $checkBatch =$this->db_model->select_data('*','student_batchs',array('batch_id'=>$data['batch_id'],'student_id'=>$data['student_id']),1);
     		    if(!empty($checkBatch)){
     		        
         		    $studentData =$this->db_model->select_data('id as studentId,email as userEmail,name as fullName,enrollment_id as enrollmentId,contact_no as mobile,app_version as versionCode, batch_id as batchId,admin_id as adminId,admission_date as admissionDate, image, token','students use index (id)',array('id'=>$data['student_id']),1);
     				$studentData[0]['batchName']='';
-    				$studentData[0]['image']= base_url('uploads/students/').$studentData[0]['image'];
+    				$studentData[0]['image']= profile_image_url($studentData[0]['image'], 2, 'student');
     				$studentData[0]['password'] = $password;
     				$studentData[0]['paymentType'] = $this->general_settings('payment_type');
     				$studentData[0]['languageName'] = $this->general_settings('language_name');
@@ -2529,8 +4175,8 @@ public function otherBatchData($data){
     			    if(!empty($batch_type)){
     			        $studentData[0]['batchName']= $batch_type[0]['batch_name'];
     			        $studentData[0]['batchId']= $batch_type[0]['id'];
-    			        if($batch_type[0]['batch_type']==2){
-        			            
+    			        if($this->batch_requires_payment($batch_type[0])){
+
         			        $batch_his=   $this->db_model->select_data('*','student_payment_history',array('batch_id'=>$data['batch_id'], 'student_id'=>$data['student_id']),1);
         					$studentData[0]['transactionId'] = !empty($batch_his[0]['transaction_id'])?$batch_his[0]['transaction_id']:'';
         			    	$studentData[0]['amount'] = !empty($batch_his[0]['amount'])?$batch_his[0]['amount']:'';
@@ -2553,7 +4199,7 @@ public function otherBatchData($data){
     		        
         		    $studentData =$this->db_model->select_data('id as studentId,email as userEmail,name as fullName,enrollment_id as enrollmentId,contact_no as mobile,app_version as versionCode, batch_id as batchId,admin_id,admission_date as admissionDate, image, token','students use index (id)',array('id'=>$data['student_id']),1);
     				$studentData[0]['batchName']='';
-    				$studentData[0]['image']= base_url('uploads/students/').$studentData[0]['image'];
+    				$studentData[0]['image']= profile_image_url($studentData[0]['image'], 2, 'student');
     				$studentData[0]['password'] = $password;
     				$studentData[0]['paymentType'] = $this->general_settings('payment_type');
     				$studentData[0]['languageName'] = $this->general_settings('language_name');
@@ -2569,7 +4215,7 @@ public function otherBatchData($data){
 				    
 				    
     				$studentData[0]['batchId']= $batch_type[0]['id'];
-    			    if($batch_type[0]['batch_type']==2){
+    			    if($this->batch_requires_payment($batch_type[0])){
     			        $studentData[0]['batchName']= $batch_type[0]['batch_name'];
     					$data_pay=array(
     					           'student_id'=>$data['student_id'],
@@ -2611,12 +4257,19 @@ public function otherBatchData($data){
     			                 'added_by'=>'student',
     			                 'admin_id'=>$admin_ids
     					                 );
-    		 	   $this->db_model->insert_data('sudent_batchs',$data_batch);
-    			    // send email 
-    			   $title = $this->db_model->select_data('site_title','site_details','',1,array('id','desc'))[0]['site_title'];
-                    $subj = $title.'- '.$this->lang->line('ltr_credentials');
-                    $em_msg = $this->lang->line('ltr_hey').' '.ucwords($data['name']).', '.$this->lang->line('ltr_congratulation').' <br/><br/>'.$this->lang->line('ltr_successfully_enrolled').'<br/><br/>'.$this->lang->line('ltr_login_details').'<br/><br/> '.$this->lang->line('ltr_enrolment_id').' : '.$enrolid.'<br/><br/>'.$this->lang->line('ltr_password').' : '.$password.'';
-                    $this->SendMail($data['email'], $subj, $em_msg);
+    		 	   $this->db_model->insert_data('student_batchs',$data_batch);
+    			    $this->common->send_email(array(
+    			        'purpose' => 'enrolled_batch',
+    			        'user_id' => (int) $data['student_id'],
+    			        'user_type' => 'student',
+    			        'to_email' => isset($studentData[0]['userEmail']) ? $studentData[0]['userEmail'] : '',
+    			        'dynamic_var' => array(
+    			            'name' => isset($studentData[0]['fullName']) ? $studentData[0]['fullName'] : '',
+    			            'batch_name' => isset($studentData[0]['batchName']) ? $studentData[0]['batchName'] : '',
+    			            'enrollment_id' => isset($studentData[0]['enrollmentId']) ? $studentData[0]['enrollmentId'] : '',
+    			            'link' => base_url('login'),
+    			        ),
+    			    ));
         		}
                 
             }else{
@@ -2625,7 +4278,8 @@ public function otherBatchData($data){
             echo json_encode($resp,JSON_UNESCAPED_SLASHES);
         }
         
-    function db_new_changes_all_batch(){
+
+        function db_new_changes_all_batch(){
         $data =	$_REQUEST;
         if(isset($data['admin_id']) && isset($data['student_id'])){
             $admin_id = $data['admin_id'];
@@ -2635,7 +4289,7 @@ public function otherBatchData($data){
             $last_login = $this->db_model->select_data('last_login_app','students use index(id)',array('id'=>$student_id),1);
             
             if($last_login[0]['last_login_app'] != '0000-00-00 00:00:00'){
-                $batch_details = $this->db_model->select_data('*','sudent_batchs ',array('student_id'=>$student_id),'','','',array('batches','batches.id=sudent_batchs.batch_id'));
+                $batch_details = $this->db_model->select_data('*','student_batchs ',array('student_id'=>$student_id),'','','',array('batches','batches.id=student_batchs.batch_id'));
                 foreach($batch_details as $batch_detail){
                 $lastLoginTime = $last_login[0]['last_login_app'];
                 $batch_id = $batch_detail['batch_id'];
@@ -2967,7 +4621,6 @@ public function otherBatchData($data){
         echo json_encode($arr);
     }
   
-  
     function get_all_data(){
         $data = $_REQUEST;
         
@@ -3017,12 +4670,12 @@ public function otherBatchData($data){
                     }
                   
                    
-$batchData = $this->db_model->select_data('id, batch_name as batchName, start_date as startDate, end_date as endDate, start_time as startTime, end_time as endTime, batch_type as batchType, batch_price as batchPrice, no_of_student as noOfStudent ,status,description, batch_image as batchImage, batch_offer_price as batchOfferPrice','batches use index (id)',$cond_sub1,$limit,array('id','desc'),$like_search);
+            $batchData = $this->db_model->select_data('id, batch_name as batchName, start_date as startDate, end_date as endDate, start_time as startTime, end_time as endTime, batch_type as batchType, batch_price as batchPrice, no_of_student as noOfStudent ,status,description, batch_image as batchImage, batch_offer_price as batchOfferPrice, enrollment_status as enrollmentStatus, enrolled_at as enrolledAt, enrollment_type as enrollmentType ','batches use index (id)',$cond_sub1,$limit,array('id','desc'),$like_search);
  
             if(!empty($batchData)){
                 foreach($batchData as $key=>$value){
                     if(!empty($value['batchImage'])){
-                        $batchData[$key]['batchImage']= base_url('uploads/batch_image/').$value['batchImage'];
+                        $batchData[$key]['batchImage']= batch_image_url($value['batchImage']);
                     }
                     $startDate =$value['startDate'];
                     $endDate =$value['endDate'];
@@ -3089,7 +4742,7 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
                     }else{
                       $batchData[$key]['videoLectures'] = array(); 
                     }
-                   $student_batch_dtail = $this->db_model->select_data('*','sudent_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
+                   $student_batch_dtail = $this->db_model->select_data('*','student_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
                    if(!empty($student_batch_dtail)){
                         $batchData[$key]['purchase_condition'] = true;
                    }else{
@@ -3128,26 +4781,26 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
                             );
         }
             
-   //     elseif(!empty($data['search'])){
-            
-   //       $search = trim($data['search']);
-         // $like_search = array('batch_name',$search);
-          
-   // 	if(isset($data['length']) && $data['length']>0){
-//             if(isset($data['start']) && !empty($data['start'])){
-//                 $limit = array($data['length'],$data['start']);
-//                 // $count = $data['start']+1;
-//             }else{ 
-//                 $limit = array($data['length'],0);
-//                 // $count = 1;
-//             }
-//         }else{
-//             $limit = '';
-//             // $count = 1;
-//         }
+                    //     elseif(!empty($data['search'])){
+                                
+                    //       $search = trim($data['search']);
+                            // $like_search = array('batch_name',$search);
+                            
+                    // 	if(isset($data['length']) && $data['length']>0){
+                    //             if(isset($data['start']) && !empty($data['start'])){
+                    //                 $limit = array($data['length'],$data['start']);
+                    //                 // $count = $data['start']+1;
+                    //             }else{ 
+                    //                 $limit = array($data['length'],0);
+                    //                 // $count = 1;
+                    //             }
+                    //         }else{
+                    //             $limit = '';
+                    //             // $count = 1;
+                    //         }
 
-   //         //  $slider_limit = $data['limit'];
-   //         $category = $this->db_model->select_data('id as categoryId,name as categoryName','batch_category use index (id)',array('status'=>1),$limit);
+            //         //  $slider_limit = $data['limit'];
+            //         $category = $this->db_model->select_data('id as categoryId,name as categoryName','batch_category use index (id)',array('status'=>1),$limit);
             // 	     if(!empty($category)){
                         
             // 	        foreach($category as $catkey=>$value){
@@ -3166,17 +4819,17 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
                      
             // 	   $cond_sub1 = array('status'=>1,'sub_cat_id'=>$value['SubcategoryId']);
                    
-   //                $batchData = $this->db_model->select_data('id, batch_name as batchName, start_date as startDate, end_date as endDate, start_time as startTime, end_time as endTime, batch_type as batchType, batch_price as batchPrice, no_of_student as noOfStudent ,status,description, batch_image as batchImage, batch_offer_price as batchOfferPrice','batches use index (id)',$cond_sub1,$slider_limit,array('id','desc'),$like_search);
+            //                $batchData = $this->db_model->select_data('id, batch_name as batchName, start_date as startDate, end_date as endDate, start_time as startTime, end_time as endTime, batch_type as batchType, batch_price as batchPrice, no_of_student as noOfStudent ,status,description, batch_image as batchImage, batch_offer_price as batchOfferPrice','batches use index (id)',$cond_sub1,$slider_limit,array('id','desc'),$like_search);
    
             // if(!empty($batchData)){
             // 	foreach($batchData as $key=>$value){
             // 		if(!empty($value['batchImage'])){
-            // 			$batchData[$key]['batchImage']= base_url('uploads/batch_image/').$value['batchImage'];
+            // 			$batchData[$key]['batchImage']= batch_image_url($value['batchImage']);
             // 		}
             // 		$startDate =$value['startDate'];
             // 		$endDate =$value['endDate'];
-//                     $batchData[$key]['startDate']=date('d-m-Y',strtotime($startDate));
-//                     $batchData[$key]['endDate']=date('d-m-Y',strtotime($endDate));
+            //                     $batchData[$key]['startDate']=date('d-m-Y',strtotime($startDate));
+            //                     $batchData[$key]['endDate']=date('d-m-Y',strtotime($endDate));
                    
             // 		$batch_fecherd =$this->db_model->select_data('batch_specification_heading as batchSpecification, batch_fecherd as fecherd','batch_fecherd',array('batch_id'=>$value['id']));
             // 		if(!empty($batch_fecherd)){
@@ -3201,17 +4854,17 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
             // 	                foreach($chapter as $ckey=>$cvalue){
                                     
             // 	                    $sub_like = array('topic,batch',urldecode($cvalue['chapterName']).',"'.$value['id'].'"');
-//             					    $sub_videos = $this->db_model->select_data('id,admin_id as adminId,title,batch,topic,subject,url,status,added_by as addedBy,added_at as addedAt,video_type as videoType, preview_type as previewType, description','video_lectures use index (id)',array('status'=>1),'',array('id','desc'),$sub_like);
-//                                     if(!empty($sub_videos)){
-//                                         foreach($sub_videos as $vkey=>$vvalue){
-//                                             $url = $vvalue['url'];
-//                                             preg_match('%(?:youtube(?:-nocookie)?\.com/(?:[^/]+/.+/|(?:v|e(?:mbed)?)/|.*[?&]v=)|youtu\.be/)([^"&?/ ]{11})%i', $url, $match);
-//                                             $sub_videos[$vkey]['videoId']=$match[1];
-//                                         }
-//                                         $chapter[$ckey]['videoLectures']=$sub_videos;
-//                                     }else{
-//                                       $chapter[$ckey]['videoLectures'] = array(); 
-//                                     }
+            //             					    $sub_videos = $this->db_model->select_data('id,admin_id as adminId,title,batch,topic,subject,url,status,added_by as addedBy,added_at as addedAt,video_type as videoType, preview_type as previewType, description','video_lectures use index (id)',array('status'=>1),'',array('id','desc'),$sub_like);
+            //                                     if(!empty($sub_videos)){
+            //                                         foreach($sub_videos as $vkey=>$vvalue){
+            //                                             $url = $vvalue['url'];
+            //                                             preg_match('%(?:youtube(?:-nocookie)?\.com/(?:[^/]+/.+/|(?:v|e(?:mbed)?)/|.*[?&]v=)|youtu\.be/)([^"&?/ ]{11})%i', $url, $match);
+            //                                             $sub_videos[$vkey]['videoId']=$match[1];
+            //                                         }
+            //                                         $chapter[$ckey]['videoLectures']=$sub_videos;
+            //                                     }else{
+            //                                       $chapter[$ckey]['videoLectures'] = array(); 
+            //                                     }
                                     
                                     
             // 	                }
@@ -3229,29 +4882,29 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
             // 	   }
             // 	    $like = array('batch','"'.$value['id'].'"');
             // 	    $videos = $this->db_model->select_data('id,admin_id as adminId,title,batch,topic,subject,url,status,added_by as addedBy,added_at as addedAt,video_type as videoType, preview_type as previewType, description','video_lectures use index (id)',array('status'=>1),'',array('id','desc'),$like);
-//                     if(!empty($videos)){
-//                         foreach($videos as $vkey=>$vvalue){
-//                             $url = $vvalue['url'];
-//                             preg_match('%(?:youtube(?:-nocookie)?\.com/(?:[^/]+/.+/|(?:v|e(?:mbed)?)/|.*[?&]v=)|youtu\.be/)([^"&?/ ]{11})%i', $url, $match);
-//                             $videos[$vkey]['videoId']=$match[1];
-//                         }
-//                         $batchData[$key]['videoLectures']=$videos;
-//                     }else{
-//                       $batchData[$key]['videoLectures'] = array(); 
-//                     }
-            // 	   $student_batch_dtail = $this->db_model->select_data('*','sudent_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
+            //                     if(!empty($videos)){
+            //                         foreach($videos as $vkey=>$vvalue){
+            //                             $url = $vvalue['url'];
+            //                             preg_match('%(?:youtube(?:-nocookie)?\.com/(?:[^/]+/.+/|(?:v|e(?:mbed)?)/|.*[?&]v=)|youtu\.be/)([^"&?/ ]{11})%i', $url, $match);
+            //                             $videos[$vkey]['videoId']=$match[1];
+            //                         }
+            //                         $batchData[$key]['videoLectures']=$videos;
+            //                     }else{
+            //                       $batchData[$key]['videoLectures'] = array(); 
+            //                     }
+            // 	   $student_batch_dtail = $this->db_model->select_data('*','student_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
             // 	   if(!empty($student_batch_dtail)){
             // 	        $batchData[$key]['purchase_condition'] = true;
             // 	   }else{
             // 	       $batchData[$key]['purchase_condition'] = false;
             // 	   }
             // 	}
-//     			$subCategory[$subkey]['BatchData'] = $batchData;
+            //     			$subCategory[$subkey]['BatchData'] = $batchData;
             
             // 	    }else{
                        
-//     					   	 $subCategory[$subkey]['BatchData'] = array();
-//     					   	}
+            //     					   	 $subCategory[$subkey]['BatchData'] = array();
+            //     					   	}
             // 			}
             // 			 $category[$catkey]['subcategory'] = $subCategory;
             // 	   }else{
@@ -3261,8 +4914,8 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
             // 	}
             // }
 
-   //         $arr = array(           
-   //                         'status'=>'true',
+                //         $arr = array(           
+                //                         'status'=>'true',
             //                 'msg' =>$this->lang->line('ltr_fetch_successfully'),
             //                 'batchData'=>$category
             //                 );
@@ -3307,7 +4960,7 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
             if(!empty($batchData)){
                 foreach($batchData as $key=>$value){
                     if(!empty($value['batchImage'])){
-                        $batchData[$key]['batchImage']= base_url('uploads/batch_image/').$value['batchImage'];
+                        $batchData[$key]['batchImage']= batch_image_url($value['batchImage']);
                     }
                     $startDate =$value['startDate'];
                     $endDate =$value['endDate'];
@@ -3376,7 +5029,7 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
                     }else{
                       $batchData[$key]['videoLectures'] = array(); 
                     }
-                   $student_batch_dtail = $this->db_model->select_data('*','sudent_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
+                   $student_batch_dtail = $this->db_model->select_data('*','student_batchs',array('student_id'=>$data['student_id'],'batch_id' => $value['id'] ),'');
                    
                    
                    if(!empty($student_batch_dtail)){
@@ -3406,10 +5059,10 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
          if(isset($data['student_id'])){
              $id=$data['student_id'];
             //  $batch_id = $data['batch_id'];
-            $cond = array('sudent_batchs.student_id' => $id);
+            $cond = array('student_batchs.student_id' => $id);
             $table = 'batches';
-            $join = array('batches', 'sudent_batchs.batch_id = batches.id');
-            $batches = $this->db_model->select_data('batches.batch_name,sudent_batchs.batch_id,sudent_batchs.student_id','sudent_batchs',$cond,$limit,array('sudent_batchs.id','desc'),$like,$join,'',$or_like);
+            $join = array('batches', 'student_batchs.batch_id = batches.id');
+            $batches = $this->db_model->select_data('batches.batch_name,student_batchs.batch_id,student_batchs.student_id','student_batchs',$cond,$limit,array('student_batchs.id','desc'),$like,$join,'',$or_like);
                 
             if(!empty($batches)){
                  
@@ -3531,43 +5184,337 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
     
     function deleteAccount(){
         $data = $_REQUEST;
-        $token = $this->get_access_token_from_request();
-        $payload = $this->parse_access_token($token);
-
-        if ($payload === false || $payload['ut'] !== 'student') {
-            echo json_encode(array(
-                'status' => false,
-                'message' => 'Unauthorized: invalid or expired access token'
-            ), JSON_UNESCAPED_SLASHES);
+        // All three account types can delete their own account:
+        // student -> students table, teacher/institute -> users table.
+        $payload = $this->require_auth_payload(array('student', 'teacher', 'institute'), is_array($data) ? $data : null);
+        if ($payload === false) {
             return;
         }
 
-        $student_id = (int) $payload['uid'];
-        if ($student_id > 0) {
-            if ($this->authorize_student_request($student_id) === false) {
-                return;
+        $uid = (int) $payload['uid'];
+        $user_type = $this->normalize_payload_ut($payload); // '3'->teacher, '4'->institute, else as-is
+        if ($uid < 1) {
+            echo json_encode(array('status' => false, 'message' => 'Invalid token user'), JSON_UNESCAPED_SLASHES);
+            die;
+        }
+
+        // Students live in `students`; teachers and institutes live in `users`.
+        // Deletion is tracked by the dedicated `deleted` flag (0 = active, 1 = deleted),
+        // separate from `status` (admin active/inactive).
+        $table = ($user_type === 'student') ? 'students' : 'users';
+        $row = $this->db_model->select_data('name,email', $table . ' use index (id)', array('id' => $uid), 1);
+        $check = $this->db_model->update_data_limit($table, array('deleted' => '1'), array('id' => $uid), 1);
+
+        if($check){
+            if (!empty($row[0])) {
+                $this->common->send_email(array(
+                    'purpose' => 'account_delete',
+                    'user_id' => $uid,
+                    'user_type' => $user_type,
+                    'to_email' => $row[0]['email'],
+                    'dynamic_var' => array(
+                        'name' => $row[0]['name'],
+                        'link' => base_url('login'),
+                    ),
+                ));
             }
-            $check = $this->db_model->update_data_limit('students use index (id)',array('status'=>0,),array('id'=>$student_id),1);
-            if($check){
-               $arr = array(
-                   'status'=>true,
-                   'message'=>$this->lang->line('ltr_accountDelete')
-                   );
-            }else{
-               $arr = array(
-                   'status'=>false,
-                   'message'=>$this->lang->line('ltr_something_msg')
-                   );
-            }
+            $arr = array(
+                'status'=>true,
+                'message'=>$this->lang->line('ltr_accountDelete')
+            );
         }else{
-             $arr = array(
-                 'status'=>false,
-                 'message'=>'Invalid token user'
-             );
+            $arr = array(
+                'status'=>false,
+                'message'=>$this->lang->line('ltr_something_msg')
+            );
         }
         echo json_encode($arr,JSON_UNESCAPED_SLASHES);
         die;
     }
+
+	/**
+	 * POST/GET api/user/user_details
+	 * Auth: student Bearer / body token.
+	 * Returns userDetails, batchList, instituteList, enrollment_details (payments + plan 1 yearly rule).
+	 */
+	/**
+	 * POST/GET api/user/profile
+	 * Editable profile for the logged-in user (student, teacher OR institute).
+	 * Shaped exactly for the profile form (website + mobile share one backend).
+	 */
+	public function profile_details()
+	{
+		$from_body = json_decode(file_get_contents('php://input'), true);
+		if (!is_array($from_body)) {
+			$from_body = array();
+		}
+		$payload = $this->require_auth_payload(array('student', 'teacher', 'institute'), $from_body);
+		if ($payload === false) {
+			return;
+		}
+
+		$uid = (int) $payload['uid'];
+		$ut = strtolower(trim((string) $payload['ut']));
+		if ($ut === '3') {
+			$ut = 'teacher';
+		} elseif ($ut === '4') {
+			$ut = 'institute';
+		}
+
+		$profile = array(
+			'name' => '', 'last_name' => '', 'email' => '', 'mobile' => '',
+			'address' => '', 'country' => '', 'state' => '', 'city' => '',
+			'pincode' => '', 'school_college_name' => '', 'grade' => '',
+			'show_grade_field' => ($ut === 'student'),
+		);
+
+		if ($uid > 0 && $ut === 'student') {
+			$rows = $this->db_model->select_data('*', 'students use index (id)', array('id' => $uid), 1);
+			if (!empty($rows[0]) && is_array($rows[0])) {
+				$row = $rows[0];
+				$profile['name'] = isset($row['name']) ? (string) $row['name'] : '';
+				$profile['last_name'] = isset($row['last_name']) ? (string) $row['last_name'] : '';
+				$profile['email'] = isset($row['email']) ? (string) $row['email'] : '';
+				$profile['mobile'] = (isset($row['contact_no']) && $row['contact_no'] !== '') ? (string) $row['contact_no'] : (isset($row['mobile']) ? (string) $row['mobile'] : '');
+				$profile['address'] = isset($row['address']) ? (string) $row['address'] : '';
+				$profile['country'] = isset($row['country']) ? (string) $row['country'] : '';
+				$profile['state'] = isset($row['state']) ? (string) $row['state'] : '';
+				$profile['city'] = isset($row['city']) ? (string) $row['city'] : '';
+				$profile['pincode'] = isset($row['pincode']) ? (string) $row['pincode'] : '';
+				$profile['school_college_name'] = isset($row['school_college_name']) ? (string) $row['school_college_name'] : '';
+				$profile['grade'] = isset($row['grade']) ? (string) $row['grade'] : '';
+			}
+		} elseif ($uid > 0) {
+			$rows = $this->db_model->select_data('name,last_name,email,mobile,address,country,state,city,pincode,teach_education', 'users use index (id)', array('id' => $uid), 1);
+			if (!empty($rows[0]) && is_array($rows[0])) {
+				$row = $rows[0];
+				$profile['name'] = isset($row['name']) ? (string) $row['name'] : '';
+				$profile['last_name'] = isset($row['last_name']) ? (string) $row['last_name'] : '';
+				$profile['email'] = isset($row['email']) ? (string) $row['email'] : '';
+				$profile['mobile'] = isset($row['mobile']) ? (string) $row['mobile'] : '';
+				$profile['address'] = isset($row['address']) ? (string) $row['address'] : '';
+				$profile['country'] = isset($row['country']) ? (string) $row['country'] : '';
+				$profile['state'] = isset($row['state']) ? (string) $row['state'] : '';
+				$profile['city'] = isset($row['city']) ? (string) $row['city'] : '';
+				$profile['pincode'] = isset($row['pincode']) ? (string) $row['pincode'] : '';
+				$profile['school_college_name'] = isset($row['teach_education']) ? (string) $row['teach_education'] : '';
+			}
+		}
+
+		echo json_encode(array(
+			'status' => 'true',
+			'msg' => $this->lang->line('ltr_fetch_successfully'),
+			'data' => array('profile' => $profile),
+		), JSON_UNESCAPED_SLASHES);
+	}
+
+	public function user_details()
+	{
+		$from_body = json_decode(file_get_contents('php://input'), true);
+		if (!is_array($from_body)) {
+			$from_body = array();
+		}
+		$data = array_merge($_REQUEST, $from_body);
+		$payload = $this->require_auth_payload(array('student'), is_array($from_body) ? $from_body : null);
+		if ($payload === false) {
+			return;
+		}
+
+		$student_id = (int) $payload['uid'];
+		if ($student_id < 1) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => $this->lang->line('ltr_missing_parameters_msg'),
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
+
+		$student = $this->db_model->select_data('*', 'students use index (id)', array('id' => $student_id, 'status' => 1), 1);
+		if (empty($student)) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => $this->lang->line('ltr_not_found_msg'),
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
+
+		$now = date('Y-m-d H:i:s');
+		$userDetails = $this->build_student_login_data_array($student[0], '', '', '', $now, '');
+		unset($userDetails['access_token'], $userDetails['token_type'], $userDetails['plan_one']);
+
+		$batchRaw = $this->fetch_student_enrolled_batches_raw($student_id, '', null, 0);
+		$batchList = $this->map_batches_to_dashboard_list_cards($batchRaw);
+
+		$instituteList = $this->fetch_institutes_for_student_batches($student_id);
+		$enrollment_details = $this->build_enrollment_details_for_student($student_id);
+
+		echo json_encode(array(
+			'status' => 'true',
+			'msg' => $this->lang->line('ltr_fetch_successfully'),
+			'data' => array(
+				'userDetails' => $userDetails,
+				'batchList' => $batchList,
+				'instituteList' => $instituteList,
+				'enrollment_details' => $enrollment_details,
+			),
+		), JSON_UNESCAPED_SLASHES);
+	}
+
+	/**
+	 * Distinct institutes (users behind batches.admin_id) for batches the student is enrolled in.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function fetch_institutes_for_student_batches($student_id)
+	{
+		$student_id = (int) $student_id;
+		if ($student_id < 1) {
+			return array();
+		}
+
+		// Institutes (role 4) in which the student is enrolled. We go purely by enrollment
+		// (student_batchs) and the batch's institute_id (the assigned institute) — NOT admin_id
+		// (the batch creator, which can be super-admin role 1 or a teacher role 3), and NOT
+		// filtered by batch status, so every institute the student joined is returned.
+		$sql = 'SELECT DISTINCT u.id, u.name, u.email, u.role, u.teach_image AS teach_image
+			FROM student_batchs sb
+			INNER JOIN batches b ON b.id = sb.batch_id
+			INNER JOIN users u ON u.id = b.institute_id AND u.role = 4 AND IFNULL(u.status, 1) = 1
+			WHERE sb.student_id = ?
+			ORDER BY u.name ASC';
+		$q = $this->db->query($sql, array($student_id));
+		if ($q === false) {
+			return array();
+		}
+
+		$out = array();
+		foreach ($q->result_array() as $row) {
+			$img = isset($row['teach_image']) ? trim((string) $row['teach_image']) : '';
+			$out[] = array(
+				'instituteId' => (int) $row['id'],
+				'name' => isset($row['name']) ? $row['name'] : '',
+				'email' => isset($row['email']) ? $row['email'] : '',
+				'role' => isset($row['role']) ? (int) $row['role'] : 0,
+				'image' => profile_image_url($img, isset($row['role']) ? $row['role'] : 0, isset($row['user_type']) ? $row['user_type'] : ''),
+			);
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Map a `student_payment_history` row (including merged plan / Razorpay columns) to API camelCase.
+	 *
+	 * @param array<string, mixed> $r
+	 * @return array<string, mixed>
+	 */
+	private function map_student_payment_history_row_for_api(array $r)
+	{
+		$pd = isset($r['payment_date']) ? $r['payment_date'] : null;
+		$ca = isset($r['create_at']) ? $r['create_at'] : null;
+
+		return array(
+			'id' => isset($r['id']) ? (int) $r['id'] : 0,
+			'recordId' => isset($r['id']) ? (int) $r['id'] : 0,
+			'studentId' => isset($r['student_id']) ? (int) $r['student_id'] : 0,
+			'batchId' => isset($r['batch_id']) ? (int) $r['batch_id'] : 0,
+			'planId' => isset($r['plan_id']) ? (int) $r['plan_id'] : 0,
+			'transactionId' => isset($r['transaction_id']) ? $r['transaction_id'] : '',
+			'mode' => isset($r['mode']) ? $r['mode'] : '',
+			'amount' => isset($r['amount']) ? (int) $r['amount'] : 0,
+			'adminId' => isset($r['admin_id']) ? (int) $r['admin_id'] : 0,
+			'baseAmount' => isset($r['base_amount']) ? $r['base_amount'] : null,
+			'batchFee' => isset($r['batch_fee']) ? $r['batch_fee'] : null,
+			'totalAmount' => isset($r['total_amount']) ? $r['total_amount'] : null,
+			'promoCodeId' => isset($r['promo_code_id']) ? ($r['promo_code_id'] !== null ? (int) $r['promo_code_id'] : null) : null,
+			'discountAmount' => isset($r['discount_amount']) ? $r['discount_amount'] : null,
+			'razorpayOrderId' => isset($r['razorpay_order_id']) ? $r['razorpay_order_id'] : '',
+			'razorpayPaymentId' => isset($r['razorpay_payment_id']) ? $r['razorpay_payment_id'] : '',
+			'paymentStatus' => isset($r['payment_status']) ? $r['payment_status'] : '',
+			'paymentDate' => $pd,
+			'createdAt' => $ca,
+		);
+	}
+
+	/**
+	 * Last payment row + plan_id = 1 yearly validity (1 year from payment_date).
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function build_enrollment_details_for_student($student_id)
+	{
+		$student_id = (int) $student_id;
+		$out = array(
+			'plan_one' => array(
+				'yearly_expired' => false,
+				'yearly_valid' => false,
+				'expires_at' => null,
+			)
+		);
+
+		if ($student_id < 1 || !$this->db->table_exists('student_payment_history')) {
+			return $out;
+		}
+
+		$has_pay_stat = $this->db->field_exists('payment_status', 'student_payment_history');
+		$has_plan = $this->db->field_exists('plan_id', 'student_payment_history');
+		$has_pay_date = $this->db->field_exists('payment_date', 'student_payment_history');
+
+		$this->db->reset_query();
+		$this->db->from('student_payment_history');
+		$this->db->where('student_id', $student_id);
+		if ($has_pay_stat) {
+			$this->db->where("(payment_status = 'SUCCESS' OR payment_status IS NULL OR payment_status = '')", null, false);
+		}
+		$this->db->order_by('COALESCE(payment_date, create_at) DESC, id DESC', '', false);
+		$this->db->limit(1);
+		$q = $this->db->get();
+		$last = ($q && $q->num_rows() > 0) ? $q->row_array() : null;
+
+		if ($last === null) {
+			$this->db->reset_query();
+			$this->db->from('student_payment_history');
+			$this->db->where('student_id', $student_id);
+			$this->db->order_by('COALESCE(payment_date, create_at) DESC, id DESC', '', false);
+			$this->db->limit(1);
+			$q2 = $this->db->get();
+			$last = ($q2 && $q2->num_rows() > 0) ? $q2->row_array() : null;
+		}
+
+		if ($has_plan) {
+			$this->db->reset_query();
+			$this->db->from('student_payment_history');
+			$this->db->where('student_id', $student_id);
+			$this->db->where('plan_id', 1);
+			if ($has_pay_stat) {
+				$this->db->where("(payment_status = 'SUCCESS' OR payment_status IS NULL OR payment_status = '')", null, false);
+			}
+			$this->db->order_by('COALESCE(payment_date, create_at) DESC, id DESC', '', false);
+			$this->db->limit(1);
+			$q3 = $this->db->get();
+			$p1 = ($q3 && $q3->num_rows() > 0) ? $q3->row_array() : null;
+
+			if ($p1 !== null) {
+				$pd = '';
+				if ($has_pay_date && isset($p1['payment_date'])) {
+					$pd = trim((string) $p1['payment_date']);
+				}
+				if ($pd === '' && isset($p1['create_at'])) {
+					$pd = trim((string) $p1['create_at']);
+				}
+				$cutoff = date('Y-m-d H:i:s', strtotime('-1 year'));
+				if ($pd !== '' && $pd !== '0000-00-00' && $pd !== '0000-00-00 00:00:00') {
+					$out['plan_one']['yearly_expired'] = ($pd < $cutoff);
+					$out['plan_one']['yearly_valid'] = ($pd >= $cutoff);
+					$out['plan_one']['expires_at'] = date('Y-m-d H:i:s', strtotime($pd . ' +1 year'));
+				}
+			}
+
+			
+		}
+
+		return $out;
+	}
 
 	/**
 	 * Student login payload for `data` — used by password login and verify_otp (same shape).
@@ -3577,14 +5524,18 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
 		$profile_completed = empty($student['city']) ? 0 : 1;
 
 		$student_image = !empty($student['image'])
-			? base_url('uploads/students/') . $student['image']
+			? profile_image_url($student['image'], 2, 'student')
 			: '';
+
+		$enrollment = $this->build_enrollment_details_for_student((int) $student['id']);
 
 		return array(
 			'userType'     => 'student',
 			'studentId'    => (int) $student['id'],
 			'adminId'      => (int) $student['admin_id'],
 			'name'         => $student['name'],
+			'lastName'     => isset($student['last_name']) ? $student['last_name'] : '',
+			'last_name'    => isset($student['last_name']) ? $student['last_name'] : '',
 			'email'        => $student['email'],
 			'mobile'       => $student['contact_no'],
 			'contactNo'    => $student['contact_no'],
@@ -3619,6 +5570,74 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
 			'device_token' => $device_token,
 			'device_type'  => $device_type,
 			'is_profile_completed' => $profile_completed,
+			'access_token' => $access_token,
+			'token_type'   => 'Bearer',
+			'plan_one'     => isset($enrollment['plan_one']) ? $enrollment['plan_one'] : array(
+				'yearly_expired' => false,
+				'yearly_valid' => false,
+				'expires_at' => null,
+				'last_expired_payment' => null,
+			),
+		);
+	}
+
+	/**
+	 * Teacher/Institute login payload in the same key shape as student login payload.
+	 * Missing fields are returned as blank/default values for app compatibility.
+	 */
+	private function build_non_student_login_data_array(array $user, $device_id, $device_token, $device_type, $now, $access_token, $profile_completed)
+	{
+		$user_image = !empty($user['image'])
+			? profile_image_url($user['image'], isset($user['role']) ? $user['role'] : 0, isset($user['user_type']) ? $user['user_type'] : '')
+			: (!empty($user['teach_image']) ? profile_image_url($user['teach_image'], isset($user['role']) ? $user['role'] : 0, isset($user['user_type']) ? $user['user_type'] : '') : '');
+
+		$mobile = isset($user['mobile']) ? $user['mobile'] : '';
+		$city = isset($user['city']) ? $user['city'] : '';
+		$admin_id = isset($user['admin_id']) ? (int) $user['admin_id'] : 0;
+
+		return array(
+			'userType'     => isset($user['user_type']) ? $user['user_type'] : 'teacher',
+			'studentId'    => (int) $user['id'],
+			'userId'       => (int) $user['id'],
+			'adminId'      => $admin_id,
+			'name'         => isset($user['name']) ? $user['name'] : '',
+			'lastName'     => isset($user['last_name']) ? $user['last_name'] : '',
+			'last_name'    => isset($user['last_name']) ? $user['last_name'] : '',
+			'email'        => isset($user['email']) ? $user['email'] : '',
+			'mobile'       => $mobile,
+			'contactNo'    => $mobile,
+			'mobileAlt'    => $mobile,
+			'enrollmentId' => '',
+			'multiBatch'   => '',
+			'gender'       => isset($user['teach_gender']) ? $user['teach_gender'] : '',
+			'dob'          => isset($user['dob']) ? $user['dob'] : '',
+			'fatherName'   => '',
+			'fatherDesignation' => '',
+			'address'      => isset($user['address']) ? $user['address'] : '',
+			'pincode'      => isset($user['pincode']) ? $user['pincode'] : '',
+			'country'      => isset($user['country']) ? $user['country'] : '',
+			'state'        => isset($user['state']) ? $user['state'] : '',
+			'city'         => $city,
+			'batchId'      => isset($user['teach_batch']) ? $user['teach_batch'] : '',
+			'admissionDate' => '',
+			'status'       => isset($user['status']) ? (int) $user['status'] : 1,
+			'loginStatus'  => 1,
+			'paymentStatus' => 0,
+			'appVersion'   => '',
+			'payMode'      => 0,
+			'schoolCollegeName' => '',
+			'grade'        => '',
+			'isVerified'   => isset($user['is_verified']) ? $user['is_verified'] : '',
+			'userTypeDb'   => isset($user['user_type']) ? $user['user_type'] : '',
+			'addedBy'      => isset($user['added_by']) ? $user['added_by'] : '',
+			'lastLoginApp' => $now,
+			'updatedAt'    => isset($user['updated_at']) ? $user['updated_at'] : null,
+			'image'        => $user_image,
+			'device_id'    => $device_id,
+			'device_token' => $device_token,
+			'device_type'  => $device_type,
+			'role'         => isset($user['role']) ? $user['role'] : '',
+			'is_profile_completed' => (int) $profile_completed,
 			'access_token' => $access_token,
 			'token_type'   => 'Bearer',
 		);
@@ -3717,10 +5736,14 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
 	    if (empty($data)) {
 	        $data = $this->input->post();
 	    }
+	    if (!is_array($data)) {
+	        $data = array();
+	    }
+	    $data = $this->normalize_multi_user_registration_data($data);
 
-	    $mobile    = isset($data['mobile']) ? trim($data['mobile']) : '';
-	    $otp       = isset($data['otp']) ? trim($data['otp']) : '';
-	    $user_type = isset($data['user_type']) ? strtolower(trim($data['user_type'])) : '';
+	    $mobile    = isset($data['mobile']) ? trim((string) $data['mobile']) : '';
+	    $otp       = isset($data['otp']) ? trim((string) $data['otp']) : '';
+	    $user_type = isset($data['user_type']) ? strtolower(trim((string) $data['user_type'])) : '';
 
 	    // Validation
 	    if (empty($mobile) || empty($otp)) {
@@ -3775,12 +5798,15 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
 	        $device_id = isset($data['device_id']) ? trim($data['device_id']) : '';
 	        $device_token = isset($data['device_token']) ? trim($data['device_token']) : '';
 	        $device_type = isset($data['device_type']) ? trim($data['device_type']) : '';
-	        $now = date('Y-m-d H:i:s');
 
 	        if ($user_type === 'student') {
+	        	$tok = $this->mint_access_credentials($user->id, 'student', $this->next_session_iat('students', $user->id));
+	        	$access_token = $tok['access_token'];
+	        	$session_time = date('Y-m-d H:i:s', $tok['iat']);
 	        	$this->db_model->update_data_limit('students', array(
 	        		'login_status' => 1,
-	        		'last_login_app' => $now,
+	        		'last_login_app' => $session_time,
+	        		'app_token_iat' => (int) $tok['iat'],
 	        		'token' => $device_token,
 	        		'device_id' => $device_id,
 	        		'device_token' => $device_token,
@@ -3792,16 +5818,23 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
 	        		echo json_encode(array('status' => 'false', 'msg' => 'Student not found'));
 	        		return;
 	        	}
-	        	$access_token = $this->generate_access_token($fresh[0]['id'], 'student');
-	        	$response_data = $this->build_student_login_data_array($fresh[0], $device_id, $device_token, $device_type, $now, $access_token);
+	        	$response_data = $this->build_student_login_data_array($fresh[0], $device_id, $device_token, $device_type, $session_time, $access_token);
 
 	        	$this->json_login_success_response($response_data);
 	        	return;
 	        }
 
+	        $utoken = isset($user->user_type) ? strtolower(trim((string) $user->user_type)) : $user_type;
+	        $tok = $this->mint_access_credentials((int) $user->id, $utoken, $this->next_session_iat('users', (int) $user->id));
+	        $access_token = $tok['access_token'];
+	        $session_time = date('Y-m-d H:i:s', $tok['iat']);
 	        $this->db_model->update_data_limit('users', array(
+	        	'login_status' => 1,
+	        	'device_id' => $device_id,
 	        	'device_token' => $device_token,
-	        	'updated_at' => $now,
+	        	'device_type' => $device_type,
+	        	'app_token_iat' => (int) $tok['iat'],
+	        	'updated_at' => $session_time,
 	        ), array('id' => $user->id), 1);
 
 	        $urow = $this->db_model->select_data('*', 'users', array('id' => $user->id), 1);
@@ -3810,21 +5843,18 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
 	        	return;
 	        }
 	        $u = $urow[0];
-	        $access_token = $this->generate_access_token($u['id'], $u['user_type']);
-	        $profile_completed = (!isset($u['city']) || $u['city'] === '') ? 0 : 1;
+	        $profile_completed = (empty($u['city']) || trim((string) $u['city']) === '') ? 0 : 1;
 
-	        $this->json_login_success_response(array(
-	        	'userType' => $u['user_type'],
-	        	'userId' => $u['id'],
-	        	'name' => $u['name'],
-	        	'email' => $u['email'],
-	        	'mobile' => $u['mobile'],
-	        	'image' => base_url('uploads/users/') . $u['image'],
-	        	'role' => $u['role'],
-	        	'is_profile_completed' => $profile_completed,
-	        	'access_token' => $access_token,
-	        	'token_type' => 'Bearer'
-	        ));
+	        $response_data = $this->build_non_student_login_data_array(
+	        	$u,
+	        	$device_id,
+	        	$device_token,
+	        	$device_type,
+	        	$session_time,
+	        	$access_token,
+	        	$profile_completed
+	        );
+	        $this->json_login_success_response($response_data);
 	        return;
 
 	    } else {
@@ -3835,6 +5865,189 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
 	            "code" => "INVALID_OTP"
 	        ]);
 	    }
+	}
+
+	/**
+	 * POST/GET api/user/change-password
+	 * Auth: Bearer access_token (logged-in student, teacher, or institute).
+	 * Body (JSON, form, or query): current_password, new_password, confirm_password
+	 * Aliases: current_pass, new_pass, confirm_pass
+	 */
+	public function change_password()
+	{
+		$from_body = json_decode(file_get_contents('php://input'), true);
+		if (!is_array($from_body)) {
+			$from_body = array();
+		}
+		$post = $this->input->post();
+		$get = $this->input->get();
+		if (!is_array($post)) {
+			$post = array();
+		}
+		if (!is_array($get)) {
+			$get = array();
+		}
+		// JSON body must win — merging body first then post/get overwrites correct passwords with empty fields.
+		$data = array_merge($post, $get, $from_body);
+
+		$payload = $this->require_auth_payload();
+		if ($payload === false) {
+			return;
+		}
+
+		$current = '';
+		if (isset($data['current_password']) && $data['current_password'] !== '') {
+			$current = trim((string) $data['current_password']);
+		} elseif (isset($data['current_pass']) && $data['current_pass'] !== '') {
+			$current = trim((string) $data['current_pass']);
+		}
+
+		$new = '';
+		if (isset($data['new_password']) && $data['new_password'] !== '') {
+			$new = (string) $data['new_password'];
+		} elseif (isset($data['new_pass']) && $data['new_pass'] !== '') {
+			$new = (string) $data['new_pass'];
+		}
+
+		$confirm = '';
+		if (isset($data['confirm_password']) && $data['confirm_password'] !== '') {
+			$confirm = (string) $data['confirm_password'];
+		} elseif (isset($data['confirm_pass']) && $data['confirm_pass'] !== '') {
+			$confirm = (string) $data['confirm_pass'];
+		}
+
+		if ($current === '' || $new === '' || $confirm === '') {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'current_password, new_password and confirm_password are required',
+				'code' => 'MISSING_PARAMETERS',
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
+
+		if ($new !== $confirm) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'New password and confirm password do not match',
+				'code' => 'PASSWORD_MISMATCH',
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
+
+		if (strlen($new) < 6) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'New password must be at least 6 characters',
+				'code' => 'PASSWORD_TOO_SHORT',
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
+
+		$uid = (int) $payload['uid'];
+		$ut = strtolower(trim((string) $payload['ut']));
+
+		if (!in_array($ut, array('student', 'teacher', 'institute'), true)) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'Password change is not available for this account type',
+				'code' => 'INVALID_USER_TYPE',
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
+
+		if ($ut === 'student') {
+			$rows = $this->db_model->select_data('id,password', 'students', array('id' => $uid), 1);
+		} else {
+			$rows = $this->db_model->select_data('id,password,user_type', 'users', array('id' => $uid), 1);
+			if (!empty($rows[0]) && isset($rows[0]['user_type']) && trim((string) $rows[0]['user_type']) !== '') {
+				$db_ut = strtolower(trim((string) $rows[0]['user_type']));
+				if ($db_ut !== $ut) {
+					echo json_encode(array(
+						'status' => 'false',
+						'msg' => 'Token does not match this account',
+						'code' => 'USER_MISMATCH',
+					), JSON_UNESCAPED_SLASHES);
+					return;
+				}
+			}
+		}
+
+		if (empty($rows)) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'User not found',
+				'code' => 'USER_NOT_FOUND',
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
+
+		$stored = $this->row_password_value($rows[0]);
+		if (!$this->is_valid_password($current, $stored)) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'Current password is incorrect',
+				'code' => 'INVALID_CURRENT_PASSWORD',
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
+
+		if ($this->is_valid_password($new, $stored)) {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'New password must be different from current password',
+				'code' => 'SAME_PASSWORD',
+			), JSON_UNESCAPED_SLASHES);
+			return;
+		}
+
+		$hashed_new = password_hash($new, PASSWORD_DEFAULT);
+
+		if ($ut === 'student') {
+			$update = $this->db_model->update_data_limit(
+				'students use index (id)',
+				array('password' => $hashed_new),
+				array('id' => $uid),
+				1
+			);
+		} else {
+			$update = $this->db_model->update_data_limit(
+				'users',
+				array('password' => $hashed_new),
+				array('id' => $uid),
+				1
+			);
+		}
+
+		if ($update) {
+			$notify_rows = ($ut === 'student')
+				? $this->db_model->select_data('name,email', 'students', array('id' => $uid), 1)
+				: $this->db_model->select_data('name,email', 'users', array('id' => $uid), 1);
+			$notify_name = !empty($notify_rows[0]['name']) ? $notify_rows[0]['name'] : '';
+			$notify_email = !empty($notify_rows[0]['email']) ? trim((string) $notify_rows[0]['email']) : '';
+			// Security notification email (best-effort; never blocks the response).
+			@$this->common->send_email(array(
+				'purpose' => 'password_changed',
+				'user_id' => $uid,
+				'user_type' => $ut,
+				'to_email' => $notify_email,
+				'dynamic_var' => array(
+					'USER_NAME' => $notify_name,
+					'NAME' => $notify_name,
+					'LOGIN_LINK' => site_url('login'),
+					'link' => site_url('login'),
+				),
+			));
+			echo json_encode(array(
+				'status' => 'true',
+				'msg' => 'Password changed successfully',
+			), JSON_UNESCAPED_SLASHES);
+		} else {
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'Failed to update password',
+				'code' => 'UPDATE_FAILED',
+			), JSON_UNESCAPED_SLASHES);
+		}
 	}
 	
 	/**
@@ -3934,9 +6147,12 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
 				array('id' => $row->id),
 				1
 			);
+			$notify_user_id = (int) $row->id;
+			$notify_name = isset($row->name) ? (string) $row->name : '';
+			$notify_email = isset($row->email) ? trim((string) $row->email) : '';
 		} else {
 			$user = $this->db_model->select_data(
-				'id',
+				'id,name,email',
 				'users',
 				array('mobile' => $mobile, 'user_type' => $user_type),
 				1
@@ -3955,9 +6171,24 @@ $batchData = $this->db_model->select_data('id, batch_name as batchName, start_da
 				array('id' => $user[0]['id']),
 				1
 			);
+			$notify_user_id = (int) $user[0]['id'];
+			$notify_name = !empty($user[0]['name']) ? (string) $user[0]['name'] : '';
+			$notify_email = !empty($user[0]['email']) ? trim((string) $user[0]['email']) : '';
 		}
 
 		if ($update) {
+			@$this->common->send_email(array(
+				'purpose' => 'reset_password',
+				'user_id' => $notify_user_id,
+				'user_type' => $user_type,
+				'to_email' => $notify_email,
+				'dynamic_var' => array(
+					'USER_NAME' => $notify_name,
+					'NAME' => $notify_name,
+					'LOGIN_LINK' => site_url('login'),
+					'link' => site_url('login'),
+				),
+			));
 			echo json_encode(array(
 				'status' => 'true',
 				'msg' => 'Password updated successfully',

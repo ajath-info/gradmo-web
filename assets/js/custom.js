@@ -304,6 +304,10 @@ Assigned to: Theme Forest
 			});
 
 			$(".edu_selectbox_with_search").each(function() {
+				// Teacher batch create/edit uses native selects + API (see batch_form_init_script.php).
+				if ($(this).closest('#teacherBatchFormRoot').length) {
+					return;
+				}
 				$(this).select2({
 					placeholder: $(this).attr("data-placeholder"),
 					width: '100%'
