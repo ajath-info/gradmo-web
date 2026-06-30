@@ -231,6 +231,15 @@
         var ltr_edit_book  ="<?php echo html_escape($this->common->languageTranslator('ltr_edit_book')); ?>";
         var ltr_add  ="<?php echo html_escape($this->common->languageTranslator('ltr_add')); ?>";
         var ltr_edit  ="<?php echo html_escape($this->common->languageTranslator('ltr_edit')); ?>";
+        var ltr_update  ="<?php echo html_escape($this->common->languageTranslator('ltr_update')); ?>";
+        var ltr_save  ="<?php echo html_escape($this->common->languageTranslator('ltr_save')); ?>";
+        var ltr_add_promo_code  ="<?php echo html_escape($this->common->languageTranslator('ltr_add_promo_code')); ?>";
+        var ltr_all_field_required_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_all_field_required_msg')); ?>";
+        var ltr_promo_invalid_value  ="<?php echo html_escape($this->common->languageTranslator('ltr_promo_invalid_value')); ?>";
+        var ltr_promo_invalid_dates  ="<?php echo html_escape($this->common->languageTranslator('ltr_promo_invalid_dates')); ?>";
+        var ltr_promo_code_exists  ="<?php echo html_escape($this->common->languageTranslator('ltr_promo_code_exists')); ?>";
+        var ltr_promo_added_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_promo_added_msg')); ?>";
+        var ltr_promo_deleted_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_promo_deleted_msg')); ?>";
         var ltr_add_notes  ="<?php echo html_escape($this->common->languageTranslator('ltr_add_notes')); ?>";
         var ltr_edit_notes ="<?php echo html_escape($this->common->languageTranslator('ltr_edit_notes')); ?>";
         var ltr_add_old_paper  ="<?php echo html_escape($this->common->languageTranslator('ltr_add_old_paper')); ?>";
@@ -382,7 +391,7 @@ if ( ! is_array($cur_arr)) {
 					$academics_revoked = isset($access->academics) && (string) $access->academics === '0';
 					$show_academics_menu = ($this->session->userdata['super_admin'] == 1) || $academics_granted || ($role_admin && ! $academics_revoked);
                     if ($show_academics_menu) { ?>
-                    <li class="has_sub_menu <?php echo (in_array("batch-manage",$cur_arr) || in_array("notice-manage",$cur_arr) || in_array("subject-manage",$cur_arr) || in_array("question-manage",$cur_arr)||in_array("question-manage",$cur_arr)||in_array("vacancy-manage",$cur_arr)||in_array("live-class",$cur_arr)||in_array("live-class-history",$cur_arr)||in_array("batch-cat-manage",$cur_arr)||in_array("batch-subcat-manage",$cur_arr)||in_array("jetsi",$cur_arr)||in_array("institute-manage",$cur_arr)||in_array("institute-progress",$cur_arr) )?'active':''; ?>">
+                    <li class="has_sub_menu <?php echo (in_array("batch-manage",$cur_arr) || in_array("notice-manage",$cur_arr) || in_array("subject-manage",$cur_arr) || in_array("promo-code-manage",$cur_arr) || in_array("question-manage",$cur_arr)||in_array("question-manage",$cur_arr)||in_array("vacancy-manage",$cur_arr)||in_array("live-class",$cur_arr)||in_array("live-class-history",$cur_arr)||in_array("batch-cat-manage",$cur_arr)||in_array("batch-subcat-manage",$cur_arr)||in_array("jetsi",$cur_arr)||in_array("institute-manage",$cur_arr)||in_array("institute-progress",$cur_arr) )?'active':''; ?>">
                         <a href="javascript:void(0);" class="">
                             <svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
                                  viewBox="0 0 30 30" enable-background="new 0 0 30 30" xml:space="preserve">
@@ -424,6 +433,7 @@ if ( ! is_array($cur_arr)) {
                             <li <?php echo (in_array("institute-manage",$cur_arr) || in_array("institute-progress",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/institute-manage"><?php echo html_escape($this->common->languageTranslator('ltr_manage_institutes')); ?></a></li>
                             <li <?php echo (in_array("notice-manage",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/notice-manage"><?php echo html_escape($this->common->languageTranslator('ltr_notice_manager')); ?></a></li>
                             <li <?php echo (in_array("subject-manage",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/subject-manage"><?php echo html_escape($this->common->languageTranslator('ltr_subject_manager')); ?></a></li>
+                            <li <?php echo (in_array("promo-code-manage",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/promo-code-manage"><?php echo html_escape($this->common->languageTranslator('ltr_promo_code_manager')); ?></a></li>
                             <li <?php echo (in_array("question-manage",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/question-manage"><?php echo html_escape($this->common->languageTranslator('ltr_question_manager')); ?></a></li>
                             <li <?php echo (in_array("vacancy-manage",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/vacancy-manage"><?php echo html_escape($this->common->languageTranslator('ltr_upcoming_exams_manager')); ?></a></li>
                             <li <?php echo (in_array("live-class",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/live-class"><?php echo html_escape($this->common->languageTranslator('ltr_live_class')); ?></a></li>

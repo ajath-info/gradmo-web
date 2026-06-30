@@ -5,7 +5,14 @@ class Website extends MY_Controller
 {
 	function __construct(){
 		parent::__construct();
-	
+
+			// Single-session enforcement for the website. The CI session stores the API
+			// access_token at login; if a newer login happens elsewhere (another device,
+			// Postman, the mobile app) the server bumps app_token_iat and this stored token
+			// becomes stale. Re-validate it every request and drop the web session if stale,
+			// so the existing role/token guards redirect this browser back to login.
+			$this->enforce_website_single_session();
+
 			$this->load->helper('file');
 			$this->load->helper('language');
 			$language = $this->general_settings('language_name');
@@ -680,6 +687,28 @@ class Website extends MY_Controller
 			}
 			$tok = (string) $this->session->userdata('token');
 			return $tok;
+		}
+
+		/**
+		 * Drop the web session when its stored access_token is no longer the latest one
+		 * (single-session). parse_access_token() returns false when the token's iat is older
+		 * than the DB app_token_iat, when the account is logged out, or when it expired —
+		 * any of which means this browser should be signed out.
+		 */
+		private function enforce_website_single_session()
+		{
+			// Nothing to enforce for guests / pages without a session token.
+			if (empty($_SESSION) || empty($_SESSION['role'])) {
+				return;
+			}
+			$token = $this->website_session_access_token();
+			if ($token === '') {
+				return;
+			}
+			if ($this->parse_access_token($token) === false) {
+				$this->session->sess_destroy();
+				$_SESSION = array();
+			}
 		}
 
 		/**
