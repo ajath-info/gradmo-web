@@ -383,8 +383,18 @@ class Ajaxcall extends CI_Controller{
         return ($file_ext !== '') ? ($raw_name . '.' . $file_ext) : $raw_name;
     }
 
-    function upload_media($files,$path,$file){   
-        $config['upload_path'] =$path;
+    function upload_media($files,$path,$file){
+        // Resolve relative paths (e.g. "uploads/users/") against the app root so CI's upload
+        // library doesn't reject them as invalid depending on the current working directory,
+        // and create the folder if it doesn't exist yet.
+        $abs_path = $path;
+        if (!preg_match('#^([A-Za-z]:[\\\\/]|/)#', (string) $path)) {
+            $abs_path = FCPATH . ltrim((string) $path, '\\/');
+        }
+        if (!is_dir($abs_path)) {
+            @mkdir($abs_path, 0777, true);
+        }
+        $config['upload_path'] =$abs_path;
         $config['allowed_types'] = 'jpeg|jpg|png|SVG|svg|avi|mpeg|mp3|mp4|3gp';
         $config['max_size']    = '2048000';
         $filename = '';		
@@ -393,7 +403,7 @@ class Ajaxcall extends CI_Controller{
             $uploadData = $this->upload->data();
             $filename = $uploadData['file_name'];
             $safe_name = $this->normalize_uploaded_media_filename($uploadData['raw_name'], $uploadData['file_ext']);
-            $upload_dir = rtrim((string) $path, '\\/');
+            $upload_dir = rtrim((string) $abs_path, '\\/');
             if ($safe_name !== '' && $filename !== $safe_name) {
                 $source = $upload_dir . DIRECTORY_SEPARATOR . $filename;
                 $target = $upload_dir . DIRECTORY_SEPARATOR . $safe_name;
