@@ -383,8 +383,18 @@ class Ajaxcall extends CI_Controller{
         return ($file_ext !== '') ? ($raw_name . '.' . $file_ext) : $raw_name;
     }
 
-    function upload_media($files,$path,$file){   
-        $config['upload_path'] =$path;
+    function upload_media($files,$path,$file){
+        // Resolve relative paths (e.g. "uploads/users/") against the app root so CI's upload
+        // library doesn't reject them as invalid depending on the current working directory,
+        // and create the folder if it doesn't exist yet.
+        $abs_path = $path;
+        if (!preg_match('#^([A-Za-z]:[\\\\/]|/)#', (string) $path)) {
+            $abs_path = FCPATH . ltrim((string) $path, '\\/');
+        }
+        if (!is_dir($abs_path)) {
+            @mkdir($abs_path, 0777, true);
+        }
+        $config['upload_path'] =$abs_path;
         $config['allowed_types'] = 'jpeg|jpg|png|SVG|svg|avi|mpeg|mp3|mp4|3gp';
         $config['max_size']    = '2048000';
         $filename = '';		
@@ -393,7 +403,7 @@ class Ajaxcall extends CI_Controller{
             $uploadData = $this->upload->data();
             $filename = $uploadData['file_name'];
             $safe_name = $this->normalize_uploaded_media_filename($uploadData['raw_name'], $uploadData['file_ext']);
-            $upload_dir = rtrim((string) $path, '\\/');
+            $upload_dir = rtrim((string) $abs_path, '\\/');
             if ($safe_name !== '' && $filename !== $safe_name) {
                 $source = $upload_dir . DIRECTORY_SEPARATOR . $filename;
                 $target = $upload_dir . DIRECTORY_SEPARATOR . $safe_name;
@@ -3383,6 +3393,189 @@ class Ajaxcall extends CI_Controller{
                 }
                 echo json_encode($resp,JSON_UNESCAPED_SLASHES);
             }
+        }else{
+            echo $this->lang->line('ltr_not_allowed_msg');
+        }
+    }
+
+    // ============================ PROMO CODES CRUD ============================
+    // Server-side DataTable feed for the promo code manager.
+    function promo_code_table(){
+        if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
+            $post = $this->input->post(NULL,TRUE);
+
+            if(isset($post['length']) && $post['length']>0){
+                if(isset($post['start']) && !empty($post['start'])){
+                    $limit = array($post['length'],$post['start']);
+                    $count = $post['start']+1;
+                }else{
+                    $limit = array($post['length'],0);
+                    $count = 1;
+                }
+            }else{
+                $limit = '';
+                $count = 1;
+            }
+
+            $like = '';
+            $or_like = '';
+            if(isset($post['search']['value']) && $post['search']['value'] != ''){
+                $like = array('code',$post['search']['value']);
+            }
+
+            $cond = '';
+            $promo_data = $this->db_model->select_data('*','promo_codes',$cond,$limit,array('promo_code_id','desc'),$like,'','',$or_like);
+            $dataarray = array();
+            if(!empty($promo_data)){
+                foreach($promo_data as $promo){
+                    $type_label = ($promo['discount_type'] == 'PERCENT') ? $this->common->languageTranslator('ltr_percent') : $this->common->languageTranslator('ltr_flat');
+                    $value_label = ($promo['discount_type'] == 'PERCENT') ? ($promo['discount_value'].' %') : $promo['discount_value'];
+                    $usage = (int)$promo['used_count'].' / '.((trim((string)$promo['max_use']) === '') ? '&#8734;' : (int)$promo['max_use']);
+
+                    if($promo['status'] == 1){
+                        $statusDrop = '<div class="admin_tbl_status_wrap"><a class="tbl_status_btn light_sky_bg promoStatusBtn" data-id="'.$promo['promo_code_id'].'" data-status="0" href="javascript:;">'.$this->lang->line('ltr_active').'</a></div>';
+                    }else{
+                        $statusDrop = '<div class="admin_tbl_status_wrap"><a class="tbl_status_btn light_red_bg promoStatusBtn" data-id="'.$promo['promo_code_id'].'" data-status="1" href="javascript:;">'.$this->lang->line('ltr_inactive').'</a></div>';
+                    }
+
+                    $action = '<p class="actions_wrap"><a class="btn_edit editPromoCode" title="Edit" '
+                        .'data-id="'.$promo['promo_code_id'].'" '
+                        .'data-code="'.html_escape($promo['code']).'" '
+                        .'data-discount_type="'.html_escape($promo['discount_type']).'" '
+                        .'data-discount_value="'.html_escape($promo['discount_value']).'" '
+                        .'data-valid_from="'.html_escape($promo['valid_from']).'" '
+                        .'data-valid_to="'.html_escape($promo['valid_to']).'" '
+                        .'data-max_use="'.html_escape($promo['max_use']).'"><i class="fa fa-edit"></i></a>'
+                        .'<a class="deletePromoCode btn_delete" title="Delete" data-id="'.$promo['promo_code_id'].'"><i class="fa fa-trash"></i></a></p>';
+
+                    $dataarray[] = array(
+                        '<input type="checkbox" class="checkOneRow" value="'.$promo['promo_code_id'].'">',
+                        $count,
+                        html_escape($promo['code']),
+                        $type_label,
+                        $value_label,
+                        $promo['valid_from'],
+                        $promo['valid_to'],
+                        $usage,
+                        $statusDrop,
+                        $action
+                    );
+                    $count++;
+                }
+                $recordsTotal = $this->db_model->countAll('promo_codes',$cond,'','',$like,'','',$or_like);
+            }else{
+                $recordsTotal = 0;
+            }
+
+            $output = array(
+                "draw" => isset($post['draw']) ? $post['draw'] : 1,
+                "recordsTotal" => $recordsTotal,
+                "recordsFiltered" => $recordsTotal,
+                "data" => $dataarray,
+            );
+            echo json_encode($output,JSON_UNESCAPED_SLASHES);
+        }else{
+            echo $this->lang->line('ltr_not_allowed_msg');
+        }
+    }
+
+    // Create or update a promo code (id present => update).
+    function add_promo_code(){
+        if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
+            $id            = trim((string)$this->input->post('id',TRUE));
+            $code          = strtoupper(trim((string)$this->input->post('code',TRUE)));
+            $discount_type = trim((string)$this->input->post('discount_type',TRUE));
+            $discount_val  = trim((string)$this->input->post('discount_value',TRUE));
+            $valid_from    = trim((string)$this->input->post('valid_from',TRUE));
+            $valid_to      = trim((string)$this->input->post('valid_to',TRUE));
+            $max_use       = trim((string)$this->input->post('max_use',TRUE));
+
+            // Server-side validation (the JS validates too; this is the authoritative guard).
+            if($code === '' || $discount_type === '' || $discount_val === ''){
+                echo json_encode(array('status'=>'0','msg'=>$this->lang->line('ltr_all_field_required_msg')),JSON_UNESCAPED_SLASHES); return;
+            }
+            if(!in_array($discount_type,array('PERCENT','FLAT'),true)){
+                echo json_encode(array('status'=>'0','msg'=>$this->lang->line('ltr_something_msg')),JSON_UNESCAPED_SLASHES); return;
+            }
+            if(!is_numeric($discount_val) || (float)$discount_val <= 0){
+                echo json_encode(array('status'=>'0','msg'=>$this->common->languageTranslator('ltr_promo_invalid_value')),JSON_UNESCAPED_SLASHES); return;
+            }
+            if($discount_type === 'PERCENT' && (float)$discount_val > 100){
+                echo json_encode(array('status'=>'0','msg'=>$this->common->languageTranslator('ltr_promo_invalid_value')),JSON_UNESCAPED_SLASHES); return;
+            }
+            if($valid_from !== '' && $valid_to !== '' && strtotime($valid_to) < strtotime($valid_from)){
+                echo json_encode(array('status'=>'0','msg'=>$this->common->languageTranslator('ltr_promo_invalid_dates')),JSON_UNESCAPED_SLASHES); return;
+            }
+
+            // Unique code (case-insensitive, excluding self on edit).
+            $dup = $this->db_model->select_data('promo_code_id','promo_codes',array('code'=>$code),1);
+            if(!empty($dup) && (string)$dup[0]['promo_code_id'] !== $id){
+                echo json_encode(array('status'=>'2','msg'=>$this->common->languageTranslator('ltr_promo_code_exists')),JSON_UNESCAPED_SLASHES); return;
+            }
+
+            $data_arr = array(
+                'code'           => $code,
+                'discount_type'  => $discount_type,
+                'discount_value' => $discount_val,
+                'valid_from'     => ($valid_from !== '') ? $valid_from : null,
+                'valid_to'       => ($valid_to !== '') ? $valid_to : null,
+                'max_use'        => ($max_use !== '') ? (int)$max_use : null,
+            );
+            $data_arr = $this->security->xss_clean($data_arr);
+
+            if($id !== ''){
+                $ins = $this->db_model->update_data_limit('promo_codes',$data_arr,array('promo_code_id'=>$id),1);
+            }else{
+                $data_arr['status'] = 1;
+                $data_arr['used_count'] = 0;
+                $ins = $this->db_model->insert_data('promo_codes',$data_arr);
+            }
+            echo json_encode(array('status'=>($ins ? '1' : '0')),JSON_UNESCAPED_SLASHES);
+        }else{
+            echo $this->lang->line('ltr_not_allowed_msg');
+        }
+    }
+
+    // Delete a single promo code.
+    function delete_promo_code(){
+        if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
+            $id = trim((string)$this->input->post('id',TRUE));
+            if($id === ''){
+                echo json_encode(array('status'=>'0'),JSON_UNESCAPED_SLASHES); return;
+            }
+            $del = $this->db_model->delete_data('promo_codes',array('promo_code_id'=>$id));
+            echo json_encode(array('status'=>($del ? '1' : '0'),'msg'=>$this->lang->line('ltr_data_delete_msg')),JSON_UNESCAPED_SLASHES);
+        }else{
+            echo $this->lang->line('ltr_not_allowed_msg');
+        }
+    }
+
+    // Bulk delete promo codes (dedicated: generic multiDelete keys on `id`/`added_by`).
+    function promo_code_multidelete(){
+        if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
+            $ids = json_decode($this->input->post('ids',TRUE));
+            if(empty($ids) || !is_array($ids)){
+                echo json_encode(array('status'=>'0'),JSON_UNESCAPED_SLASHES); return;
+            }
+            foreach($ids as $id){
+                $this->db_model->delete_data('promo_codes',array('promo_code_id'=>(int)$id));
+            }
+            echo json_encode(array('status'=>'1','msg'=>$this->lang->line('ltr_data_delete_msg')),JSON_UNESCAPED_SLASHES);
+        }else{
+            echo $this->lang->line('ltr_not_allowed_msg');
+        }
+    }
+
+    // Toggle promo code status (its PK is promo_code_id, so it can't reuse the generic change_status).
+    function promo_code_status(){
+        if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
+            $id = trim((string)$this->input->post('id',TRUE));
+            $status = (string)$this->input->post('status',TRUE);
+            if($id === ''){
+                echo json_encode(array('status'=>'0'),JSON_UNESCAPED_SLASHES); return;
+            }
+            $upd = $this->db_model->update_data_limit('promo_codes',array('status'=>(int)$status),array('promo_code_id'=>$id),1);
+            echo json_encode(array('status'=>($upd ? '1' : '0')),JSON_UNESCAPED_SLASHES);
         }else{
             echo $this->lang->line('ltr_not_allowed_msg');
         }

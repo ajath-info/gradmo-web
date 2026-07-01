@@ -386,6 +386,14 @@ class Admin_profile extends CI_Controller {
 		$this->load->view("common/admin_footer");
 	}
 
+	function promo_code_manage(){
+		$header['title']=$this->common->languageTranslator('ltr_promo_code_manager');
+		$data['promo_data'] = $this->db_model->countAll('promo_codes');
+		$this->load->view("common/admin_header",$header);
+		$this->load->view("admin/promo_code_manage",$data);
+		$this->load->view("common/admin_footer");
+	}
+
 	function question_manage(){
 		$header['title']=$this->lang->line('ltr_question_manager');
 		if($this->session->userdata('role') == 1 && $this->session->userdata('super_admin') == 1){

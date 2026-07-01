@@ -71,6 +71,7 @@ $route['admin/student-manage'] = 'admin_profile/student_manage';
 $route['admin/add-student'] = 'admin_profile/add_student';
 $route['admin/add-student/(:any)'] = 'admin_profile/add_student/$1';
 $route['admin/subject-manage'] = 'admin_profile/subject_manage';
+$route['admin/promo-code-manage'] = 'admin_profile/promo_code_manage';
 $route['admin/question-manage'] = 'admin_profile/question_manage';
 $route['admin/notice-manage'] = 'admin_profile/notice_manage';
 $route['admin/vacancy-manage'] = 'admin_profile/vacancy_manage';

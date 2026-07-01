@@ -1035,3 +1035,23 @@ $lang['ltr_old_batch'] = "Old Batch";
 
 
 $lang['ltr_accountDelete'] = "Your account is deleted, you can connect to support.";
+
+// Promo codes manager
+$lang['ltr_promo_code_manager'] = "Promo Code Manager";
+$lang['ltr_add_promo_code'] = "Add Promo Code";
+$lang['ltr_promo_code'] = "Promo Code";
+$lang['ltr_discount_type'] = "Discount Type";
+$lang['ltr_discount_value'] = "Discount Value";
+$lang['ltr_valid_from'] = "Valid From";
+$lang['ltr_valid_to'] = "Valid To";
+$lang['ltr_max_use'] = "Max Use";
+$lang['ltr_usage'] = "Usage";
+$lang['ltr_percent'] = "Percent";
+$lang['ltr_flat'] = "Flat";
+$lang['ltr_no_data_found'] = "No data found.";
+$lang['ltr_all_field_required_msg'] = "All required fields must be filled.";
+$lang['ltr_promo_invalid_value'] = "Please enter a valid discount value.";
+$lang['ltr_promo_invalid_dates'] = "Valid To date must be on or after Valid From date.";
+$lang['ltr_promo_code_exists'] = "This promo code already exists.";
+$lang['ltr_promo_added_msg'] = "Promo code saved successfully.";
+$lang['ltr_promo_deleted_msg'] = "Promo code deleted successfully.";

@@ -1223,6 +1223,202 @@ $(document).on('click','.genrateMeetingId',function (){
             });
     });
 
+    // ==================== PROMO CODES ====================
+    // Open Add popup (reset fields).
+    $(document).on('click', '.addPromoPop', function() {
+        $('#promoId').val('');
+        $('#promoCode').val('').removeClass('error');
+        $('#promoDiscountType').val('PERCENT');
+        $('#promoDiscountValue').val('').removeClass('error');
+        $('#promoMaxUse').val('');
+        $('#promoValidFrom').val('');
+        $('#promoValidTo').val('');
+        $('#promoPopupTitle').text(ltr_add_promo_code);
+        $('#savePromoCode').val(ltr_save);
+        $.magnificPopup.open({ items: { src: '#promoCodePopup' }, type: 'inline' });
+    });
+
+    // Open Edit popup (prefill from row data attributes).
+    $(document).on('click', '.editPromoCode', function() {
+        $('#promoId').val($(this).attr('data-id'));
+        $('#promoCode').val($(this).attr('data-code')).removeClass('error');
+        $('#promoDiscountType').val($(this).attr('data-discount_type'));
+        $('#promoDiscountValue').val($(this).attr('data-discount_value')).removeClass('error');
+        $('#promoMaxUse').val($(this).attr('data-max_use'));
+        $('#promoValidFrom').val($(this).attr('data-valid_from'));
+        $('#promoValidTo').val($(this).attr('data-valid_to'));
+        $('#promoPopupTitle').text(ltr_edit ? ltr_edit : ltr_add_promo_code);
+        $('#savePromoCode').val(ltr_update ? ltr_update : ltr_save);
+        $.magnificPopup.open({ items: { src: '#promoCodePopup' }, type: 'inline' });
+    });
+
+    // Save (create or update).
+    $(document).on('click', '.savePromoCode', function() {
+        var code = $('#promoCode').val().trim();
+        var dtype = $('#promoDiscountType').val();
+        var dvalue = $('#promoDiscountValue').val().trim();
+        var validFrom = $('#promoValidFrom').val();
+        var validTo = $('#promoValidTo').val();
+        var maxUse = $('#promoMaxUse').val().trim();
+
+        if (code == '') {
+            toastr.error(ltr_all_field_required_msg);
+            $('#promoCode').addClass('error').focus();
+            return false;
+        }
+        if (dvalue == '' || isNaN(dvalue) || parseFloat(dvalue) <= 0) {
+            toastr.error(ltr_promo_invalid_value);
+            $('#promoDiscountValue').addClass('error').focus();
+            return false;
+        }
+        if (dtype == 'PERCENT' && parseFloat(dvalue) > 100) {
+            toastr.error(ltr_promo_invalid_value);
+            $('#promoDiscountValue').addClass('error').focus();
+            return false;
+        }
+        if (validFrom != '' && validTo != '' && validTo < validFrom) {
+            toastr.error(ltr_promo_invalid_dates);
+            return false;
+        }
+
+        $('.edu_preloader').css('background-color', 'rgba(255,255,255,0.80)').css('display', 'block');
+        $.ajax({
+            method: "POST",
+            url: base_url + "ajaxcall/add_promo_code",
+            data: {
+                'id': $('#promoId').val(),
+                'code': code,
+                'discount_type': dtype,
+                'discount_value': dvalue,
+                'valid_from': validFrom,
+                'valid_to': validTo,
+                'max_use': maxUse
+            },
+            success: function(resp) {
+                resp = $.parseJSON(resp);
+                if (resp['status'] == '1') {
+                    toastr.success(ltr_promo_added_msg);
+                    $('#promoCodePopup').find('.mfp-close').trigger('click');
+                    var no_data = $('.eac_page_re').html();
+                    if (no_data != undefined) {
+                        setTimeout(function() { window.location.reload(true); }, 500);
+                    } else {
+                        targetTableUrl = $('.server_datatable').attr('data-url');
+                        dataTableObj.ajax.url(base_url + targetTableUrl).load();
+                    }
+                } else if (resp['status'] == '2') {
+                    toastr.error(resp['msg'] || ltr_promo_code_exists);
+                } else {
+                    toastr.error(resp['msg'] || ltr_something_msg);
+                }
+                $('.edu_preloader').fadeOut();
+            },
+            error: function() {
+                toastr.error(ltr_something_msg);
+                $('.edu_preloader').fadeOut();
+            }
+        });
+    });
+
+    // Toggle status.
+    $(document).on('click', '.promoStatusBtn', function() {
+        var id = $(this).attr('data-id');
+        var status = $(this).attr('data-status');
+        $.ajax({
+            method: "POST",
+            url: base_url + "ajaxcall/promo_code_status",
+            data: { 'id': id, 'status': status },
+            success: function(resp) {
+                resp = $.parseJSON(resp);
+                if (resp['status'] == '1') {
+                    toastr.success(ltr_status_msg);
+                    targetTableUrl = $('.server_datatable').attr('data-url');
+                    dataTableObj.ajax.url(base_url + targetTableUrl).load();
+                } else {
+                    toastr.error(ltr_something_msg);
+                }
+            },
+            error: function() { toastr.error(ltr_something_msg); }
+        });
+    });
+
+    // Single delete.
+    $(document).on('click', '.deletePromoCode', function() {
+        var id = $(this).attr('data-id');
+        swal({
+            title: ltr_are_you_so_msg,
+            text: ltr_once_deleted_alert_msg,
+            icon: "warning",
+            buttons: [ltr_cancel, ltr_ok],
+            dangerMode: true,
+        }).then((willDelete) => {
+            if (willDelete) {
+                $('.edu_preloader').css('background-color', 'rgba(255,255,255,0.80)').css('display', 'block');
+                $.ajax({
+                    method: "POST",
+                    url: base_url + "ajaxcall/delete_promo_code",
+                    data: { 'id': id },
+                    success: function(resp) {
+                        resp = $.parseJSON(resp);
+                        if (resp['status'] == '1') {
+                            toastr.success(resp['msg'] || ltr_promo_deleted_msg);
+                            targetTableUrl = $('.server_datatable').attr('data-url');
+                            dataTableObj.ajax.url(base_url + targetTableUrl).load();
+                        } else {
+                            toastr.error(ltr_something_msg);
+                        }
+                        $('.edu_preloader').fadeOut();
+                    },
+                    error: function() {
+                        toastr.error(ltr_something_msg);
+                        $('.edu_preloader').fadeOut();
+                    }
+                });
+            }
+        });
+    });
+
+    // Bulk delete.
+    $(document).on('click', '.promoMultiDelete', function() {
+        if ($('.tableFullWrapper').find('.checkOneRow:checked').length == 0) {
+            toastr.error(ltr_atleast_date_msg);
+            return false;
+        }
+        swal({
+            title: ltr_are_deleted_alert_msg,
+            text: ltr_once_deleted_alert_msg,
+            icon: "warning",
+            buttons: [ltr_cancel, ltr_ok],
+            dangerMode: true,
+        }).then((willDelete) => {
+            if (willDelete) {
+                var AllIdArray = [];
+                $('.tableFullWrapper').find('.checkOneRow:checked').each(function() {
+                    var value = $(this).val();
+                    if (AllIdArray.indexOf(value) === -1) AllIdArray.push(value);
+                });
+                $('.tableFullWrapper').find('.checkOneRow').prop('checked', false);
+                $.ajax({
+                    method: "POST",
+                    url: base_url + "ajaxcall/promo_code_multidelete",
+                    data: { 'ids': JSON.stringify(AllIdArray) },
+                    success: function(resp) {
+                        resp = $.parseJSON(resp);
+                        if (resp['status'] == '1') {
+                            toastr.success(resp['msg'] || ltr_promo_deleted_msg);
+                            $('.create_ppr_popup').hide();
+                            targetTableUrl = $('.server_datatable').attr('data-url');
+                            dataTableObj.ajax.url(base_url + targetTableUrl).load();
+                        } else {
+                            toastr.error(ltr_something_msg);
+                        }
+                    },
+                    error: function() { toastr.error(ltr_something_msg); }
+                });
+            }
+        });
+    });
+
     $(document).on('click', '.addChapers, .editChapterName', function() {
         if ($(this).hasClass('editChapterName')) {
      
