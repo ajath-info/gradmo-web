@@ -723,70 +723,199 @@ public function email_already_sent(
 		}
 
 		/**
-		 * Low-level FCM (legacy HTTP) sender. Server key comes from general_settings.firebase_key.
+		 * Low-level FCM sender using the HTTP v1 API (the legacy /fcm/send API was shut down
+		 * by Google in June 2024). Auth uses a Firebase service account: a short-lived OAuth2
+		 * access token is minted from a JWT signed (RS256) with the service account private key.
+		 *
+		 * The service account JSON is read from general_settings.firebase_service_account_path
+		 * when set, otherwise from APPPATH/config/firebase-service-account.json.
+		 *
+		 * v1 sends to a single token per request, so a token list is looped and results aggregated.
 		 *
 		 * @param string|array $tokens one device token or a list of tokens
 		 * @param string       $title
 		 * @param string       $message
-		 * @param array        $data    extra data payload
-		 * @return array{ok:bool,http_code:int,response:string,request:string,error:string}
+		 * @param array        $data    extra data payload (values are coerced to strings; v1 requires string data)
+		 * @return array{ok:bool,http_code:int,response:string,request:string,error:string,sent:int,failed:int}
 		 */
 		public function sendPushNotification($tokens, $title, $message, $data = array())
 		{
-			$tokens = is_array($tokens) ? array_values(array_filter(array_map('strval', $tokens))) : (array) $tokens;
-			$serverKey = trim((string) $this->general_settings('firebase_key'));
-
-			if ($serverKey === '') {
-				return array('ok' => false, 'http_code' => 0, 'response' => '', 'request' => '', 'error' => 'Firebase key is not configured.');
-			}
+			$tokens = is_array($tokens) ? array_values(array_filter(array_map('strval', $tokens))) : array_values(array_filter(array((string) $tokens)));
 			if (empty($tokens)) {
-				return array('ok' => false, 'http_code' => 0, 'response' => '', 'request' => '', 'error' => 'No device tokens.');
+				return array('ok' => false, 'http_code' => 0, 'response' => '', 'request' => '', 'error' => 'No device tokens.', 'sent' => 0, 'failed' => 0);
 			}
 
-			$payload = array(
-				'registration_ids' => $tokens,
-				'notification'     => array('title' => $title, 'body' => $message),
-				'data'             => $data,
-				'priority'         => 'high',
+			$sa = $this->fcm_service_account();
+			if (empty($sa['project_id']) || empty($sa['client_email']) || empty($sa['private_key'])) {
+				return array('ok' => false, 'http_code' => 0, 'response' => '', 'request' => '', 'error' => 'Firebase service account is not configured.', 'sent' => 0, 'failed' => 0);
+			}
+
+			$access = $this->fcm_v1_access_token($sa);
+			if (empty($access['token'])) {
+				return array('ok' => false, 'http_code' => 0, 'response' => '', 'request' => '', 'error' => 'FCM auth failed: ' . $access['error'], 'sent' => 0, 'failed' => 0);
+			}
+
+			// v1 requires data to be a flat map of strings.
+			$flat = array();
+			foreach ((array) $data as $k => $v) {
+				$flat[(string) $k] = is_scalar($v) ? (string) $v : json_encode($v, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+			}
+
+			$url = 'https://fcm.googleapis.com/v1/projects/' . $sa['project_id'] . '/messages:send';
+			$sent = 0; $failed = 0;
+			$last_code = 0; $last_resp = ''; $last_req = ''; $last_err = '';
+
+			foreach ($tokens as $tok) {
+				$payload = array('message' => array(
+					'token'        => $tok,
+					'notification' => array('title' => (string) $title, 'body' => (string) $message),
+					'data'         => $flat,
+					'android'      => array('priority' => 'high'),
+				));
+				$body = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+				$ch = curl_init();
+				curl_setopt($ch, CURLOPT_URL, $url);
+				curl_setopt($ch, CURLOPT_POST, true);
+				curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+					'Authorization: Bearer ' . $access['token'],
+					'Content-Type: application/json',
+				));
+				curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+				curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+				curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+				curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+				curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+
+				$result = curl_exec($ch);
+				$err = $result === false ? curl_error($ch) : '';
+				$http_code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+				curl_close($ch);
+
+				$last_code = $http_code; $last_resp = (string) $result; $last_req = $body; $last_err = $err;
+				if ($result !== false && $http_code >= 200 && $http_code < 300) {
+					$sent++;
+				} else {
+					$failed++;
+				}
+			}
+
+			return array(
+				'ok'        => $sent > 0,
+				'http_code' => $last_code,
+				'response'  => $last_resp,
+				'request'   => $last_req,
+				'error'     => $last_err,
+				'sent'      => $sent,
+				'failed'    => $failed,
 			);
-			$body = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+		}
+
+		/**
+		 * Load and cache (per request) the Firebase service account credentials. Resolution order:
+		 *   1. general_settings.firebase_service_account_json  (full JSON stored in the DB — preferred)
+		 *   2. general_settings.firebase_service_account_path   (absolute path to a JSON file)
+		 *   3. APPPATH/config/firebase-service-account.json     (bundled fallback)
+		 *
+		 * @return array<string,mixed>
+		 */
+		private function fcm_service_account()
+		{
+			static $sa = null;
+			if ($sa !== null) {
+				return $sa;
+			}
+			$sa = array();
+
+			// 1) Full JSON stored in general_settings (no file on disk).
+			$json = trim((string) $this->general_settings('firebase_service_account_json'));
+			if ($json !== '') {
+				$decoded = json_decode($json, true);
+				if (is_array($decoded)) {
+					$sa = $decoded;
+					return $sa;
+				}
+			}
+
+			// 2) Configurable path, then 3) bundled fallback file.
+			$path = trim((string) $this->general_settings('firebase_service_account_path'));
+			if ($path === '' || !is_file($path)) {
+				$path = APPPATH . 'config/firebase-service-account.json';
+			}
+			if (is_file($path)) {
+				$decoded = json_decode((string) file_get_contents($path), true);
+				if (is_array($decoded)) {
+					$sa = $decoded;
+				}
+			}
+			return $sa;
+		}
+
+		/**
+		 * Mint (and file-cache ~1h) a Google OAuth2 access token for FCM using the service account.
+		 *
+		 * @param array $sa service account fields
+		 * @return array{token:string,error:string}
+		 */
+		private function fcm_v1_access_token(array $sa)
+		{
+			$aud = !empty($sa['token_uri']) ? $sa['token_uri'] : 'https://oauth2.googleapis.com/token';
+			$cache_file = rtrim(sys_get_temp_dir(), '\\/') . DIRECTORY_SEPARATOR . 'fcm_v1_token_' . md5((string) $sa['client_email']) . '.json';
+
+			if (is_file($cache_file)) {
+				$c = json_decode((string) file_get_contents($cache_file), true);
+				if (is_array($c) && !empty($c['token']) && isset($c['exp']) && (int) $c['exp'] > time() + 60) {
+					return array('token' => (string) $c['token'], 'error' => '');
+				}
+			}
+
+			$now = time();
+			$header = array('alg' => 'RS256', 'typ' => 'JWT');
+			$claim = array(
+				'iss'   => $sa['client_email'],
+				'scope' => 'https://www.googleapis.com/auth/firebase.messaging',
+				'aud'   => $aud,
+				'iat'   => $now,
+				'exp'   => $now + 3600,
+			);
+			$input = $this->b64url(json_encode($header)) . '.' . $this->b64url(json_encode($claim));
+			$signature = '';
+			if (!openssl_sign($input, $signature, $sa['private_key'], 'sha256')) {
+				return array('token' => '', 'error' => 'openssl_sign failed (check private_key).');
+			}
+			$jwt = $input . '.' . $this->b64url($signature);
 
 			$ch = curl_init();
-			curl_setopt($ch, CURLOPT_URL, 'https://fcm.googleapis.com/fcm/send');
+			curl_setopt($ch, CURLOPT_URL, $aud);
 			curl_setopt($ch, CURLOPT_POST, true);
-			curl_setopt($ch, CURLOPT_HTTPHEADER, array(
-				'Authorization: key=' . $serverKey,
-				'Content-Type: application/json',
-			));
 			curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 			curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
 			curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 			curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-			curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
-
-			$result = curl_exec($ch);
-			$err = $result === false ? curl_error($ch) : '';
-			$http_code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+			curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query(array(
+				'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+				'assertion'  => $jwt,
+			)));
+			$resp = curl_exec($ch);
+			$err = $resp === false ? curl_error($ch) : '';
 			curl_close($ch);
 
-			// FCM legacy returns {"success":N,"failure":M,...}; treat success>0 as ok.
-			$ok = false;
-			if ($result !== false && $http_code >= 200 && $http_code < 300) {
-				$decoded = json_decode((string) $result, true);
-				$ok = !is_array($decoded) || (isset($decoded['success']) ? (int) $decoded['success'] > 0 : true);
+			$data = json_decode((string) $resp, true);
+			if (is_array($data) && !empty($data['access_token'])) {
+				$exp = $now + (isset($data['expires_in']) ? (int) $data['expires_in'] : 3600);
+				@file_put_contents($cache_file, json_encode(array('token' => $data['access_token'], 'exp' => $exp)));
+				return array('token' => (string) $data['access_token'], 'error' => '');
 			}
-
-			return array(
-				'ok'        => $ok,
-				'http_code' => $http_code,
-				'response'  => (string) $result,
-				'request'   => $body,
-				'error'     => $err,
-			);
+			return array('token' => '', 'error' => $err !== '' ? $err : (is_array($data) ? json_encode($data) : 'Unknown token error.'));
 		}
 
-	
-	
+		private function b64url($data)
+		{
+			return rtrim(strtr(base64_encode((string) $data), '+/', '-_'), '=');
+		}
+
+
+
 	}
 
 
