@@ -936,6 +936,20 @@ class Ajaxcall extends CI_Controller{
         }
     }
 
+    // Insert or update a single general_settings row by key.
+    private function upsert_general_setting($key_text, $value, $title = ''){
+        $exists = $this->db_model->select_data('id', 'general_settings', array('key_text' => $key_text), 1);
+        if (!empty($exists)) {
+            $this->db_model->update_data_limit('general_settings', array('velue_text' => $value), array('key_text' => $key_text), 1);
+            return true;
+        }
+        return $this->db_model->insert_data('general_settings', array(
+            'title' => $title !== '' ? $title : $key_text,
+            'key_text' => $key_text,
+            'velue_text' => $value,
+        ));
+    }
+
     function deletebatch(){
         if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
             $batch_id = (int) $this->input->post('batch_id', TRUE);
@@ -10857,10 +10871,7 @@ function result_table($type){
                         array_push($device_id,$get_tokens['token']);
                     }
                 }
-                $url = 'https://fcm.googleapis.com/fcm/send';
-                $api_key = $this->general_settings('firebase_key');
-
-                // $api_key = 'AAAAFU0Nyks:APA91bFWu1zpzRasM60cqJjMvfcL5Uc667MP38b5CaYd5O3g-ioRYGtVSvBCdFUt5ea4H8eIDbPKNs98z5W0RxFfRsswy07p1EbSKRRlQkUA1b9sb_fBC2sHvFJZWhpILlZlOqz0_M4u';
+                // Migrated to FCM HTTP v1 (legacy /fcm/send was shut down by Google in June 2024).
                 $message = array(
                         'title' => $title,
                         'body' => array(
@@ -10869,34 +10880,12 @@ function result_table($type){
                             'batch_id'=>$batch_id
                             )
                 );
-                $fields = array (
-                    'registration_ids' =>$device_id,
-                    'data' => array (
-                    "message" => $message
-                    )
-                );
-                $headers = array(
-                    'Content-Type:application/json',
-                    'Authorization:key='.$api_key
-                );
-                $ch = curl_init();
-                curl_setopt($ch, CURLOPT_URL, $url);
-                curl_setopt($ch, CURLOPT_POST, true);
-                curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
-                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($fields));
-                $result = curl_exec($ch);
-               
-                if ($result === FALSE) {
-                    die('FCM Send Error: ' . curl_error($ch));
-                }
-                curl_close($ch);
+                $push = $this->common->sendPushNotification($device_id, $title, is_string($where) ? $where : '', array('message' => $message));
+                $result = isset($push['response']) ? $push['response'] : '';
             }
              return $result;
         }
-   
+
     }
     public function push_notification_android_video($batch_id='',$title='',$where='',$student_id='',$videoId='',$url_video='',$videoType=''){
        
@@ -10923,10 +10912,7 @@ function result_table($type){
                 }
            
                    
-                $url = 'https://fcm.googleapis.com/fcm/send';
-                $api_key = $this->general_settings('firebase_key');
-
-                // $api_key = 'AAAAFU0Nyks:APA91bFWu1zpzRasM60cqJjMvfcL5Uc667MP38b5CaYd5O3g-ioRYGtVSvBCdFUt5ea4H8eIDbPKNs98z5W0RxFfRsswy07p1EbSKRRlQkUA1b9sb_fBC2sHvFJZWhpILlZlOqz0_M4u';
+                // Migrated to FCM HTTP v1 (legacy /fcm/send was shut down by Google in June 2024).
                 $message = array(
                         'title' => $title,
                         'body' => array(
@@ -10939,35 +10925,13 @@ function result_table($type){
                             'batch_id'=>$batch_id
                             )
                 );
-                $fields = array (
-                    'registration_ids' =>$device_id,
-                    'data' => array (
-                    "message" => $message
-                    )
-                );
-                $headers = array(
-                    'Content-Type:application/json',
-                    'Authorization:key='.$api_key
-                );
-                $ch = curl_init();
-                curl_setopt($ch, CURLOPT_URL, $url);
-                curl_setopt($ch, CURLOPT_POST, true);
-                curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
-                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($fields));
-                $result = curl_exec($ch);
-               
-                if ($result === FALSE) {
-                    die('FCM Send Error: ' . curl_error($ch));
-                }
-                curl_close($ch);
-               
+                $push = $this->common->sendPushNotification($device_id, $title, is_string($where) ? $where : '', array('message' => $message));
+                $result = isset($push['response']) ? $push['response'] : '';
+
             }
              return $result;
         }
-   
+
     }
     function readMoreWord($story_desc, $title='',$C_word='') {
         $chars = 90;
@@ -11790,32 +11754,18 @@ function result_table($type){
     function edit_firebase_setting(){
         if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
 
-            $where = array('key_text' => 'firebase_key');
-            $check = $this->db_model->select_data('*','general_settings',$where);
-
-            if(!empty($check)){
-                
-                if(!empty($this->input->post('firebase_key',TRUE))){
-					$this->db_model->update_data_limit('general_settings',array('velue_text'=>$this->input->post('firebase_key',TRUE)),array('key_text'=>'firebase_key'),1);
-                
-                $resp = array('status'=>1,'msg'=>$this->lang->line('ltr_updated_msg'));
+            // FCM HTTP v1 service account JSON (the authoritative credentials).
+            $sa_json = trim((string) $this->input->post("firebase_service_account_json", TRUE));
+            if ($sa_json !== "") {
+                $decoded = json_decode($sa_json, true);
+                if (!is_array($decoded) || empty($decoded["project_id"]) || empty($decoded["client_email"]) || empty($decoded["private_key"])) {
+                    echo json_encode(array("status" => 0, "msg" => "Invalid service account JSON. Paste the full file (must include project_id, client_email and private_key)."), JSON_UNESCAPED_SLASHES);
+                    return;
                 }
+                $this->upsert_general_setting("firebase_service_account_json", $sa_json, "Firebase Accounts");
             }
-            else{
 
-                $data_arr['title'] = 'Firebase Accounts';
-                $data_arr['key_text'] = 'firebase_key';
-                $data_arr['velue_text'] = $_POST['firebase_key'];
-                $data_arr = $this->security->xss_clean($data_arr);
-
-                $result = $this->db_model->insert_data('general_settings',$data_arr);
-
-                $resp = array('status'=>1,'msg'=>$this->lang->line('ltr_added_msg'));
-
-            }
-				
-					
-			    echo json_encode($resp,JSON_UNESCAPED_SLASHES);
+            echo json_encode(array("status" => 1, "msg" => $this->lang->line("ltr_updated_msg")), JSON_UNESCAPED_SLASHES);
         }else{
             echo $this->lang->line('ltr_not_allowed_msg');
         }

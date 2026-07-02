@@ -1239,43 +1239,20 @@ class Admin_profile extends CI_Controller {
                 }
            
                    
-                $url = 'https://fcm.googleapis.com/fcm/send';
-                $api_key = 'AAAAFU0Nyks:APA91bFWu1zpzRasM60cqJjMvfcL5Uc667MP38b5CaYd5O3g-ioRYGtVSvBCdFUt5ea4H8eIDbPKNs98z5W0RxFfRsswy07p1EbSKRRlQkUA1b9sb_fBC2sHvFJZWhpILlZlOqz0_M4u';
+                // Migrated to FCM HTTP v1 (legacy /fcm/send was shut down by Google in June 2024).
                 $message = array(
                         'title' => $title,
                         'body' => array(
                             'where'=>$where
                             )
                 );
-                $fields = array (
-                    'registration_ids' =>$device_id,
-                    'data' => array (
-                    "message" => $message
-                    )
-                );
-                $headers = array(
-                    'Content-Type:application/json',
-                    'Authorization:key='.$api_key
-                );
-                $ch = curl_init();
-                curl_setopt($ch, CURLOPT_URL, $url);
-                curl_setopt($ch, CURLOPT_POST, true);
-                curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
-                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($fields));
-                $result = curl_exec($ch);
-               
-                if ($result === FALSE) {
-                    die('FCM Send Error: ' . curl_error($ch));
-                }
-                curl_close($ch);
-               
+                $push = $this->common->sendPushNotification($device_id, $title, is_string($where) ? $where : '', array('message' => $message));
+                $result = isset($push['response']) ? $push['response'] : '';
+
             }
              return $result;
         }
-   
+
     }
 	
 	
@@ -1361,7 +1338,7 @@ class Admin_profile extends CI_Controller {
 	
 	function firebase_settings(){
 
-        $data['firebase_key'] =$this->general_settings('firebase_key');
+		$data['firebase_service_account_json'] = $this->general_settings('firebase_service_account_json');
 	    $header['title']=$this->lang->line('ltr_firebase_settings');
 		$data['firebase_settings'] = $this->general_settings('language_name');
 		$this->load->view("common/admin_header",$header);
