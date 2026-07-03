@@ -132,7 +132,7 @@
 			a.href = href;
 			a.innerHTML = thumb +
 				'<div class="inst-card-body">' +
-				'<p class="inst-card-title-sm">' + esc(it.name || '') + '</p>' +
+				'<p class="inst-card-title-sm">' + esc([it.name, (it.lastName || it.last_name)].filter(Boolean).join(' ').trim() || (it.name || '')) + '</p>' +
 				'<p class="inst-card-sub"><strong>Type:</strong> ' + esc(profileLabel) + '</p>' +
 				(loc ? '<p class="inst-card-sub">' + esc(loc) + '</p>' : '') +
 				'<p class="inst-card-sub">' + starsHtml(Math.round(avg)) + ' <strong>' + esc(avg.toFixed(1)) + '</strong> (' + esc(tr) + ')</p>' +

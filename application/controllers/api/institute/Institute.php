@@ -56,6 +56,7 @@ class Institute extends MY_Controller
 		return array(
 			'instituteId' => (int) $row['id'],
 			'name' => isset($row['name']) ? $row['name'] : '',
+			'lastName' => isset($row['last_name']) ? $row['last_name'] : '',
 			'email' => isset($row['email']) ? $row['email'] : '',
 			'mobile' => isset($row['mobile']) ? $row['mobile'] : '',
 			'pincode' => isset($row['pincode']) ? $row['pincode'] : '',
@@ -144,7 +145,7 @@ class Institute extends MY_Controller
 	private function institute_user_select_columns(array $field_flip = null)
 	{
 		$candidates = array(
-			'id', 'name', 'email', 'mobile', 'role', 'user_type', 'teach_image', 'pincode',
+			'id', 'name', 'last_name', 'email', 'mobile', 'role', 'user_type', 'teach_image', 'pincode',
 			'country', 'state', 'city', 'address',
 			'school_college_name', 'teach_education', 'institute_code', 'institude_code',
 			'lat', 'long', 'latitude', 'longitude', 'pay_mode',
@@ -187,7 +188,7 @@ class Institute extends MY_Controller
 		}
 		$have = $field_flip;
 		$candidates = array(
-			'name', 'email', 'mobile', 'city', 'state', 'address',
+			'name', 'last_name', 'email', 'mobile', 'city', 'state', 'address',
 			'school_college_name', 'pincode', 'teach_education', 'institute_code', 'institude_code',
 		);
 		$cols = array();
@@ -203,6 +204,12 @@ class Institute extends MY_Controller
 		$this->db->like('users.' . $cols[0], $search, 'both');
 		for ($i = 1, $n = count($cols); $i < $n; $i++) {
 			$this->db->or_like('users.' . $cols[$i], $search, 'both');
+		}
+		// Full-name match so a multi-word query like "gajendra singh" matches
+		// name + last_name together (each per-column LIKE above only sees one field).
+		if (isset($have['name']) && isset($have['last_name'])) {
+			$like = '%' . $this->db->escape_like_str($search) . '%';
+			$this->db->or_where("CONCAT(users.name, ' ', IFNULL(users.last_name, '')) LIKE " . $this->db->escape($like), null, false);
 		}
 		$this->db->group_end();
 	}
@@ -476,6 +483,7 @@ class Institute extends MY_Controller
 				$out[] = array(
 					'instituteId' => (int) $r['id'],
 					'name' => isset($r['name']) ? $r['name'] : '',
+					'last_name' => isset($r['last_name']) ? $r['last_name'] : '',
 					'email' => isset($r['email']) ? $r['email'] : '',
 					'mobile' => isset($r['mobile']) ? $r['mobile'] : '',
 					'pincode' => isset($r['pincode']) ? $r['pincode'] : '',

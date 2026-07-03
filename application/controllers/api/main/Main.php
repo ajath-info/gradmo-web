@@ -997,6 +997,7 @@ class Main extends MY_Controller
 			$instituteList[] = array(
 				'instituteId' => (int) $u['id'],
 				'name' => isset($u['name']) ? $u['name'] : '',
+				'lastName' => isset($u['last_name']) ? $u['last_name'] : '',
 				'email' => isset($u['email']) ? $u['email'] : '',
 				'role' => (int) $u['role'],
 				'image' => profile_image_url($img, 4, isset($u['user_type']) ? $u['user_type'] : ''),
@@ -1009,6 +1010,7 @@ class Main extends MY_Controller
 			$teacher_list[] = array(
 				'Id' => (int) $u['id'],
 				'name' => isset($u['name']) ? $u['name'] : '',
+				'lastName' => isset($u['last_name']) ? $u['last_name'] : '',
 				'email' => isset($u['email']) ? $u['email'] : '',
 				'role' => (int) $u['role'],
 				'image' => profile_image_url($img, 3, isset($u['user_type']) ? $u['user_type'] : ''),
@@ -1144,6 +1146,10 @@ class Main extends MY_Controller
 					$this->db->or_like($col, $search);
 				}
 			}
+			// Full-name match so a multi-word query like "gajendra singh" matches
+			// name + last_name together (each per-column LIKE above only sees one field).
+			$like = '%' . $this->db->escape_like_str($search) . '%';
+			$this->db->or_where("CONCAT(name, ' ', IFNULL(last_name, '')) LIKE " . $this->db->escape($like), null, false);
 			$this->db->group_end();
 		}
 

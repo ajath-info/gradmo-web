@@ -72,7 +72,12 @@ class Notification_service
 			$message,
 			$url,
 			$recipients,
-			array('send_push' => $send_push, 'data' => $extra_data)
+			array(
+				'send_push' => $send_push,
+				'data' => $extra_data,
+				// Per-notification image (opts['image'] wins, else data['image'], else site-logo default).
+				'image' => array_key_exists('image', $opts) ? $opts['image'] : null,
+			)
 		);
 	}
 
@@ -83,6 +88,23 @@ class Notification_service
 	 * @param array $opts       send_push(bool), data(array)
 	 * @return array{master_id:int,recipients:int,sent:int,failed:int}
 	 */
+	/**
+	 * Map the internal user_type code to the string the apps expect.
+	 *
+	 * @return string student|teacher|institute
+	 */
+	private function user_type_label($ut_code)
+	{
+		switch ((int) $ut_code) {
+			case self::UT_TEACHER:
+				return 'teacher';
+			case self::UT_INSTITUTE:
+				return 'institute';
+			default:
+				return 'student';
+		}
+	}
+
 	private function write_event($batch_id, $notification_type, $title, $message, $url, array $recipients, array $opts = array())
 	{
 		$result = array('master_id' => 0, 'recipients' => 0, 'sent' => 0, 'failed' => 0);
@@ -91,6 +113,12 @@ class Notification_service
 		}
 		$send_push = !array_key_exists('send_push', $opts) || !empty($opts['send_push']);
 		$base_data = isset($opts['data']) && is_array($opts['data']) ? $opts['data'] : array();
+
+		// Per-notification image: explicit opts['image'] wins, else data['image'], else null
+		// (null => Common::sendPushNotification falls back to the site-logo default).
+		$push_image = array_key_exists('image', $opts) && $opts['image'] !== null
+			? (string) $opts['image']
+			: (isset($base_data['image']) ? (string) $base_data['image'] : null);
 
 		$msg = $this->clip((string) $message, 250);
 		$url = $this->clip((string) $url, 250);
@@ -134,9 +162,15 @@ class Notification_service
 			$user_type = isset($r['user_type']) ? (int) $r['user_type'] : self::UT_STUDENT;
 			$device_token = isset($r['device_token']) ? trim((string) $r['device_token']) : '';
 
+			// Per-recipient data carries who the push is for (string values; v1 requires strings).
+			$recipient_data = array_merge($data, array(
+				'user_id'   => (string) $uid,
+				'user_type' => $this->user_type_label($user_type),
+			));
+
 			$push = null;
 			if ($send_push && $device_token !== '') {
-				$push = $this->CI->common->sendPushNotification($device_token, $push_title, $msg, $data);
+				$push = $this->CI->common->sendPushNotification($device_token, $push_title, $msg, $recipient_data, $push_image);
 				!empty($push['ok']) ? $result['sent']++ : $result['failed']++;
 			}
 
@@ -288,6 +322,13 @@ class Notification_service
 			$name = isset($r['name']) ? (string) $r['name'] : '';
 			$email = isset($r['email']) ? trim((string) $r['email']) : '';
 			$device_token = isset($r['device_token']) ? trim((string) $r['device_token']) : '';
+			$ut_code = isset($r['user_type']) ? (int) $r['user_type'] : self::UT_STUDENT;
+
+			// Per-recipient data carries who the push is for (string values; v1 requires strings).
+			$recipient_data = array_merge($push_data, array(
+				'user_id'   => (string) $uid,
+				'user_type' => $this->user_type_label($ut_code),
+			));
 
 			if ($do_email && $email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
 				$res = $this->CI->common->send_email(array(
@@ -302,7 +343,7 @@ class Notification_service
 
 			$push = null;
 			if ($do_push && $device_token !== '') {
-				$push = $this->CI->common->sendPushNotification($device_token, $push_title, $push_message, $push_data);
+				$push = $this->CI->common->sendPushNotification($device_token, $push_title, $push_message, $recipient_data);
 				!empty($push['ok']) ? $result['push_sent']++ : $result['push_failed']++;
 			}
 
@@ -435,7 +476,13 @@ class Notification_service
 		if ($master_id > 0 && $this->CI->db->table_exists('push_notifications_details')) {
 			$push = null;
 			if ($do_push && $device_token !== '') {
-				$push = $this->CI->common->sendPushNotification($device_token, $push_title, $push_message, array('type' => $type, 'pushnotify_id' => (string) $master_id, 'url' => $url));
+				$push = $this->CI->common->sendPushNotification($device_token, $push_title, $push_message, array(
+					'type' => $type,
+					'pushnotify_id' => (string) $master_id,
+					'url' => $url,
+					'user_id' => (string) $user_id,
+					'user_type' => $this->user_type_label($ut_code),
+				));
 				$result['push_sent'] = !empty($push['ok']);
 			}
 			$ok = !empty($push['ok']);
