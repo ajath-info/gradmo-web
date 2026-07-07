@@ -11,9 +11,11 @@ class Admin_profile extends CI_Controller {
         }
 		if(!empty($_SESSION['role'])){
 	        if($_SESSION['role']=='student'){
-	            redirect(base_url('student/dashboard')); 
+	            redirect(base_url('student/dashboard'));
 	        }else if($_SESSION['role']==3){
-	            redirect(base_url('teacher/dashboard')); 
+	            // Teachers are not allowed in the admin panel — log them out and send to login.
+	            $this->session->sess_destroy();
+	            redirect(base_url('login'));
 	        }
 	    }else{
 			// Guest: only public admin auth URLs; anything else → admin login (site login stays at `/login` → `website/login`).
