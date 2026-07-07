@@ -84,7 +84,7 @@
 		if (!list || !list.length) { stack.innerHTML = '<p class="inst-muted mb-0 px-2">' + emptyMsg + '</p>'; return; }
 		list.forEach(function (it) {
 			var id = it[idKey] || it.instituteId || it.Id || it.id || 0;
-			var name = it.name || '';
+			var name = [it.name, (it.lastName || it.last_name)].filter(Boolean).join(' ').trim() || (it.name || '');
 			var email = it.email || '';
 			var imgUrl = (it.image || '').trim();
 			var thumb = '<div class="inst-mini-logo"><img src="' + esc(imgUrl) + '" alt="" data-fallback-type="user" data-has-fallback="1"></div>';

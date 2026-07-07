@@ -736,9 +736,11 @@ public function email_already_sent(
 		 * @param string       $title
 		 * @param string       $message
 		 * @param array        $data    extra data payload (values are coerced to strings; v1 requires string data)
+		 * @param string|null  $image   notification image URL. null => use the site-logo default (applied to
+		 *                               every push); '' => no image; any string => that image URL.
 		 * @return array{ok:bool,http_code:int,response:string,request:string,error:string,sent:int,failed:int}
 		 */
-		public function sendPushNotification($tokens, $title, $message, $data = array())
+		public function sendPushNotification($tokens, $title, $message, $data = array(), $image = null)
 		{
 			$tokens = is_array($tokens) ? array_values(array_filter(array_map('strval', $tokens))) : array_values(array_filter(array((string) $tokens)));
 			if (empty($tokens)) {
@@ -761,16 +763,27 @@ public function email_already_sent(
 				$flat[(string) $k] = is_scalar($v) ? (string) $v : json_encode($v, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 			}
 
+			// null => site-logo default for every push; '' => no image; string => that URL.
+			$image = ($image === null) ? $this->default_push_image_url() : trim((string) $image);
+
 			$url = 'https://fcm.googleapis.com/v1/projects/' . $sa['project_id'] . '/messages:send';
 			$sent = 0; $failed = 0;
 			$last_code = 0; $last_resp = ''; $last_req = ''; $last_err = '';
 
 			foreach ($tokens as $tok) {
+				$notification = array('title' => (string) $title, 'body' => (string) $message);
+				if ($image !== '') {
+					$notification['image'] = $image;
+				}
+				$android = array('priority' => 'high');
+				if ($image !== '') {
+					$android['notification'] = array('image' => $image);
+				}
 				$payload = array('message' => array(
 					'token'        => $tok,
-					'notification' => array('title' => (string) $title, 'body' => (string) $message),
+					'notification' => $notification,
 					'data'         => $flat,
-					'android'      => array('priority' => 'high'),
+					'android'      => $android,
 				));
 				$body = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
@@ -912,6 +925,31 @@ public function email_already_sent(
 		private function b64url($data)
 		{
 			return rtrim(strtr(base64_encode((string) $data), '+/', '-_'), '=');
+		}
+
+		/**
+		 * Default notification image shown on every push (unless a caller overrides it).
+		 * Prefers general_settings.push_notification_image, then the site logo. Cached per request.
+		 *
+		 * @return string absolute image URL, or '' when none is configured
+		 */
+		private function default_push_image_url()
+		{
+			static $img = null;
+			if ($img !== null) {
+				return $img;
+			}
+			$img = '';
+			$override = trim((string) $this->general_settings('push_notification_image'));
+			if ($override !== '') {
+				$img = (stripos($override, 'http') === 0) ? $override : base_url($override);
+				return $img;
+			}
+			$site = $this->CI->db_model->select_data('site_logo', 'site_details', array('id' => 1), 1);
+			if (!empty($site[0]['site_logo'])) {
+				$img = base_url('uploads/site_data/' . $site[0]['site_logo']);
+			}
+			return $img;
 		}
 
 

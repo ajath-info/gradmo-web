@@ -232,11 +232,11 @@
 											$front_role_s = strtolower(trim((string) $front_role_raw));
 											$is_front_student = ($front_api_ut === 'student' || $front_role_s === 'student' || $front_role_raw === 2 || $front_role_raw === '2');
 											$is_front_teacher = ($front_api_ut === 'teacher' || $front_role_s === 'teacher' || $front_role_raw === 3 || $front_role_raw === '3');
-											$front_my_institutes_url = base_url('institute/list');
+											$front_my_institutes_url = base_url('institute/mylist');
 											$front_my_batches_url = base_url('batch/list');
 											if ($is_front_student || $is_front_teacher) {
 												$front_my_batches_url = base_url('batch/mylist');
-											    $front_my_institutes_url = base_url('institute/list');
+											    $front_my_institutes_url = base_url('institute/mylist');
                                             }
 											$front_notifications_url = base_url('notifications');
 											$front_profile_img = trim((string) $this->session->userdata('profile_img'));

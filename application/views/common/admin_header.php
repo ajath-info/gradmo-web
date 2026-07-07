@@ -1137,10 +1137,12 @@ if ( ! is_array($cur_arr)) {
                                 <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/></svg>
                                 <span><?php echo html_escape($this->common->languageTranslator('ltr_cms_pages'));?></span>
                                 </a></li>
+                                <?php /* Templates menu hidden — templates are not managed from admin.
                                 <li <?php echo in_array("templates",$cur_arr)?'class="active"':'';?>><a href="<?php echo base_url();?>admin/templates">
                                 <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20,6C20.58,6 21.05,6.2 21.42,6.59C21.8,7.05 22,7.58 22,8V18C22,19.11 21.11,20 20,20H4C2.89,20 2,19.11 2,18V6C2,4.89 2.89,4 4,4H10L12,6H20M20,8H4V18H20V8Z"/></svg>
                                 <span><?php echo html_escape($this->common->languageTranslator('ltr_templates'));?></span>
                                 </a></li>
+                                */ ?>
                         <?php 
                     }
                 ?>  
