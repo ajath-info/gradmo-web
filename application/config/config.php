@@ -24,7 +24,15 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 |
 */
 // $config['base_url'] = 'https://kamleshyadav.in/Eacademy_update';
-$protocol = is_https() ? "https://" : "http://";
+// Detect HTTPS even behind an SSL-terminating proxy / CDN (Cloudflare, load balancer).
+// Otherwise on a live https:// site base_url would be built as http://, and the browser
+// blocks the http asset links as mixed content — leaving pages unstyled (icons full-screen).
+$is_secure = is_https()
+	|| (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https')
+	|| (isset($_SERVER['HTTP_X_FORWARDED_SSL']) && strtolower($_SERVER['HTTP_X_FORWARDED_SSL']) === 'on')
+	|| (isset($_SERVER['HTTP_CF_VISITOR']) && stripos($_SERVER['HTTP_CF_VISITOR'], 'https') !== false)
+	|| (isset($_SERVER['SERVER_PORT']) && (int) $_SERVER['SERVER_PORT'] === 443);
+$protocol = $is_secure ? "https://" : "http://";
 $subfoler = str_replace(basename($_SERVER['SCRIPT_NAME']),"",$_SERVER['SCRIPT_NAME']);
 $config['base_url'] = isset($_SERVER['HTTP_HOST']) ? $protocol.$_SERVER['HTTP_HOST'].$subfoler : "";
 
