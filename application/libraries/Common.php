@@ -769,6 +769,7 @@ public function email_already_sent(
 			$url = 'https://fcm.googleapis.com/v1/projects/' . $sa['project_id'] . '/messages:send';
 			$sent = 0; $failed = 0;
 			$last_code = 0; $last_resp = ''; $last_req = ''; $last_err = '';
+			$invalid_tokens = array();
 
 			foreach ($tokens as $tok) {
 				$notification = array('title' => (string) $title, 'body' => (string) $message);
@@ -779,11 +780,21 @@ public function email_already_sent(
 				if ($image !== '') {
 					$android['notification'] = array('image' => $image);
 				}
+				// iOS/APNs: FCM does not auto-fill sound/badge, and the image only shows when
+				// mutable-content=1 + fcm_options.image are set (needs a Notification Service Extension app-side).
+				$apns = array(
+					'headers' => array('apns-priority' => '10'),
+					'payload' => array('aps' => array('sound' => 'default', 'mutable-content' => 1)),
+				);
+				if ($image !== '') {
+					$apns['fcm_options'] = array('image' => $image);
+				}
 				$payload = array('message' => array(
 					'token'        => $tok,
 					'notification' => $notification,
 					'data'         => $flat,
 					'android'      => $android,
+					'apns'         => $apns,
 				));
 				$body = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
@@ -810,18 +821,75 @@ public function email_already_sent(
 					$sent++;
 				} else {
 					$failed++;
+					// A dead token (app uninstalled / token rotated): FCM returns 404 UNREGISTERED
+					// or 400 INVALID_ARGUMENT. Flag it so the caller can purge it from the DB.
+					if ($this->fcm_response_token_is_dead($http_code, (string) $result)) {
+						$invalid_tokens[] = $tok;
+						$this->clear_dead_device_token($tok);
+					}
 				}
 			}
 
 			return array(
-				'ok'        => $sent > 0,
-				'http_code' => $last_code,
-				'response'  => $last_resp,
-				'request'   => $last_req,
-				'error'     => $last_err,
-				'sent'      => $sent,
-				'failed'    => $failed,
+				'ok'             => $sent > 0,
+				'http_code'      => $last_code,
+				'response'       => $last_resp,
+				'request'        => $last_req,
+				'error'          => $last_err,
+				'sent'           => $sent,
+				'failed'         => $failed,
+				'invalid_tokens' => $invalid_tokens,
 			);
+		}
+
+		/**
+		 * True when an FCM v1 error means the token is permanently invalid and should be removed.
+		 */
+		private function fcm_response_token_is_dead($http_code, $response)
+		{
+			if ((int) $http_code === 404) {
+				return true; // NOT_FOUND / UNREGISTERED
+			}
+			$decoded = json_decode((string) $response, true);
+			$status = isset($decoded['error']['status']) ? (string) $decoded['error']['status'] : '';
+			if ($status === 'NOT_FOUND' || $status === 'UNREGISTERED') {
+				return true;
+			}
+			if (!empty($decoded['error']['details']) && is_array($decoded['error']['details'])) {
+				foreach ($decoded['error']['details'] as $d) {
+					$code = isset($d['errorCode']) ? (string) $d['errorCode'] : '';
+					if ($code === 'UNREGISTERED' || $code === 'INVALID_ARGUMENT') {
+						return true;
+					}
+				}
+			}
+			return false;
+		}
+
+		/**
+		 * Blank out a dead FCM token wherever it is stored (students + users, token/device_token columns),
+		 * so future sends skip it. Best-effort; ignores tables/columns that do not exist.
+		 */
+		private function clear_dead_device_token($token)
+		{
+			$token = trim((string) $token);
+			if ($token === '') {
+				return;
+			}
+			$targets = array(
+				'students' => array('token', 'device_token'),
+				'users'    => array('token', 'device_token'),
+			);
+			foreach ($targets as $table => $cols) {
+				if (!$this->CI->db->table_exists($table)) {
+					continue;
+				}
+				foreach ($cols as $col) {
+					if ($this->CI->db->field_exists($col, $table)) {
+						$this->CI->db->where($col, $token)->update($table, array($col => ''));
+					}
+				}
+			}
 		}
 
 		/**
