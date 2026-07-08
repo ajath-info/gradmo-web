@@ -171,9 +171,20 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 					$vars[$k] = is_scalar($v) || $v === null ? (string) $v : '';
 				}
 			}
+			// Fall back to any name-ish variable the caller supplied so {{NAME}} always resolves
+			// (callers often pass STUDENT_NAME / TEACHER_NAME / INSTITUTION_ADMIN_NAME instead of name).
+			if (empty($vars['name'])) {
+				foreach (array('NAME', 'STUDENT_NAME', 'TEACHER_NAME', 'INSTITUTION_ADMIN_NAME', 'USER_NAME', 'user_name') as $nameKey) {
+					if (!empty($vars[$nameKey])) {
+						$vars['name'] = $vars[$nameKey];
+						break;
+					}
+				}
+			}
 			if (!empty($vars['name'])) {
 				$vars['NAME'] = $vars['name'];
 				$vars['USER_NAME'] = $vars['name'];
+				if (empty($vars['STUDENT_NAME'])) { $vars['STUDENT_NAME'] = $vars['name']; }
 			}
 			$vars['SITE_NAME'] = isset($vars['site_name']) ? $vars['site_name'] : $this->siteTitle;
 			$vars['LOGIN_LINK'] = isset($vars['link']) ? $vars['link'] : base_url('login');
@@ -342,8 +353,13 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 			$text = (string) $text;
 			foreach ($vars as $key => $value) {
 				$safe = (string) $value;
-				// Case-insensitive so template authors can use {{NAME}}, {{name}} or {name}.
-				$text = str_ireplace(array('{{' . $key . '}}', '{' . $key . '}'), $safe, $text);
+				$k = preg_quote((string) $key, '/');
+				// Whitespace- and case-tolerant: matches {{KEY}}, {{ KEY }}, {KEY}, { KEY } etc.
+				// so a template author's stray spaces inside the braces don't leave the tag unreplaced.
+				$pattern = '/\{\{\s*' . $k . '\s*\}\}|\{\s*' . $k . '\s*\}/i';
+				$text = preg_replace_callback($pattern, function () use ($safe) {
+					return $safe;
+				}, $text);
 			}
 			return $text;
 		}
