@@ -354,6 +354,7 @@ $route['api/user/attendance-list'] = 'api/user/home/attendanceList';
 $route['api/user/add-attendance'] = 'api/user/home/addAttendance';
 $route['api/main/site-details'] = 'api/main/main/site_details';
 $route['api/main/notifications-list'] = 'api/main/main/notifications_list';
+$route['api/main/all_notifications-list'] = 'api/main/main/all_notifications_list';
 $route['api/main/notifications-read'] = 'api/main/main/notifications_read';
 $route['api/main/notifications-delete'] = 'api/main/main/notifications_delete';
 

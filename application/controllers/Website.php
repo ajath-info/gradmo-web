@@ -1586,7 +1586,11 @@ class Website extends MY_Controller
 				return;
 			}
 			$data = $this->frontend_shell_data('Notifications');
-			$data['notifications_api_url'] = site_url('api/main/notifications-list');
+			// The Notification Page shows the FULL list (all_notifications-list) — including items the
+			// user cleared from the header popup (clear = 1). The header uses the active list only.
+			$data['notifications_api_url'] = site_url('api/main/all_notifications-list');
+			$data['notifications_read_url'] = site_url('api/main/notifications-read');
+			$data['notifications_delete_url'] = site_url('api/main/notifications-delete');
 			$data['api_access_token'] = $this->website_session_access_token();
 			$this->render_frontend_layout('frontend/notifications_page', $data);
 		}

@@ -241,7 +241,159 @@
 											$front_notifications_url = base_url('notifications');
 											$front_profile_img = trim((string) $this->session->userdata('profile_img'));
 											$front_avatar_url = ($front_profile_img !== '') ? profile_image_url($front_profile_img, $front_role_raw, $front_api_ut) : '';
+											$front_api_token = trim((string) $this->session->userdata('access_token'));
 										?>
+										<?php if ($front_api_token !== '' && ($is_front_student || $is_front_teacher)) { ?>
+										<style>
+											.front-bell-wrap{position:relative;display:inline-block;margin-right:16px;vertical-align:middle;}
+											.front-bell-trigger{position:relative;color:#fff;font-size:19px;line-height:1;background:none;border:0;cursor:pointer;padding:6px;}
+											.front-bell-badge{position:absolute;top:-3px;right:-3px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:#e53935;color:#fff;font-size:10px;font-weight:700;line-height:17px;text-align:center;display:none;box-shadow:0 0 0 2px rgba(255,255,255,.6);}
+											.front-bell-panel{position:absolute;right:0;top:135%;width:360px;max-width:90vw;background:#fff;border-radius:12px;box-shadow:0 12px 34px rgba(0,0,0,.20);z-index:1050;display:none;overflow:hidden;}
+											.front-bell-panel.open{display:block;}
+											.front-bell-head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #eee;gap:10px;}
+											.front-bell-head .ttl{font-weight:700;color:#1a1a1a;font-size:15px;}
+											.front-bell-head .acts{display:flex;gap:12px;}
+											.front-bell-head .acts a{font-size:12px;cursor:pointer;font-weight:600;}
+											.front-bell-head .acts a.read{color:#3787FF;}
+											.front-bell-head .acts a.clear{color:#e53935;}
+											.front-bell-list{max-height:400px;overflow-y:auto;padding:6px;}
+											.front-bell-item{position:relative;display:flex;gap:11px;align-items:flex-start;padding:11px 34px 11px 12px;margin:4px 2px;border-radius:10px;cursor:pointer;transition:background .15s,box-shadow .15s;}
+											.front-bell-item .ic{flex:0 0 auto;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#e9efff;color:#3787FF;font-size:14px;margin-top:1px;}
+											.front-bell-item .bd{flex:1 1 auto;min-width:0;}
+											.front-bell-item .t{font-weight:700;font-size:13px;margin:0 0 3px;color:#1a1a1a;padding-right:6px;}
+											.front-bell-item .m{font-size:12px;color:#555;margin:0 0 4px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+											.front-bell-item .d{font-size:11px;color:#9aa0a6;}
+											.front-bell-item .cl{position:absolute;top:8px;right:8px;width:22px;height:22px;line-height:1;border:0;background:none;color:#c2c7cc;font-size:16px;cursor:pointer;border-radius:6px;opacity:0;transition:opacity .12s,background .12s,color .12s;}
+											.front-bell-item:hover .cl{opacity:1;}
+											.front-bell-item .cl:hover{background:#fdeaea;color:#e53935;}
+											/* Unread: light blue, blue accent bar + dot. Read: plain, muted. */
+											.front-bell-item.is-unread{background:#eef4ff;}
+											.front-bell-item.is-unread::before{content:"";position:absolute;left:3px;top:12px;bottom:12px;width:3px;border-radius:3px;background:#3787FF;}
+											.front-bell-item.is-unread .t{color:#0b3d91;}
+											.front-bell-item.is-unread .t::after{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:#3787FF;margin-left:6px;vertical-align:middle;}
+											.front-bell-item.is-read{background:#fff;}
+											.front-bell-item.is-read .ic{background:#f2f3f5;color:#9aa0a6;}
+											.front-bell-item.is-read .t{color:#5a5f66;font-weight:600;}
+											.front-bell-item:hover{background:#e3ecff;}
+											.front-bell-item.is-read:hover{background:#f5f7fa;}
+											.front-bell-empty{padding:26px 16px;text-align:center;color:#9aa0a6;font-size:13px;}
+											.front-bell-foot{padding:11px 16px;text-align:center;border-top:1px solid #eee;}
+											.front-bell-foot a{font-size:13px;color:#3787FF;cursor:pointer;font-weight:600;}
+										</style>
+										<div class="front-bell-wrap" id="frontBellWrap">
+											<button type="button" class="front-bell-trigger" id="frontBellBtn" aria-label="Notifications">
+												<i class="fas fa-bell"></i>
+												<span class="front-bell-badge" id="frontBellBadge">0</span>
+											</button>
+											<div class="front-bell-panel" id="frontBellPanel">
+												<div class="front-bell-head">
+													<span class="ttl">Notifications</span>
+													<span class="acts">
+														<a class="read" id="frontBellReadAll">Read All</a>
+														<a class="clear" id="frontBellClearAll">Clear All</a>
+													</span>
+												</div>
+												<div class="front-bell-list" id="frontBellList"></div>
+												<div class="front-bell-foot"><a href="<?php echo html_escape($front_notifications_url); ?>">See all notifications</a></div>
+											</div>
+										</div>
+										<script>
+										(function () {
+											var listUrl = <?php echo json_encode(site_url('api/main/notifications-list')); ?>;
+											var readUrl = <?php echo json_encode(site_url('api/main/notifications-read')); ?>;
+											var deleteUrl = <?php echo json_encode(site_url('api/main/notifications-delete')); ?>;
+											var token = <?php echo json_encode($front_api_token); ?>;
+											var btn = document.getElementById('frontBellBtn');
+											var panel = document.getElementById('frontBellPanel');
+											var listEl = document.getElementById('frontBellList');
+											var badge = document.getElementById('frontBellBadge');
+											if (!btn) { return; }
+											function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];});}
+											function api(url, body){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(body||{})}).then(function(r){return r.json();});}
+											function prettyTitle(s){ s=String(s||'Notification').replace(/[_-]+/g,' ').trim(); return s.replace(/\w\S*/g,function(t){return t.charAt(0).toUpperCase()+t.substr(1).toLowerCase();}); }
+											function isRead(it){ var r=it.read; return r===1||r==='1'||r===true; }
+											function setBadge(n){ n=Math.max(0,n|0); if(n>0){badge.textContent=n>99?'99+':n;badge.style.display='block';}else{badge.style.display='none';} }
+											function showEmpty(){ listEl.innerHTML='<div class="front-bell-empty">No notifications</div>'; }
+											function render(rows){
+												if(!rows.length){ showEmpty(); return; }
+												var h='';
+												for(var i=0;i<rows.length;i++){
+													var it=rows[i]; var read=isRead(it);
+													var did=(it.detailId!=null)?it.detailId:'';
+													h+='<div class="front-bell-item '+(read?'is-read':'is-unread')+'" data-detail="'+esc(did)+'" data-url="'+esc(it.url||'')+'" data-read="'+(read?'1':'0')+'">'+
+														'<span class="ic"><i class="fas fa-bell"></i></span>'+
+														'<span class="bd">'+
+															'<p class="t">'+esc(prettyTitle(it.notificationType||it.title))+'</p>'+
+															'<p class="m">'+esc(it.msg||'')+'</p>'+
+															'<p class="d">'+esc(it.time||'')+'</p>'+
+														'</span>'+
+														'<button type="button" class="cl" title="Clear">&times;</button>'+
+													'</div>';
+												}
+												listEl.innerHTML=h;
+											}
+											function load(){
+												api(listUrl,{page:1,limit:20}).then(function(res){
+													if(!res||!(res.status===true||res.status==='true')){ render([]); setBadge(0); return; }
+													var rows=Array.isArray(res.notifications)?res.notifications:[];
+													render(rows);
+													var unread=(res.unreadCount!=null)?res.unreadCount:rows.filter(function(x){return !isRead(x);}).length;
+													setBadge(unread);
+												}).catch(function(){ render([]); });
+											}
+											// Mark ONLY this row read in-place (do NOT remove it). Keys on the detail row id so
+											// duplicates that share a master id are not all flipped.
+											function markItemRead(item){
+												if(!item || item.getAttribute('data-read')==='1'){ return false; }
+												var did=item.getAttribute('data-detail');
+												item.setAttribute('data-read','1');
+												item.classList.remove('is-unread'); item.classList.add('is-read');
+												if(did!==''){ api(readUrl,{detail_id:did}); }
+												setBadge((parseInt(badge.textContent,10)||0)-1);
+												return true;
+											}
+											// Header "clear" sets clear=1 for THIS row (via its detail id). That removes it from the
+											// header list (notifications-list = clear 0) but it stays on the Notification Page
+											// (all_notifications-list shows every row, including cleared ones).
+											function clearItem(item){
+												if(!item){ return; }
+												var did=item.getAttribute('data-detail');
+												var wasUnread=item.getAttribute('data-read')!=='1';
+												if(did!==''){ api(deleteUrl,{detail_id:did}); }
+												item.parentNode.removeChild(item);
+												if(wasUnread){ setBadge((parseInt(badge.textContent,10)||0)-1); }
+												if(!listEl.querySelector('.front-bell-item')){ showEmpty(); }
+											}
+											btn.addEventListener('click',function(e){ e.stopPropagation(); panel.classList.toggle('open'); });
+											document.addEventListener('click',function(e){ if(!document.getElementById('frontBellWrap').contains(e.target)){ panel.classList.remove('open'); } });
+											listEl.addEventListener('click',function(e){
+												var item=e.target.closest?e.target.closest('.front-bell-item'):null;
+												if(!item){ return; }
+												// The ✕ clears this row from the popup only (stays on the Notification Page).
+												if(e.target.closest('.cl')){ e.preventDefault(); e.stopPropagation(); clearItem(item); return; }
+												// Clicking anywhere else on the row marks ONLY this one read, then opens its link.
+												var url=item.getAttribute('data-url');
+												markItemRead(item);
+												if(url){ setTimeout(function(){ window.location.href=url; },120); }
+											});
+											document.getElementById('frontBellReadAll').addEventListener('click',function(e){
+												e.stopPropagation();
+												api(readUrl,{}).then(function(){
+													var items=listEl.querySelectorAll('.front-bell-item');
+													for(var i=0;i<items.length;i++){ items[i].setAttribute('data-read','1'); items[i].classList.remove('is-unread'); items[i].classList.add('is-read'); }
+													setBadge(0);
+												});
+											});
+											// Header "Clear All" sets clear=1 for all the caller's active rows: they leave the header
+											// but remain on the Notification Page (all_notifications-list still returns them).
+											document.getElementById('frontBellClearAll').addEventListener('click',function(e){
+												e.stopPropagation();
+												api(deleteUrl,{}).then(function(){ showEmpty(); setBadge(0); });
+											});
+											load();
+										})();
+										</script>
+										<?php } ?>
 										<div class="dropdown d-inline-block front-profile-wrap">
 											<a href="javascript:void(0);" class="dropdown-toggle front-profile-trigger" id="frontUserMenu" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
 												<?php if ($front_avatar_url !== '') { ?>

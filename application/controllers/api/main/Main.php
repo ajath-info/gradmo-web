@@ -64,6 +64,24 @@ class Main extends MY_Controller
 	}
 
 	/**
+	 * Merge request params from GET/POST *and* the raw JSON body. The app posts JSON
+	 * (Content-Type: application/json), which PHP does not populate into $_REQUEST — so without
+	 * this, `detail_id`/`id`/`notification_type` from the body would be invisible and a single
+	 * read/clear would fall through to "affect all".
+	 *
+	 * @return array
+	 */
+	private function notifications_request_data()
+	{
+		$data = $_REQUEST;
+		$body = json_decode(file_get_contents('php://input'), true);
+		if (is_array($body)) {
+			$data = array_merge($data, $body);
+		}
+		return $data;
+	}
+
+	/**
 	 * GET/POST api/main/notifications-list
 	 * Auth:
 	 *  - student: own notifications by student_id
@@ -71,7 +89,23 @@ class Main extends MY_Controller
 	 */
 	public function notifications_list()
 	{
-		$data = $_REQUEST;
+		// Active notifications only (clear = 0): both read and unread, styled by the `read` flag.
+		$this->render_notifications_list(false);
+	}
+
+	/**
+	 * POST/GET api/main/all_notifications-list
+	 * Full history for the caller, user-wise — including cleared rows (clear = 1). Each student row
+	 * carries a `read` flag (0/1) so the UI can style seen vs unseen differently.
+	 */
+	public function all_notifications_list()
+	{
+		$this->render_notifications_list(true);
+	}
+
+	private function render_notifications_list($include_cleared)
+	{
+		$data = $this->notifications_request_data();
 		$payload = $this->require_auth_payload();
 		if ($payload === false) {
 			return;
@@ -123,14 +157,16 @@ class Main extends MY_Controller
 
 		// Build the (filtered) query for either list or count. Students read per-recipient state
 		// from push_notifications_details (1 master row -> N detail rows); teachers see batch master rows.
-		$build = function ($for_count) use ($n, $ut, $payload, $teacher_batch_ids, $data, $has_title) {
+		$build = function ($for_count) use ($n, $ut, $payload, $teacher_batch_ids, $data, $has_title, $include_cleared) {
 			$this->db->reset_query();
 			if (!$for_count) {
 				$cols = $n . '.id, ' . $n . '.batch_id as batchId, ' . $n . '.notification_type as notificationType, ' .
 					($has_title ? $n . '.title as title, ' : '') .
 					$n . '.msg, ' . $n . '.url, ' . $n . '.time';
 				if ($ut === 'student') {
-					$cols .= ', pd.userid as userId, pd.`read` as `read`, pd.status as pushStatus';
+					// detailId = the per-recipient row (push_notifications_details.id) so the UI can
+					// read/clear exactly one row even when duplicates share the same pushnotify_id.
+					$cols .= ', pd.id as detailId, pd.userid as userId, pd.`read` as `read`, pd.status as pushStatus';
 				} else {
 					$cols .= ', ' . $n . '.status, ' . $n . '.seen_by as seenBy';
 				}
@@ -141,6 +177,10 @@ class Main extends MY_Controller
 				$this->db->join('push_notifications_details pd', 'pd.pushnotify_id = ' . $n . '.id', 'inner')
 					->where('pd.userid', (int) $payload['uid'])
 					->where('pd.user_type', 1);
+				// Active list hides cleared rows; the "all" (history) list includes them.
+				if (!$include_cleared && $this->db->field_exists('clear', 'push_notifications_details')) {
+					$this->db->where('pd.clear', '0');
+				}
 			} else {
 				$this->db->where_in($n . '.batch_id', $teacher_batch_ids);
 			}
@@ -157,9 +197,24 @@ class Main extends MY_Controller
 		$build(true);
 		$total = (int) $this->db->count_all_results();
 
+		// Unread badge count for students: unread + not cleared, ignoring the type filter.
+		$unread = 0;
+		if ($ut === 'student') {
+			$this->db->reset_query();
+			$this->db->from('push_notifications_details pd')
+				->where('pd.userid', (int) $payload['uid'])
+				->where('pd.user_type', 1)
+				->where('pd.`read`', 0);
+			if ($this->db->field_exists('clear', 'push_notifications_details')) {
+				$this->db->where('pd.clear', '0');
+			}
+			$unread = (int) $this->db->count_all_results();
+		}
+
 		echo json_encode(array(
 			'status' => 'true',
 			'userType' => $ut,
+			'unreadCount' => $unread,
 			'notifications' => !empty($list) ? $list : array(),
 			'pagination' => $this->build_api_list_pagination_meta($page, $limit, $total),
 			'msg' => !empty($list) ? $this->lang->line('ltr_fetch_successfully') : $this->lang->line('ltr_no_record_msg')
@@ -198,7 +253,7 @@ class Main extends MY_Controller
 	 */
 	private function notifications_mutate($action)
 	{
-		$data = $_REQUEST;
+		$data = $this->notifications_request_data();
 		$payload = $this->require_auth_payload();
 		if ($payload === false) {
 			return;
@@ -238,33 +293,60 @@ class Main extends MY_Controller
 			}
 		}
 
-		// Collect target ids from `id` and/or `ids` (array or comma-separated string).
-		$ids = array();
-		if (isset($data['id']) && $data['id'] !== '') {
-			$ids[] = (int) $data['id'];
-		}
-		if (isset($data['ids']) && $data['ids'] !== '') {
-			$raw = is_array($data['ids']) ? $data['ids'] : explode(',', (string) $data['ids']);
-			foreach ($raw as $v) {
-				$ids[] = (int) $v;
+		// Master ids from `id`/`ids` (notifications.id => affects all of the caller's rows for that
+		// master) and per-row detail ids from `detail_id`/`detail_ids` (push_notifications_details.id
+		// => affects exactly one row). Detail ids win when both are given.
+		$collect = function ($single, $plural) use ($data) {
+			$out = array();
+			if (isset($data[$single]) && $data[$single] !== '') {
+				$out[] = (int) $data[$single];
 			}
+			if (isset($data[$plural]) && $data[$plural] !== '') {
+				$raw = is_array($data[$plural]) ? $data[$plural] : explode(',', (string) $data[$plural]);
+				foreach ($raw as $v) {
+					$out[] = (int) $v;
+				}
+			}
+			return array_values(array_unique(array_filter($out, function ($v) { return $v > 0; })));
+		};
+		$ids = $collect('id', 'ids');
+		$detailIds = $collect('detail_id', 'detail_ids');
+
+		// Was a specific target requested? If any id param was sent but resolved to nothing (e.g. an
+		// empty/invalid detail_id), we must NOT fall through to "affect everything". Only a request
+		// with NO id params at all means a deliberate bulk (all) action.
+		$target_requested = isset($data['id']) || isset($data['ids']) || isset($data['detail_id']) || isset($data['detail_ids']);
+		if ($target_requested && empty($ids) && empty($detailIds)) {
+			echo json_encode(array(
+				'status' => 'false',
+				'userType' => $ut,
+				'affected' => 0,
+				'msg' => 'Invalid or missing notification id'
+			));
+			return;
 		}
-		$ids = array_values(array_unique(array_filter($ids, function ($v) {
-			return $v > 0;
-		})));
 
 		$n = 'notifications';
 		$this->db->reset_query();
 
 		if ($ut === 'student') {
-			// Per-recipient state lives in push_notifications_details (keyed by master id = pushnotify_id).
+			// Per-recipient state lives in push_notifications_details. Prefer per-row detail ids so a
+			// single action affects exactly one row; fall back to master pushnotify_id, else all.
 			$pd = 'push_notifications_details';
 			$this->db->where('userid', (int) $payload['uid'])->where('user_type', 1);
-			if (!empty($ids)) {
+			if (!empty($detailIds)) {
+				$this->db->where_in('id', $detailIds);
+			} elseif (!empty($ids)) {
 				$this->db->where_in('pushnotify_id', $ids);
 			}
 			if ($action === 'delete') {
-				$this->db->delete($pd);
+				// Soft "clear": keep the row (still visible in the all/history list) but hide it from
+				// the active list. Hard-delete only if the clear column is missing.
+				if ($this->db->field_exists('clear', $pd)) {
+					$this->db->update($pd, array('clear' => '1'));
+				} else {
+					$this->db->delete($pd);
+				}
 			} else {
 				$this->db->where('`read`', 0)->update($pd, array('read' => 1));
 			}
