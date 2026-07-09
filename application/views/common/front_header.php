@@ -302,7 +302,11 @@
 											var listUrl = <?php echo json_encode(site_url('api/main/notifications-list')); ?>;
 											var readUrl = <?php echo json_encode(site_url('api/main/notifications-read')); ?>;
 											var deleteUrl = <?php echo json_encode(site_url('api/main/notifications-delete')); ?>;
+											var siteBase = <?php echo json_encode(base_url()); ?>;
 											var token = <?php echo json_encode($front_api_token); ?>;
+											// Notification urls are stored relative (e.g. "batch/live-room?..."). Resolve them against
+											// the site root so a click never becomes /batch/batch/... based on the current page path.
+											function absUrl(u){ u=String(u||''); if(u===''){ return ''; } if(/^https?:\/\//i.test(u)){ return u; } return siteBase.replace(/\/+$/,'/')+u.replace(/^\/+/,''); }
 											var btn = document.getElementById('frontBellBtn');
 											var panel = document.getElementById('frontBellPanel');
 											var listEl = document.getElementById('frontBellList');
@@ -320,7 +324,7 @@
 												for(var i=0;i<rows.length;i++){
 													var it=rows[i]; var read=isRead(it);
 													var did=(it.detailId!=null)?it.detailId:'';
-													h+='<div class="front-bell-item '+(read?'is-read':'is-unread')+'" data-detail="'+esc(did)+'" data-url="'+esc(it.url||'')+'" data-read="'+(read?'1':'0')+'">'+
+													h+='<div class="front-bell-item '+(read?'is-read':'is-unread')+'" data-detail="'+esc(did)+'" data-url="'+esc(absUrl(it.url))+'" data-read="'+(read?'1':'0')+'">'+
 														'<span class="ic"><i class="fas fa-bell"></i></span>'+
 														'<span class="bd">'+
 															'<p class="t">'+esc(prettyTitle(it.notificationType||it.title))+'</p>'+

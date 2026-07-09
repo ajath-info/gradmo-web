@@ -56,6 +56,10 @@
 	var readUrl = <?php echo json_encode((string) (isset($notifications_read_url) ? $notifications_read_url : site_url('api/main/notifications-read'))); ?>;
 	var deleteUrl = <?php echo json_encode((string) (isset($notifications_delete_url) ? $notifications_delete_url : site_url('api/main/notifications-delete'))); ?>;
 	var token = <?php echo json_encode((string) (isset($api_access_token) ? $api_access_token : '')); ?>;
+	var siteBase = <?php echo json_encode(base_url()); ?>;
+	// Notification urls are stored relative (e.g. "batch/live-room?..."). Resolve to absolute so a
+	// click never becomes /batch/batch/... based on the current page path.
+	function absUrl(u){ u=String(u||''); if(u===''){ return ''; } if(/^https?:\/\//i.test(u)){ return u; } return siteBase.replace(/\/+$/,'/')+u.replace(/^\/+/,''); }
 	var msgEl = document.getElementById('notifMsg');
 	var listEl = document.getElementById('notifList');
 	var typeEl = document.getElementById('notifType');
@@ -99,7 +103,7 @@
 					'<p class="inst-batch-meta">' + esc(time) + '</p>' +
 					'<div class="notif-actions">';
 		if (url) {
-			html += '<a class="btn btn-sm btn-outline-primary notif-open" href="' + esc(url) + '" target="_blank" rel="noopener">Open link</a>';
+			html += '<a class="btn btn-sm btn-outline-primary notif-open" href="' + esc(absUrl(url)) + '" target="_blank" rel="noopener">Open link</a>';
 		}
 		if (!read) {
 			html += '<button type="button" class="btn btn-sm btn-outline-secondary notif-read-one">Mark read</button>';
