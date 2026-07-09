@@ -313,9 +313,9 @@
 											function prettyTitle(s){ s=String(s||'Notification').replace(/[_-]+/g,' ').trim(); return s.replace(/\w\S*/g,function(t){return t.charAt(0).toUpperCase()+t.substr(1).toLowerCase();}); }
 											function isRead(it){ var r=it.read; return r===1||r==='1'||r===true; }
 											function setBadge(n){ n=Math.max(0,n|0); if(n>0){badge.textContent=n>99?'99+':n;badge.style.display='block';}else{badge.style.display='none';} }
+											var PAGE_SIZE=20, page=1, loading=false, hasMore=true;
 											function showEmpty(){ listEl.innerHTML='<div class="front-bell-empty">No notifications</div>'; }
-											function render(rows){
-												if(!rows.length){ showEmpty(); return; }
+											function buildRows(rows){
 												var h='';
 												for(var i=0;i<rows.length;i++){
 													var it=rows[i]; var read=isRead(it);
@@ -330,17 +330,36 @@
 														'<button type="button" class="cl" title="Clear">&times;</button>'+
 													'</div>';
 												}
-												listEl.innerHTML=h;
+												return h;
 											}
-											function load(){
-												api(listUrl,{page:1,limit:20}).then(function(res){
-													if(!res||!(res.status===true||res.status==='true')){ render([]); setBadge(0); return; }
-													var rows=Array.isArray(res.notifications)?res.notifications:[];
-													render(rows);
-													var unread=(res.unreadCount!=null)?res.unreadCount:rows.filter(function(x){return !isRead(x);}).length;
-													setBadge(unread);
-												}).catch(function(){ render([]); });
+											// reset=true: first page (replace). Otherwise fetch the next page and append at the bottom.
+											function loadPage(reset){
+												if(loading){ return; }
+												if(reset){ page=1; hasMore=true; }
+												if(!hasMore){ return; }
+												loading=true;
+												api(listUrl,{page:page,limit:PAGE_SIZE}).then(function(res){
+													loading=false;
+													var ok=res&&(res.status===true||res.status==='true');
+													var rows=(ok&&Array.isArray(res.notifications))?res.notifications:[];
+													if(reset){
+														if(!rows.length){ showEmpty(); } else { listEl.innerHTML=buildRows(rows); }
+													} else if(rows.length){
+														listEl.insertAdjacentHTML('beforeend', buildRows(rows));
+													}
+													hasMore = rows.length === PAGE_SIZE; // a full page => there may be more
+													if(hasMore){ page++; }
+													if(reset){
+														setBadge((ok && res.unreadCount!=null) ? res.unreadCount : rows.filter(function(x){return !isRead(x);}).length);
+													}
+												}).catch(function(){ loading=false; if(reset){ showEmpty(); } });
 											}
+											function load(){ loadPage(true); }
+											// Infinite scroll: near the bottom of the list, pull the next page.
+											listEl.addEventListener('scroll',function(){
+												if(loading || !hasMore){ return; }
+												if(listEl.scrollTop + listEl.clientHeight >= listEl.scrollHeight - 48){ loadPage(false); }
+											});
 											// Mark ONLY this row read in-place (do NOT remove it). Keys on the detail row id so
 											// duplicates that share a master id are not all flipped.
 											function markItemRead(item){

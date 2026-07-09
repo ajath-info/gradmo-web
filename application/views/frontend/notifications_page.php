@@ -11,6 +11,12 @@
 	.notif-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
 	.notif-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 	.notif-unread-dot { width: 9px; height: 9px; border-radius: 50%; background: #3787FF; display: inline-block; }
+	.notif-pager { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; align-items: center; margin-top: 16px; }
+	.notif-pager button { min-width: 34px; height: 34px; padding: 0 10px; border: 1px solid #d7deea; background: #fff; color: #33415c; border-radius: 8px; cursor: pointer; font-size: 13px; }
+	.notif-pager button:hover:not(:disabled) { background: #eef4ff; border-color: #3787FF; color: #0b3d91; }
+	.notif-pager button.active { background: #3787FF; border-color: #3787FF; color: #fff; font-weight: 600; }
+	.notif-pager button:disabled { opacity: .5; cursor: default; }
+	.notif-pager .gap { padding: 0 4px; color: #9aa0a6; }
 </style>
 <div class="inst-detail-page">
 	<div class="inst-detail-mobile-bar">
@@ -37,6 +43,7 @@
 				</div>
 				<div id="notifMsg" class="small text-muted"></div>
 				<div id="notifList" class="notif-list-rows"></div>
+				<nav id="notifPager" class="notif-pager" aria-label="Notifications pages"></nav>
 			</div>
 		</div>
 	</div>
@@ -52,6 +59,9 @@
 	var msgEl = document.getElementById('notifMsg');
 	var listEl = document.getElementById('notifList');
 	var typeEl = document.getElementById('notifType');
+	var pagerEl = document.getElementById('notifPager');
+	var PAGE_SIZE = 20;
+	var curPage = 1;
 
 	function esc(v) {
 		return String(v == null ? '' : v).replace(/[&<>"']/g, function (m) {
@@ -114,7 +124,8 @@
 	function load() {
 		setMsg('Loading notifications...', false);
 		listEl.innerHTML = '';
-		var payload = { page: 1, limit: 50 };
+		pagerEl.innerHTML = '';
+		var payload = { page: curPage, limit: PAGE_SIZE };
 		if (typeEl.value) { payload.notification_type = typeEl.value; }
 		api(endpoint, payload).then(function (res) {
 			if (!res || !(res.status === true || res.status === 'true')) {
@@ -130,10 +141,47 @@
 			for (var i = 0; i < rows.length; i++) { html += renderItem(rows[i]); }
 			listEl.innerHTML = html;
 			setMsg('', false);
+			var pg = res.pagination || {};
+			renderPager((pg.page || curPage), (pg.totalPages || 1));
+			try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
 		}).catch(function (err) {
 			listEl.innerHTML = '<div class="inst-detail-summary-card text-danger">Could not fetch notifications.</div>';
 			setMsg(err && err.message ? err.message : 'Request failed', true);
 		});
+	}
+
+	function goToPage(p) {
+		p = parseInt(p, 10) || 1;
+		if (p < 1 || p === curPage) { return; }
+		curPage = p;
+		load();
+	}
+
+	// Windowed pager: « ‹ 1 … (p-1) p (p+1) … N › »
+	function renderPager(page, totalPages) {
+		pagerEl.innerHTML = '';
+		if (totalPages <= 1) { return; }
+		function btn(label, targetPage, opts) {
+			opts = opts || {};
+			var b = document.createElement('button');
+			b.type = 'button';
+			b.innerHTML = label;
+			if (opts.active) { b.className = 'active'; }
+			if (opts.disabled) { b.disabled = true; } else { b.addEventListener('click', function () { goToPage(targetPage); }); }
+			pagerEl.appendChild(b);
+		}
+		function gap() { var s = document.createElement('span'); s.className = 'gap'; s.textContent = '…'; pagerEl.appendChild(s); }
+
+		btn('&laquo;', 1, { disabled: page <= 1 });
+		btn('&lsaquo;', page - 1, { disabled: page <= 1 });
+
+		var start = Math.max(1, page - 2), end = Math.min(totalPages, page + 2);
+		if (start > 1) { btn('1', 1, {}); if (start > 2) { gap(); } }
+		for (var p = start; p <= end; p++) { btn(String(p), p, { active: p === page }); }
+		if (end < totalPages) { if (end < totalPages - 1) { gap(); } btn(String(totalPages), totalPages, {}); }
+
+		btn('&rsaquo;', page + 1, { disabled: page >= totalPages });
+		btn('&raquo;', totalPages, { disabled: page >= totalPages });
 	}
 
 	// Delegated clicks: open link (also marks read), mark-read, delete.
@@ -157,7 +205,8 @@
 
 	// Buttons are optional (some may be hidden in the markup) — guard each before binding.
 	var refreshBtn = document.getElementById('notifRefresh');
-	if (refreshBtn) { refreshBtn.addEventListener('click', load); }
+	if (refreshBtn) { refreshBtn.addEventListener('click', function () { curPage = 1; load(); }); }
+	if (typeEl) { typeEl.addEventListener('change', function () { curPage = 1; load(); }); }
 
 	var readAllBtn = document.getElementById('notifReadAll');
 	if (readAllBtn) {
