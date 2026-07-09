@@ -1,4 +1,11 @@
 <link rel="stylesheet" href="<?php echo base_url('assets/css/institute-frontend.css'); ?>?v=8">
+<style>
+	/* Notifications: show as full-width rows (a vertical list), not a tiled grid. */
+	#notifList.notif-list-rows { display: flex; flex-direction: column; gap: 12px; }
+	#notifList.notif-list-rows .inst-batch-card { width: 100%; display: flex; align-items: flex-start; gap: 14px; }
+	#notifList.notif-list-rows .inst-batch-content { flex: 1 1 auto; min-width: 0; }
+	#notifList.notif-list-rows .inst-batch-desc { white-space: normal; }
+</style>
 <div class="inst-detail-page">
 	<div class="inst-detail-mobile-bar">
 		<a href="javascript:history.back()" class="inst-detail-mobile-back" aria-label="Back"><i class="fas fa-arrow-left"></i></a>
@@ -21,7 +28,7 @@
 					</div>
 				</div>
 				<div id="notifMsg" class="small text-muted"></div>
-				<div id="notifList" class="inst-card-grid"></div>
+				<div id="notifList" class="notif-list-rows"></div>
 			</div>
 		</div>
 	</div>
