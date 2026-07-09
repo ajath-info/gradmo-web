@@ -208,7 +208,7 @@ $lang['ltr_class_by'] ="Class By";
 $lang['ltr_live_his_no_data'] ="No any data is available to show.";
 //gallery-manage
 $lang['ltr_gallery'] ="Gallery";
-$lang['ltr_add_image'] ="Add Image / Video";
+$lang['ltr_add_image'] ="Add Image";
 $lang['ltr_type'] ="Type";
 $lang['ltr_youtube_URL'] ="Youtube URL";
 $lang['ltr_image'] ="Image";
