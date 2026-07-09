@@ -80,7 +80,9 @@
 							<label><?php echo html_escape($this->common->languageTranslator('ltr_type'));?><sup>*</sup></label>
 							<select name="type" class="galleryType require form-control edu_selectbox_without_search">
 								<option value="Image"><?php echo html_escape($this->common->languageTranslator('ltr_image'));?></option>
+								<?php /* Video option hidden — gallery accepts images only.
 								<option value="Video"><?php echo html_escape($this->common->languageTranslator('ltr_video'));?></option>
+								*/ ?>
 							</select>
 						</div>
 					</div>	

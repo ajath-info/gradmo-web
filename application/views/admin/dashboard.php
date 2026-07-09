@@ -142,6 +142,7 @@ $role = $this->session->userdata('role');
         					</div>
     					</a>
     				</div>
+    				<?php /* Leave Request dashboard card hidden.
     				<div class="col-xl-3 col-lg-6 col-md-6 col-sm-12 col-12">
     					<div class="edu_color_boxes box_other box_left">
     						<div class="edu_dash_box_data">
@@ -159,6 +160,8 @@ $role = $this->session->userdata('role');
     					    </div>
     					</div>
     				</div>
+    				*/ ?>
+                    <?php /* Student Doubts dashboard card hidden.
                     <div class="col-xl-3 col-lg-6 col-md-6 col-sm-12 col-12">
                         <a href="<?php echo base_url()?>admin/doubts-classes">
                         <div class="edu_color_boxes box_other box_left">
@@ -178,7 +181,8 @@ $role = $this->session->userdata('role');
                         </div>
                         </a>
                     </div>
-                     <div class="col-xl-3 col-lg-6 col-md-6 col-sm-12 col-12"> 
+                    */ ?>
+                     <div class="col-xl-3 col-lg-6 col-md-6 col-sm-12 col-12">
                         <a href="<?php echo base_url()?>admin/manage-revanue">
                         <div class="edu_color_boxes box_other box_left">
                             <div class="edu_dash_box_data">
