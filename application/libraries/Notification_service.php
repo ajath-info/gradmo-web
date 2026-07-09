@@ -89,6 +89,24 @@ class Notification_service
 	 * @return array{master_id:int,recipients:int,sent:int,failed:int}
 	 */
 	/**
+	 * Request JSON to store on the detail row. Uses the real FCM request when a push was attempted,
+	 * otherwise builds the intended payload so notifcations_request is never blank (e.g. no device token).
+	 *
+	 * @return string
+	 */
+	private function detail_request_json($push, $device_token, $title, $body, array $data)
+	{
+		if ($push !== null && isset($push['request']) && (string) $push['request'] !== '') {
+			return (string) $push['request'];
+		}
+		return (string) json_encode(array('message' => array(
+			'token' => (string) $device_token,
+			'notification' => array('title' => (string) $title, 'body' => (string) $body),
+			'data' => $data,
+		)), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+	}
+
+	/**
 	 * Map the internal user_type code to the string the apps expect.
 	 *
 	 * @return string student|teacher|institute
@@ -181,8 +199,8 @@ class Notification_service
 					'userid' => $uid,
 					'user_type' => $user_type,
 					'status' => $ok ? 1 : 0,
-					'notification_logs' => $push !== null ? (isset($push['response']) ? (string) $push['response'] : ((string) ($push['error'] ?? ''))) : '',
-					'notifcations_request' => $push !== null && isset($push['request']) ? (string) $push['request'] : '',
+					'notification_logs' => $push !== null ? (isset($push['response']) ? (string) $push['response'] : ((string) ($push['error'] ?? ''))) : 'Not sent: no device token',
+					'notifcations_request' => $this->detail_request_json($push, $device_token, $push_title, $msg, $recipient_data),
 					'device_token' => $device_token,
 					'events' => ($push !== null && !$ok) ? 2 : 0, // 2 => failed
 					'read' => 0,
@@ -354,8 +372,8 @@ class Notification_service
 					'userid' => $uid,
 					'user_type' => self::UT_STUDENT,
 					'status' => $ok ? 1 : 0,
-					'notification_logs' => $push !== null ? (isset($push['response']) ? (string) $push['response'] : ((string) ($push['error'] ?? ''))) : '',
-					'notifcations_request' => $push !== null && isset($push['request']) ? (string) $push['request'] : '',
+					'notification_logs' => $push !== null ? (isset($push['response']) ? (string) $push['response'] : ((string) ($push['error'] ?? ''))) : 'Not sent: no device token',
+					'notifcations_request' => $this->detail_request_json($push, $device_token, $push_title, $push_message, $recipient_data),
 					'device_token' => $device_token,
 					'events' => ($push !== null && !$ok) ? 2 : 0,
 					'read' => 0,
@@ -491,8 +509,8 @@ class Notification_service
 				'userid' => $user_id,
 				'user_type' => $ut_code,
 				'status' => $ok ? 1 : 0,
-				'notification_logs' => $push !== null ? (isset($push['response']) ? (string) $push['response'] : ((string) ($push['error'] ?? ''))) : '',
-				'notifcations_request' => $push !== null && isset($push['request']) ? (string) $push['request'] : '',
+				'notification_logs' => $push !== null ? (isset($push['response']) ? (string) $push['response'] : ((string) ($push['error'] ?? ''))) : 'Not sent: no device token',
+				'notifcations_request' => $this->detail_request_json($push, $device_token, $push_title, $push_message, array('type' => $type, 'pushnotify_id' => (string) $master_id, 'url' => $url, 'user_id' => (string) $user_id, 'user_type' => $this->user_type_label($ut_code))),
 				'device_token' => $device_token,
 				'events' => ($push !== null && !$ok) ? 2 : 0,
 				'read' => 0,
