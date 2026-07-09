@@ -3564,12 +3564,12 @@ class Batch extends MY_Controller
 					'BATCH_NAME' => $batch_name,
 					'TEACHER_NAME' => $teacher_name,
 					'class_instructor' => $teacher_name,
-					'CLASS_LINK' => base_url('batch/live-classes?batch_id=' . $batch_id),
+					'CLASS_LINK' => base_url('batch/live-room?batch_id=' . $batch_id . '&live_class_id=0&join=1'),
 					'time' => $start_time,
 					'start_date' => $start_time,
 					'end_date' => $end_time,
 				),
-				array('url' => 'batch/live-classes?batch_id=' . $batch_id, 'student_name_var' => 'NAME')
+				array('url' => 'batch/live-room?batch_id=' . $batch_id . '&live_class_id=0&join=1', 'student_name_var' => 'NAME')
 			);
 
 			$this->api_json(true, 'Class started and notifications sent');
@@ -3687,7 +3687,7 @@ class Batch extends MY_Controller
 					'Class Ended',
 					'The Zoom class "' . $batch_name . '" has ended. Recording will be available soon.',
 					'Class Ended',
-					'batch/live-classes',
+					'', // Class-ended notification has no link (nothing to open).
 					array('batch_id' => (int) $batch_id)
 				);
 			}
@@ -6694,7 +6694,7 @@ class Batch extends MY_Controller
 			$push_title,
 			$push_msg,
 			'class_start',
-			'batch/live-classes?batch_id=' . $batch_id
+			'batch/live-room?batch_id=' . $batch_id . '&live_class_id=0&join=1'
 		);
 
 		$this->api_json(true, 'Zoom meeting created. Students and teachers join only from Live classes in your app or website.', array('zoomMeetingId' => $mid));
