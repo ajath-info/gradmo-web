@@ -5766,10 +5766,27 @@ function subcategory_table(){
                     $data_arr = $this->security->xss_clean($data_arr);
   
                     $ins = $this->db_model->insert_data('video_lectures',$data_arr);
-                     
-                    // notification: 1 master + 1 push_notifications_details row per enrolled student of the batch(es).
+
+                    // Email + push + in-app to enrolled students of each batch, same as the teacher/API
+                    // path (template purpose: new_lecture_upload). Runs whether an admin or teacher adds.
                     $this->load->library('notification_service');
-                    @$this->notification_service->push_notify('New Video','New Video Added','Video-Lecture','student/video-lecture',array('batch_ids'=>(array)$data_arr['batch']));
+                    $batch_ids_list = json_decode((string)$data_arr['batch'], true);
+                    if(!is_array($batch_ids_list)){
+                        $batch_ids_list = array_filter(array_map('trim', explode(',', (string)$data_arr['batch'])));
+                    }
+                    $lecture_title = isset($data_arr['title']) ? (string)$data_arr['title'] : '';
+                    foreach($batch_ids_list as $bid){
+                        $bid = (int)$bid;
+                        if($bid < 1){ continue; }
+                        $bn = $this->db_model->select_data('batch_name','batches use index (id)',array('id'=>$bid),1);
+                        $bname = !empty($bn[0]['batch_name']) ? $bn[0]['batch_name'] : '';
+                        @$this->notification_service->notify_batch_event(
+                            $bid,
+                            'new_lecture_upload',
+                            array('BATCH_NAME'=>$bname,'LECTURE_TITLE'=>$lecture_title,'CURRENT_YEAR'=>date('Y')),
+                            array('url'=>'batch/video-lectures?batch_id='.$bid)
+                        );
+                    }
                 }else{
                    
                      if($data_arr['video_type']=='video' && $_FILES['video_file']['name'] ==""){

@@ -439,8 +439,10 @@ if ( ! is_array($cur_arr)) {
                             <li <?php echo (in_array("question-manage",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/question-manage"><?php echo html_escape($this->common->languageTranslator('ltr_question_manager')); ?></a></li>
                             <li <?php echo (in_array("vacancy-manage",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/vacancy-manage"><?php echo html_escape($this->common->languageTranslator('ltr_upcoming_exams_manager')); ?></a></li>
                             <li <?php echo (in_array("live-class",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/live-class"><?php echo html_escape($this->common->languageTranslator('ltr_live_class')); ?></a></li>
-                            <li <?php echo (in_array("jetsi",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin_profile/jetsi"><?php echo html_escape($this->common->languageTranslator('ltr_Jetsi_Meet'));?></a></li>
-                            <li <?php echo (in_array("live-class-history",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/live-class-history"><?php echo html_escape($this->common->languageTranslator('ltr_live_class_history'));?></a></li>
+                            
+                            // hidden jitsi menu for now, will be enabled later
+                            <!-- <li <?php echo (in_array("jetsi",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin_profile/jetsi"><?php echo html_escape($this->common->languageTranslator('ltr_Jetsi_Meet'));?></a></li>
+                            <li <?php echo (in_array("live-class-history",$cur_arr))?'class="active"':''; ?>><a href="<?php echo base_url();?>admin/live-class-history"><?php echo html_escape($this->common->languageTranslator('ltr_live_class_history'));?></a></li> -->
                         </ul>
                     </li>
                     <?php } if (($this->session->userdata['super_admin'] == 1) || (isset($access->student_manage) && $access->student_manage == '1')) { ?>
