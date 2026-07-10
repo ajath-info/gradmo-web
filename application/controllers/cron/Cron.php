@@ -76,7 +76,7 @@ class Cron extends CI_Controller
                 $month
             );
 
-            $result = $this->common->send_email(array(
+            $result = $this->notification_service->common_send_email_push(array(
                 'purpose'   => 'attendance_report_monthly',
                 'user_id'   => $student_id,
                 'user_type' => 'student',

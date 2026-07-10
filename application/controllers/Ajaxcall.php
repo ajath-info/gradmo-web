@@ -5970,7 +5970,7 @@ function subcategory_table(){
         ), $extra);
         // Per-account-type template, e.g. institute_register / teacher_register / student_register.
         $purpose = ($user_type !== '') ? $user_type . '_register' : 'register';
-        $this->common->send_email(array(
+        $this->notification_service->common_send_email_push(array(
             'purpose' => $purpose,
             'user_id' => $user_id,
             'user_type' => $user_type,
@@ -9316,7 +9316,7 @@ function result_table($type){
                 if($res){
                     // Notify the deleted account by email (best-effort).
                     if(!empty($account_notice)){
-                        @$this->common->send_email(array(
+                        @$this->notification_service->common_send_email_push(array(
                             'purpose' => 'account_delete',
                             'user_type' => $account_notice['user_type'],
                             'to_email' => $account_notice['email'],
@@ -10357,6 +10357,7 @@ function result_table($type){
                 'vars' => array(
                     'STUDENT_NAME' => isset($stu['name']) ? $stu['name'] : '',
                     'DATE' => $date_disp,
+                    'DATE_TIME' => $date_disp,
                     'CURRENT_YEAR' => date('Y'),
                 ),
             ));
@@ -10384,7 +10385,7 @@ function result_table($type){
         foreach((array)$students as $stu){
             $to = isset($stu['email']) ? trim((string)$stu['email']) : '';
             if($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)){ continue; }
-            @$this->common->send_email(array(
+            @$this->notification_service->common_send_email_push(array(
                 'purpose' => 'new_homework_assignment',
                 'user_id' => (int)$stu['id'],
                 'user_type' => 'student',
@@ -10452,7 +10453,7 @@ function result_table($type){
         foreach((array)$students as $stu){
             $to = isset($stu['email']) ? trim((string)$stu['email']) : '';
             if($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)){ continue; }
-            @$this->common->send_email(array(
+            @$this->notification_service->common_send_email_push(array(
                 'purpose' => 'new_study_material_added_to_elibrary',
                 'user_id' => (int)$stu['id'],
                 'user_type' => 'student',
@@ -10909,91 +10910,12 @@ function result_table($type){
         }
         
     }
+    // Delegates to the single shared implementation in Notification_service (autoloaded).
     public function push_notification_android($batch_id='',$title='',$where='',$student_id=''){
-     
-        if(!empty($batch_id)){
-            $batchCon = "status = 1 AND token !='' AND batch_id in ($batch_id)";
-	        $get_token = $this->db_model->select_data('token','students',$batchCon,'');
-	        $batch_data = current($this->db_model->select_data('batch_name','batches',array('id' => $batch_id),'')); 
-        }else{
-            if(!empty($student_id)){
-                 $get_token = $this->db_model->select_data('token','students',array('status'=>1,'token !='=>'', 'id'=>$student_id),'');
-                  
-            }else{
-                $get_token = $this->db_model->select_data('token','students',array('status'=>1,'token !='=>''),'');
-            }
-        }
-        if(!empty($get_token)){
-            $array_chunk = array_chunk($get_token,999);
-            $array_count = count($array_chunk);
-            for ($x = 0; $x < $array_count; $x++) {
-                $device_id=array();
-                foreach($array_chunk[$x] as $get_tokens){
-                    if(!empty($get_tokens['token'])){
-                        array_push($device_id,$get_tokens['token']);
-                    }
-                }
-                // Migrated to FCM HTTP v1 (legacy /fcm/send was shut down by Google in June 2024).
-                $message = array(
-                        'title' => $title,
-                        'body' => array(
-                            'where'=>$where,
-                            'batch_name' =>(!empty($batch_data['batch_name'])) ? $batch_data['batch_name'] : "" ,
-                            'batch_id'=>$batch_id
-                            )
-                );
-                $push = $this->common->sendPushNotification($device_id, $title, is_string($where) ? $where : '', array('message' => $message));
-                $result = isset($push['response']) ? $push['response'] : '';
-            }
-             return $result;
-        }
-
+        return $this->notification_service->android_push($batch_id,$title,$where,$student_id);
     }
     public function push_notification_android_video($batch_id='',$title='',$where='',$student_id='',$videoId='',$url_video='',$videoType=''){
-       
-        if(!empty($batch_id)){
-            $batchCon = "status = 1 AND token !='' AND batch_id in ($batch_id)";
-	        $get_token = $this->db_model->select_data('token','students',$batchCon,'');
-	        $batch_data = current($this->db_model->select_data('batch_name','batches',array('id' => $batch_id),'')); 
-        }else{
-            if(!empty($student_id)){
-                 $get_token = $this->db_model->select_data('token','students',array('status'=>1,'token !='=>'', 'id'=>$student_id),'');
-            }else{
-                $get_token = $this->db_model->select_data('token','students',array('status'=>1,'token !='=>''),'');
-            }
-        }
-        if(!empty($get_token)){
-            $array_chunk = array_chunk($get_token,999);
-            $array_count = count($array_chunk);
-            for ($x = 0; $x < $array_count; $x++) {
-                $device_id=array();
-                foreach($array_chunk[$x] as $get_tokens){
-                    if(!empty($get_tokens['token'])){
-                        array_push($device_id,$get_tokens['token']);
-                    }
-                }
-           
-                   
-                // Migrated to FCM HTTP v1 (legacy /fcm/send was shut down by Google in June 2024).
-                $message = array(
-                        'title' => $title,
-                        'body' => array(
-                            'where'=>$where,
-                            'videoId'=>$videoId,
-                            'videoName'=>$title,
-                            'url'=>$url_video,
-                            'videoType'=>$videoType,
-                            'batch_name' =>(!empty($batch_data['batch_name'])) ? $batch_data['batch_name'] : "" ,
-                            'batch_id'=>$batch_id
-                            )
-                );
-                $push = $this->common->sendPushNotification($device_id, $title, is_string($where) ? $where : '', array('message' => $message));
-                $result = isset($push['response']) ? $push['response'] : '';
-
-            }
-             return $result;
-        }
-
+        return $this->notification_service->android_push_video($batch_id,$title,$where,$student_id,$videoId,$url_video,$videoType);
     }
     function readMoreWord($story_desc, $title='',$C_word='') {
         $chars = 90;

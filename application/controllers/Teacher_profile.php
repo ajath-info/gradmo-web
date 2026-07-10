@@ -592,45 +592,9 @@ class Teacher_profile extends CI_Controller {
                redirect('teacher/live-class');
     	}
     }
+    // Delegates to the single shared implementation in Notification_service (autoloaded).
     public function push_notification_android($batch_id='',$title='',$where='',$student_id=''){
-     
-        if(!empty($batch_id)){
-            $batchCon = "status = 1 AND token !='' AND batch_id in ($batch_id)";
-	        $get_token = $this->db_model->select_data('token','students',$batchCon,'');
-	        $batch_data = current($this->db_model->select_data('batch_name','batches',array('id' => $batch_id),'')); 
-        }else{
-            if(!empty($student_id)){
-                 $get_token = $this->db_model->select_data('token','students',array('status'=>1,'token !='=>'', 'id'=>$student_id),'');
-                  
-            }else{
-                $get_token = $this->db_model->select_data('token','students',array('status'=>1,'token !='=>''),'');
-            }
-        }
-        if(!empty($get_token)){
-            $array_chunk = array_chunk($get_token,999);
-            $array_count = count($array_chunk);
-            for ($x = 0; $x < $array_count; $x++) {
-                $device_id=array();
-                foreach($array_chunk[$x] as $get_tokens){
-                    if(!empty($get_tokens['token'])){
-                        array_push($device_id,$get_tokens['token']);
-                    }
-                }
-                // Migrated to FCM HTTP v1 (legacy /fcm/send was shut down by Google in June 2024).
-                $message = array(
-                        'title' => $title,
-                        'body' => array(
-                            'where'=>$where,
-                            'batch_name' =>(!empty($batch_data['batch_name'])) ? $batch_data['batch_name'] : "" ,
-                            'batch_id'=>$batch_id
-                            )
-                );
-                $push = $this->common->sendPushNotification($device_id, $title, is_string($where) ? $where : '', array('message' => $message));
-                $result = isset($push['response']) ? $push['response'] : '';
-            }
-             return $result;
-        }
-
+        return $this->notification_service->android_push($batch_id,$title,$where,$student_id);
     }
     function start_class(){
 		$batch_id = !empty($_POST['batch_id']) ? (int) $_POST['batch_id'] : (int) $_POST['live_class_id'];

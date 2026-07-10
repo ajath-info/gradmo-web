@@ -132,8 +132,6 @@ class Notification_service
 		$send_push = !array_key_exists('send_push', $opts) || !empty($opts['send_push']);
 		$base_data = isset($opts['data']) && is_array($opts['data']) ? $opts['data'] : array();
 
-		// Per-notification image: explicit opts['image'] wins, else data['image'], else null
-		// (null => Common::sendPushNotification falls back to the site-logo default).
 		$push_image = array_key_exists('image', $opts) && $opts['image'] !== null
 			? (string) $opts['image']
 			: (isset($base_data['image']) ? (string) $base_data['image'] : null);
@@ -288,18 +286,28 @@ class Notification_service
 			return $result;
 		}
 
-		// Notification title/body come from the SAME email template row (one query): title => title,
-		// body => the `notification` column. Explicit push_title/push_message in $opts win.
+		// Fetch the template row ONCE (SELECT *): this same row drives BOTH the push title/body
+		// (title + `notification` column) AND every recipient's email (passed as template_row below,
+		// so send_email does not re-query per recipient). Explicit push_title/push_message in $opts win.
+		$tpl_rows = $this->CI->db_model->select_data(
+			'*',
+			'templates',
+			array('purpose' => $purpose, 'template_for' => 'email', 'status' => 1),
+			1
+		);
+		$email_tpl_row = !empty($tpl_rows[0]) ? $tpl_rows[0] : array();
+
 		$push_title = isset($opts['push_title']) ? (string) $opts['push_title'] : '';
 		$push_message = isset($opts['push_message']) ? (string) $opts['push_message'] : '';
-		if ($push_title === '' || $push_message === '') {
-			$tpl = $this->notification_template_content($purpose, $vars);
-			if ($push_title === '') {
-				$push_title = $tpl['title'];
-			}
-			if ($push_message === '') {
-				$push_message = $tpl['message'];
-			}
+		if ($push_title === '') {
+			$push_title = $this->apply_vars(!empty($email_tpl_row['title']) ? $email_tpl_row['title'] : $purpose, $vars);
+		}
+		if ($push_message === '') {
+			// Prefer the dedicated notification body; fall back to description, then html_code.
+			$body_raw = !empty($email_tpl_row['notification']) ? (string) $email_tpl_row['notification']
+				: (!empty($email_tpl_row['description']) ? (string) $email_tpl_row['description']
+				: (isset($email_tpl_row['html_code']) ? (string) $email_tpl_row['html_code'] : ''));
+			$push_message = trim(preg_replace('/\s+/', ' ', strip_tags($this->apply_vars($body_raw, $vars))));
 		}
 		if ($push_title === '') {
 			$push_title = ucwords(str_replace('_', ' ', $purpose));
@@ -348,11 +356,15 @@ class Notification_service
 			));
 
 			if ($do_email && $email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
-				$res = $this->CI->common->send_email(array(
+				$email_arr = array(
 					'purpose' => $purpose,
 					'to_email' => $email,
 					'dynamic_var' => array_merge($vars, array($name_var => $name)),
-				));
+				);
+				if (!empty($email_tpl_row)) {
+					$email_arr['template_row'] = $email_tpl_row; // reuse the single fetch above
+				}
+				$res = $this->CI->common->send_email($email_arr);
 				if (!empty($res['status'])) {
 					$result['emails_sent']++;
 				}
@@ -525,11 +537,6 @@ class Notification_service
 	}
 
 	/**
-	 * One-shot: send the EMAIL and the PUSH + in-app notification for a single recipient in a single
-	 * call, from one data payload. Internally calls common->send_email() and notify_account_status()
-	 * (push only, so the mail is not sent twice). Use this instead of duplicating both calls at each
-	 * call site.
-	 *
 	 * $a keys:
 	 *   purpose       (required)  templates.purpose (email template row; body from notification column)
 	 *   user_type     student|teacher|institute (default student)
@@ -548,8 +555,8 @@ class Notification_service
 		$purpose = isset($a['purpose']) ? trim((string) $a['purpose']) : '';
 		$user_type = isset($a['user_type']) ? strtolower(trim((string) $a['user_type'])) : 'student';
 		$user_id = isset($a['user_id']) ? (int) $a['user_id'] : 0;
-		$result = array('email_sent' => false, 'push_sent' => false, 'in_app' => 0);
-		if ($purpose === '' || $user_id < 1) {
+		$result = array('status' => false, 'email_sent' => false, 'push_sent' => false, 'in_app' => 0);
+		if ($purpose === '') {
 			return $result;
 		}
 		$vars = array();
@@ -599,13 +606,14 @@ class Notification_service
 			}
 			$er = @$this->CI->common->send_email($email_arr);
 			$result['email_sent'] = !empty($er['status']);
+			$result['status'] = $result['email_sent'];
 		}
 
 		// 2) Notification (push + in-app) ONLY when this template's `notification` column is filled.
 		//    Pass the RAW template strings so notify_account_status substitutes vars (incl. the
 		//    recipient's name) itself — no extra template fetch.
 		$notif_raw = isset($tpl_row['notification']) ? trim((string) $tpl_row['notification']) : '';
-		if ($notif_raw !== '' && ($do_push || $do_in_app)) {
+		if ($user_id >= 1 && $notif_raw !== '' && ($do_push || $do_in_app)) {
 			$title_raw = isset($tpl_row['title']) && trim((string) $tpl_row['title']) !== '' ? (string) $tpl_row['title'] : $purpose;
 			$ns = $this->notify_account_status($user_type, $user_id, $purpose, $vars, array(
 				'email' => false, // email already handled above
@@ -624,6 +632,83 @@ class Notification_service
 			}
 		}
 
+		return $result;
+	}
+
+	/**
+	 * Legacy data-only Android/FCM push to a batch's students, one specific student, or all students.
+	 * Single shared implementation for the (previously duplicated) push_notification_android() methods
+	 * in Ajaxcall / Admin_profile / Teacher_profile — those now just delegate here.
+	 *
+	 * @param string|int $batch_id   batch id(s) for `batch_id IN (...)`, or ''
+	 * @param string     $title      notification title
+	 * @param string     $where      app routing hint (goes into data.message.body.where)
+	 * @param string|int $student_id single student (when $batch_id is empty), or '' for all
+	 * @return string last FCM response (kept for backward compatibility)
+	 */
+	public function android_push($batch_id = '', $title = '', $where = '', $student_id = '')
+	{
+		return $this->android_push_send($batch_id, $title, $where, $student_id, array());
+	}
+
+	/**
+	 * Same as {@see android_push()} but carries extra video fields in the data payload.
+	 *
+	 * @return string
+	 */
+	public function android_push_video($batch_id = '', $title = '', $where = '', $student_id = '', $videoId = '', $url_video = '', $videoType = '')
+	{
+		return $this->android_push_send($batch_id, $title, $where, $student_id, array(
+			'videoId'   => $videoId,
+			'videoName' => $title,
+			'url'       => $url_video,
+			'videoType' => $videoType,
+		));
+	}
+
+	/**
+	 * Shared body for android_push / android_push_video: resolve tokens, chunk, send via the FCM v1
+	 * sender. $extra_body is merged into data.message.body.
+	 *
+	 * @return string
+	 */
+	private function android_push_send($batch_id, $title, $where, $student_id, array $extra_body)
+	{
+		$result = '';
+		$batch_data = array();
+		if (!empty($batch_id)) {
+			$batchCon = "status = 1 AND token !='' AND batch_id in (" . $batch_id . ")";
+			$get_token = $this->CI->db_model->select_data('token', 'students', $batchCon, '');
+			$batch_data = current($this->CI->db_model->select_data('batch_name', 'batches', array('id' => $batch_id), ''));
+		} elseif (!empty($student_id)) {
+			$get_token = $this->CI->db_model->select_data('token', 'students', array('status' => 1, 'token !=' => '', 'id' => $student_id), '');
+		} else {
+			$get_token = $this->CI->db_model->select_data('token', 'students', array('status' => 1, 'token !=' => ''), '');
+		}
+		if (empty($get_token)) {
+			return $result;
+		}
+		foreach (array_chunk($get_token, 999) as $chunk) {
+			$device_id = array();
+			foreach ($chunk as $t) {
+				if (!empty($t['token'])) {
+					$device_id[] = $t['token'];
+				}
+			}
+			if (empty($device_id)) {
+				continue;
+			}
+			$message = array(
+				'title' => $title,
+				'body' => array_merge(array(
+					'where' => $where,
+					'batch_name' => (!empty($batch_data['batch_name'])) ? $batch_data['batch_name'] : '',
+					'batch_id' => $batch_id,
+				), $extra_body),
+			);
+			$push = $this->CI->common->sendPushNotification($device_id, $title, is_string($where) ? $where : '', array('message' => $message));
+			$result = isset($push['response']) ? $push['response'] : '';
+		}
 		return $result;
 	}
 

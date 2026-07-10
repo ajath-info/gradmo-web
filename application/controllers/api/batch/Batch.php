@@ -1696,6 +1696,7 @@ class Batch extends MY_Controller
 				'STUDENT_NAME' => $name,
 				'STATUS' => $status_label,
 				'DATE' => $date,
+				'DATE_TIME' => $date,
 				'BATCH_NAME' => $batch_name,
 				'CURRENT_YEAR' => date('Y'),
 			);
@@ -5961,7 +5962,7 @@ class Batch extends MY_Controller
 			if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
 				continue;
 			}
-			$this->common->send_email(array(
+			$this->notification_service->common_send_email_push(array(
 				'purpose' => 'new_study_material_added_to_elibrary',
 				'user_id' => (int) $stu['id'],
 				'user_type' => 'student',
@@ -6801,7 +6802,7 @@ class Batch extends MY_Controller
 			if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
 				continue;
 			}
-			$res = $this->common->send_email(array(
+			$res = $this->notification_service->common_send_email_push(array(
 				'purpose' => 'class_start',
 				'to_email' => $to,
 				'dynamic_var' => array(

@@ -542,14 +542,20 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 			$this->CI->db_model->update_data($table, array('is_verified' => 1), array('id' => $user_id));
 
-			$this->send_email(array(
+			// Email + push + in-app (push only if the account_verified template's notification column is set).
+			$this->CI->load->library('notification_service');
+			@$this->CI->notification_service->common_send_email_push(array(
 				'purpose' => 'account_verified',
 				'user_id' => $user_id,
 				'user_type' => $user_type,
 				'to_email' => isset($row['email']) ? $row['email'] : '',
-				'dynamic_var' => array(
+				'name_var' => 'name',
+				'vars' => array(
 					'name' => isset($row['name']) ? $row['name'] : '',
+					'NAME' => isset($row['name']) ? $row['name'] : '',
+					'STUDENT_NAME' => isset($row['name']) ? $row['name'] : '',
 					'link' => base_url('login'),
+					'CURRENT_YEAR' => date('Y'),
 				),
 			));
 

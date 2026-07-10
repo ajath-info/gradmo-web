@@ -700,7 +700,7 @@ class Home extends MY_Controller {
 	    if ($user_type === 'student' && $enrolid !== '') {
 	        $register_vars['enrollment_id'] = $enrolid;
 	    }
-	    $this->common->send_email(array(
+	    $this->notification_service->common_send_email_push(array(
 	        'purpose' => 'register',
 	        'user_id' => (int) $insert_id,
 	        'user_type' => $user_type,
@@ -3272,6 +3272,7 @@ public function otherBatchData($data){
 				'STUDENT_NAME' => $name,
 				'STATUS' => $status_label,
 				'DATE' => $date,
+				'DATE_TIME' => $date,
 				'BATCH_NAME' => $batch_name,
 				'CURRENT_YEAR' => date('Y'),
 			);
@@ -4018,7 +4019,7 @@ public function otherBatchData($data){
                 );
             }
 
-            $mail = $this->common->send_email(array(
+            $mail = $this->notification_service->common_send_email_push(array(
                 'purpose' => 'forgot_password',
                 'user_id' => $user_id,
                 'user_type' => $user_type,
@@ -4094,7 +4095,7 @@ public function otherBatchData($data){
             $notify_name = !empty($exists[0]['name']) ? $exists[0]['name'] : '';
             $notify_email = !empty($exists[0]['email']) ? trim((string) $exists[0]['email']) : '';
             // Confirmation email after password reset via token (best-effort).
-            @$this->common->send_email(array(
+            @$this->notification_service->common_send_email_push(array(
                 'purpose' => 'reset_password',
                 'user_id' => $user_id,
                 'user_type' => $user_type,
@@ -4263,7 +4264,7 @@ public function otherBatchData($data){
     			                 'admin_id'=>$admin_ids
     					                 );
     		 	   $this->db_model->insert_data('student_batchs',$data_batch);
-    			    $this->common->send_email(array(
+    			    $this->notification_service->common_send_email_push(array(
     			        'purpose' => 'enrolled_batch',
     			        'user_id' => (int) $data['student_id'],
     			        'user_type' => 'student',
@@ -5212,7 +5213,7 @@ public function otherBatchData($data){
 
         if($check){
             if (!empty($row[0])) {
-                $this->common->send_email(array(
+                $this->notification_service->common_send_email_push(array(
                     'purpose' => 'account_delete',
                     'user_id' => $uid,
                     'user_type' => $user_type,
@@ -6029,17 +6030,22 @@ public function otherBatchData($data){
 				: $this->db_model->select_data('name,email', 'users', array('id' => $uid), 1);
 			$notify_name = !empty($notify_rows[0]['name']) ? $notify_rows[0]['name'] : '';
 			$notify_email = !empty($notify_rows[0]['email']) ? trim((string) $notify_rows[0]['email']) : '';
-			// Security notification email (best-effort; never blocks the response).
-			@$this->common->send_email(array(
+			// Security notification: one call = email + push + in-app (push only if the
+			// password_changed template's notification column is set). Best-effort; never blocks.
+			$this->load->library('notification_service');
+			@$this->notification_service->common_send_email_push(array(
 				'purpose' => 'password_changed',
-				'user_id' => $uid,
 				'user_type' => $ut,
+				'user_id' => $uid,
 				'to_email' => $notify_email,
-				'dynamic_var' => array(
+				'name_var' => 'USER_NAME',
+				'vars' => array(
 					'USER_NAME' => $notify_name,
 					'NAME' => $notify_name,
+					'STUDENT_NAME' => $notify_name,
 					'LOGIN_LINK' => site_url('login'),
 					'link' => site_url('login'),
+					'CURRENT_YEAR' => date('Y'),
 				),
 			));
 			echo json_encode(array(
@@ -6182,7 +6188,7 @@ public function otherBatchData($data){
 		}
 
 		if ($update) {
-			@$this->common->send_email(array(
+			@$this->notification_service->common_send_email_push(array(
 				'purpose' => 'reset_password',
 				'user_id' => $notify_user_id,
 				'user_type' => $user_type,

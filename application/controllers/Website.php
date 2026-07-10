@@ -1280,7 +1280,7 @@ class Website extends MY_Controller
 				// Enrollment email (best-effort).
 				$stu = $this->db_model->select_data('name,email,enrollment_id', 'students use index (id)', array('id' => $student_id), 1);
 				if (! empty($stu[0]['email'])) {
-					@$this->common->send_email(array(
+					@$this->notification_service->common_send_email_push(array(
 						'purpose' => 'enrolled_batch',
 						'user_id' => $student_id,
 						'user_type' => 'student',
