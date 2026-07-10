@@ -289,11 +289,13 @@ class Notification_service
 		// Fetch the template row ONCE (SELECT *): this same row drives BOTH the push title/body
 		// (title + `notification` column) AND every recipient's email (passed as template_row below,
 		// so send_email does not re-query per recipient). Explicit push_title/push_message in $opts win.
+		// templates.status is enum('0','1'): compare as STRING '1' (int 1 matches the enum index).
 		$tpl_rows = $this->CI->db_model->select_data(
 			'*',
 			'templates',
-			array('purpose' => $purpose, 'template_for' => 'email', 'status' => 1),
-			1
+			array('purpose' => $purpose, 'template_for' => 'email', 'status' => '1'),
+			1,
+			array('id', 'desc')
 		);
 		$email_tpl_row = !empty($tpl_rows[0]) ? $tpl_rows[0] : array();
 
@@ -576,11 +578,14 @@ class Notification_service
 		// and the notification body (`notification` column). Using SELECT * means the notification
 		// column is present in the row whenever it exists — no separate field_exists() check needed
 		// (field_exists metadata can be stale and wrongly report the column as missing).
+		// NOTE: templates.status is enum('0','1') — must compare as the STRING '1' (an int 1 matches
+		// the enum INDEX, i.e. the wrong value '0', returning no row).
 		$rows = $this->CI->db_model->select_data(
 			'*',
 			'templates',
-			array('purpose' => $purpose, 'template_for' => 'email', 'status' => 1),
-			1
+			array('purpose' => $purpose, 'template_for' => 'email', 'status' => '1'),
+			1,
+			array('id', 'desc')
 		);
 		$tpl_row = !empty($rows[0]) ? $rows[0] : array();
 
