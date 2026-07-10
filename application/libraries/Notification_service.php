@@ -452,9 +452,16 @@ class Notification_service
 		$push_title = '';
 		$push_message = '';
 		if ($do_push || $do_in_app) {
-			$tpl = $this->notification_template_content($purpose, $msg_vars);
-			$push_title = $tpl['title'];
-			$push_message = $tpl['message'];
+			// Raw template strings supplied by the caller (single-fetch path from common_send_email_push):
+			// apply vars here so the recipient name/tokens resolve, then flatten to plain text.
+			if (isset($opts['push_title_raw']) || isset($opts['push_message_raw'])) {
+				$push_title = trim(preg_replace('/\s+/', ' ', strip_tags($this->apply_vars((string) (isset($opts['push_title_raw']) ? $opts['push_title_raw'] : ''), $msg_vars))));
+				$push_message = trim(preg_replace('/\s+/', ' ', strip_tags($this->apply_vars((string) (isset($opts['push_message_raw']) ? $opts['push_message_raw'] : ''), $msg_vars))));
+			} else {
+				$tpl = $this->notification_template_content($purpose, $msg_vars);
+				$push_title = $tpl['title'];
+				$push_message = $tpl['message'];
+			}
 			if ($push_title === '') {
 				$push_title = ucwords(str_replace('_', ' ', $purpose));
 			}
@@ -512,6 +519,108 @@ class Notification_service
 				'events' => ($push !== null && !$ok) ? 2 : 0,
 				'read' => 0,
 			));
+		}
+
+		return $result;
+	}
+
+	/**
+	 * One-shot: send the EMAIL and the PUSH + in-app notification for a single recipient in a single
+	 * call, from one data payload. Internally calls common->send_email() and notify_account_status()
+	 * (push only, so the mail is not sent twice). Use this instead of duplicating both calls at each
+	 * call site.
+	 *
+	 * $a keys:
+	 *   purpose       (required)  templates.purpose (email template row; body from notification column)
+	 *   user_type     student|teacher|institute (default student)
+	 *   user_id       (required)  recipient id
+	 *   vars          array       template variables (also accepts 'dynamic_var')
+	 *   to_email      optional    override recipient email (else resolved from the user row)
+	 *   url           optional    notification link (relative; frontend makes it absolute)
+	 *   name_var      optional    var name for the recipient's name (default STUDENT_NAME)
+	 *   email/push/in_app  bool   toggles (all default true)
+	 *   note, append_html, notification_type, purpose_fallbacks  optional
+	 *
+	 * @return array|false notify_account_status result, or false on bad input.
+	 */
+	public function common_send_email_push(array $a)
+	{
+		$purpose = isset($a['purpose']) ? trim((string) $a['purpose']) : '';
+		$user_type = isset($a['user_type']) ? strtolower(trim((string) $a['user_type'])) : 'student';
+		$user_id = isset($a['user_id']) ? (int) $a['user_id'] : 0;
+		$result = array('email_sent' => false, 'push_sent' => false, 'in_app' => 0);
+		if ($purpose === '' || $user_id < 1) {
+			return $result;
+		}
+		$vars = array();
+		if (isset($a['vars']) && is_array($a['vars'])) {
+			$vars = $a['vars'];
+		} elseif (isset($a['dynamic_var']) && is_array($a['dynamic_var'])) {
+			$vars = $a['dynamic_var'];
+		}
+		$do_email = !array_key_exists('email', $a) || !empty($a['email']);
+		$do_push = !array_key_exists('push', $a) || !empty($a['push']);
+		$do_in_app = !array_key_exists('in_app', $a) || !empty($a['in_app']);
+		$url = isset($a['url']) ? (string) $a['url'] : '';
+		$name_var = isset($a['name_var']) ? (string) $a['name_var'] : 'STUDENT_NAME';
+		$note = isset($a['note']) ? (string) $a['note'] : '';
+
+		// SINGLE query: this one template row carries both the email content (html_code/description)
+		// and the notification body (`notification` column).
+		$has_notif_col = $this->CI->db->field_exists('notification', 'templates');
+		$rows = $this->CI->db_model->select_data(
+			'*',
+			'templates',
+			array('purpose' => $purpose, 'template_for' => 'email', 'status' => 1),
+			1
+		);
+		$tpl_row = !empty($rows[0]) ? $rows[0] : array();
+
+		// 1) Email — always (if enabled), for everyone. Reuse the fetched row (no second query).
+		if ($do_email) {
+			$email_arr = array(
+				'purpose' => $purpose,
+				'user_type' => $user_type,
+				'user_id' => $user_id,
+				'dynamic_var' => $vars,
+			);
+			if (!empty($tpl_row)) {
+				$email_arr['template_row'] = $tpl_row;
+			}
+			if (!empty($a['to_email'])) {
+				$email_arr['to_email'] = trim((string) $a['to_email']);
+			}
+			if (!empty($a['append_html'])) {
+				$email_arr['append_html'] = (string) $a['append_html'];
+			}
+			if (!empty($a['purpose_fallbacks'])) {
+				$email_arr['purpose_fallbacks'] = $a['purpose_fallbacks'];
+			}
+			$er = @$this->CI->common->send_email($email_arr);
+			$result['email_sent'] = !empty($er['status']);
+		}
+
+		// 2) Notification (push + in-app) ONLY when this template's `notification` column is filled.
+		//    Pass the RAW template strings so notify_account_status substitutes vars (incl. the
+		//    recipient's name) itself — no extra template fetch.
+		$notif_raw = ($has_notif_col && isset($tpl_row['notification'])) ? trim((string) $tpl_row['notification']) : '';
+		if ($notif_raw !== '' && ($do_push || $do_in_app)) {
+			$title_raw = isset($tpl_row['title']) && trim((string) $tpl_row['title']) !== '' ? (string) $tpl_row['title'] : $purpose;
+			$ns = $this->notify_account_status($user_type, $user_id, $purpose, $vars, array(
+				'email' => false, // email already handled above
+				'push' => $do_push,
+				'in_app' => $do_in_app,
+				'url' => $url,
+				'name_var' => $name_var,
+				'note' => $note,
+				'notification_type' => isset($a['notification_type']) ? $a['notification_type'] : $purpose,
+				'push_title_raw' => $title_raw,
+				'push_message_raw' => $notif_raw,
+			));
+			if (is_array($ns)) {
+				$result['push_sent'] = !empty($ns['push_sent']);
+				$result['in_app'] = isset($ns['in_app']) ? (int) $ns['in_app'] : 0;
+			}
 		}
 
 		return $result;

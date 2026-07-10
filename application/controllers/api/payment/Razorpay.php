@@ -363,29 +363,45 @@ class Razorpay extends MY_Controller
 		$batch = $this->db_model->select_data('batch_name', 'batches use index (id)', array('id' => $batch_id), 1);
 		$batch_name = !empty($batch[0]['batch_name']) ? $batch[0]['batch_name'] : '';
 
+		$this->load->library('notification_service');
+
+		// One call = email + push + in-app for the enrolment (template: enrolled_batch).
 		if ($newly_enrolled) {
-			@$this->common->send_email(array(
+			@$this->notification_service->common_send_email_push(array(
 				'purpose' => 'enrolled_batch',
-				'user_id' => $student_id,
 				'user_type' => 'student',
+				'user_id' => $student_id,
 				'to_email' => $to,
-				'dynamic_var' => array(
+				'url' => 'batch/mylist',
+				'name_var' => 'name',
+				'vars' => array(
 					'name' => $name,
+					'NAME' => $name,
+					'STUDENT_NAME' => $name,
 					'batch_name' => $batch_name,
+					'BATCH_NAME' => $batch_name,
 					'enrollment_id' => $enroll_id,
 					'link' => base_url('login'),
+					'CURRENT_YEAR' => date('Y'),
 				),
 			));
 		}
 
-		@$this->common->send_email(array(
+		// One call = email + push + in-app for the activation (template: subscription_activated_successfully).
+		@$this->notification_service->common_send_email_push(array(
 			'purpose' => 'subscription_activated_successfully',
-			'user_id' => $student_id,
 			'user_type' => 'student',
+			'user_id' => $student_id,
 			'to_email' => $to,
-			'dynamic_var' => array(
+			'url' => 'batch/mylist',
+			'name_var' => 'STUDENT_NAME',
+			'vars' => array(
+				'name' => $name,
+				'NAME' => $name,
 				'STUDENT_NAME' => $name,
+				'batch_name' => $batch_name,
 				'BATCH_NAME' => $batch_name,
+				'enrollment_id' => $enroll_id,
 				'CURRENT_YEAR' => date('Y'),
 			),
 		));

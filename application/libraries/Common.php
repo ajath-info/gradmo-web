@@ -134,7 +134,13 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 					}
 				}
 			}
-			$row = $this->email_find_template($purpose, $template_for, $fallback_purposes);
+			// Allow a caller to pass an already-fetched template row (single-query optimisation) so we
+			// don't hit the templates table again; otherwise resolve it here as usual.
+			if (!empty($arr['template_row']) && is_array($arr['template_row'])) {
+				$row = $arr['template_row'];
+			} else {
+				$row = $this->email_find_template($purpose, $template_for, $fallback_purposes);
+			}
 			if (empty($row)) {
 				return array('status' => false, 'msg' => 'Email template not found or inactive: ' . $purpose);
 			}

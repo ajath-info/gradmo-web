@@ -3240,6 +3240,7 @@ public function otherBatchData($data){
 			return 0;
 		}
 		$this->load->library('common');
+		$this->load->library('notification_service');
 		$batch_id = (int) $batch_id;
 		$batch_name = '';
 		if ($batch_id > 0) {
@@ -3275,12 +3276,16 @@ public function otherBatchData($data){
 				'CURRENT_YEAR' => date('Y'),
 			);
 			if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
-				$res = $this->common->send_email(array(
+				// One call = email + push + in-app (push only if the template's notification column is set).
+				$res = $this->notification_service->common_send_email_push(array(
 					'purpose' => $purpose,
+					'user_type' => 'student',
+					'user_id' => $sid,
 					'to_email' => $email,
-					'dynamic_var' => $vars,
+					'url' => 'student/attendance',
+					'vars' => $vars,
 				));
-				if (!empty($res['status'])) {
+				if (!empty($res['email_sent'])) {
 					$sent++;
 				}
 			}

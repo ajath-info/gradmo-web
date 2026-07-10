@@ -7662,15 +7662,23 @@ function subcategory_table(){
                     if($ins==true){
                         $resp = array('status'=>1,'msg'=>$this->lang->line('ltr_paper_added_msg'),'url'=>base_url($profile.'/exam-manage'));
                         
-                        $batch_id = $this->input->post('batch_id',TRUE);
-                        $paper_type =$this->input->post('type',TRUE);
-                        
-                        // notification: 1 master + 1 push_notifications_details row per enrolled student.
+                        $batch_id = (int) $this->input->post('batch_id',TRUE);
+                        $paper_type = $this->input->post('type',TRUE);
+
+                        // One call = email + push + in-app to enrolled students (template: new_exam).
+                        // Only for a newly added paper (skip on edit/update so students are not re-notified).
                         $this->load->library('notification_service');
-                        if($paper_type==1){
-                            @$this->notification_service->push_notify($this->lang->line('ltr_view_mock_paper'),'New Mock Paper Added','Exam','student/mock-paper',array('batch_id'=>$batch_id));
-                        }else{
-                            @$this->notification_service->push_notify($this->lang->line('ltr_view_practice_paper'),'New Practice Paper Added','Exam','student/practice-paper',array('batch_id'=>$batch_id));
+                        $is_new_paper = !isset($_POST['modifyType']) || $_POST['modifyType'] === 'newpaper';
+                        if($batch_id > 0 && $is_new_paper){
+                            $bn = $this->db_model->select_data('batch_name','batches use index (id)',array('id'=>$batch_id),1);
+                            $bname = !empty($bn[0]['batch_name']) ? $bn[0]['batch_name'] : '';
+                            $is_mock = ($paper_type == 1);
+                            @$this->notification_service->notify_batch_event(
+                                $batch_id,
+                                'new_exam',
+                                array('BATCH_NAME'=>$bname,'PAPER_TYPE'=>($is_mock?'Mock':'Practice'),'CURRENT_YEAR'=>date('Y')),
+                                array('url'=>($is_mock?'student/mock-paper':'student/practice-paper'),'notification_type'=>'Exam')
+                            );
                         }
                     }else{
                         $resp = array('status'=>0);
@@ -8878,13 +8886,19 @@ function result_table($type){
                          $resp = array('status'=>1,'msg'=>$this->lang->line('ltr_homework_added_msg'));
                          $batch_id = $this->input->post('batch');
 
-                        // notification: 1 master + 1 push_notifications_details row per enrolled student.
-                        if(!empty($batch_id)){
+                        // One call = email + push + in-app to enrolled students (template: new_homework_assignment).
+                        $bid = (int) $batch_id;
+                        if($bid > 0){
                             $this->load->library('notification_service');
-                            @$this->notification_service->push_notify($this->lang->line('ltr_view_homework'),'New Assignment Added','Assignment','student/homework',array('batch_ids'=>(array)$batch_id));
+                            $bn = $this->db_model->select_data('batch_name','batches use index (id)',array('id'=>$bid),1);
+                            $bname = !empty($bn[0]['batch_name']) ? $bn[0]['batch_name'] : '';
+                            @$this->notification_service->notify_batch_event(
+                                $bid,
+                                'new_homework_assignment',
+                                array('BATCH_NAME'=>$bname,'CURRENT_YEAR'=>date('Y')),
+                                array('url'=>'student/homework','notification_type'=>'Assignment')
+                            );
                         }
-                        // Email enrolled students about the new homework (best-effort).
-                        @$this->send_homework_assignment_emails($batch_id);
                     }else{
                         $resp = array('status'=>0);
                     }
@@ -10329,15 +10343,18 @@ function result_table($type){
         $absent = $this->db->get()->result_array();
 
         $date_disp = date('d-m-Y', strtotime($date));
+        $this->load->library('notification_service');
         foreach((array)$absent as $stu){
             $to = isset($stu['email']) ? trim((string)$stu['email']) : '';
             if($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)){ continue; }
-            @$this->common->send_email(array(
+            // One call = email + push + in-app (push only if the attendance_absent template's notification column is set).
+            @$this->notification_service->common_send_email_push(array(
                 'purpose' => 'attendance_absent',
-                'user_id' => (int)$stu['id'],
                 'user_type' => 'student',
+                'user_id' => (int)$stu['id'],
                 'to_email' => $to,
-                'dynamic_var' => array(
+                'url' => 'student/attendance',
+                'vars' => array(
                     'STUDENT_NAME' => isset($stu['name']) ? $stu['name'] : '',
                     'DATE' => $date_disp,
                     'CURRENT_YEAR' => date('Y'),
@@ -12075,11 +12092,22 @@ function result_table($type){
     
     
                     if($ins==true){
-                        // 1 master + 1 push_notifications_details row per enrolled student of the batch(es).
+                        // One call per batch = email + push + in-app to enrolled students (template: new_book_added).
                         $this->load->library('notification_service');
-                        @$this->notification_service->push_notify('add New Book','New Book Added','Library','student/book',array('batch_ids'=>(array)$batch_data));
-                        // Email enrolled students of the batch(es) about the new study material (best-effort).
-                        @$this->send_library_material_emails($batch_data);
+                        $book_batches = json_decode((string)$batch_data, true);
+                        if(!is_array($book_batches)){ $book_batches = array_filter(array_map('trim', explode(',', (string)$batch_data))); }
+                        foreach($book_batches as $b){
+                            $bid = (int)$b;
+                            if($bid < 1){ continue; }
+                            $bn = $this->db_model->select_data('batch_name','batches use index (id)',array('id'=>$bid),1);
+                            $bname = !empty($bn[0]['batch_name']) ? $bn[0]['batch_name'] : '';
+                            @$this->notification_service->notify_batch_event(
+                                $bid,
+                                'new_book_added',
+                                array('BATCH_NAME'=>$bname,'CURRENT_YEAR'=>date('Y')),
+                                array('url'=>'student/book','notification_type'=>'Library')
+                            );
+                        }
                          $resp = array('status'=>1,'msg'=>$this->lang->line('ltr_book_added_msg'));
                          
                     }else{
@@ -14557,15 +14585,23 @@ function themesOption(){
                     if($ins==true){
                         $resp = array('status'=>1,'msg'=>$this->lang->line('ltr_paper_added_msg'),'url'=>base_url($profile.'/exam-manage'));
                         
-                        $batch_id = $this->input->post('batch_id',TRUE);
-                        $paper_type =$this->input->post('type',TRUE);
-                        
-                        // notification: 1 master + 1 push_notifications_details row per enrolled student.
+                        $batch_id = (int) $this->input->post('batch_id',TRUE);
+                        $paper_type = $this->input->post('type',TRUE);
+
+                        // One call = email + push + in-app to enrolled students (template: new_exam).
+                        // Only for a newly added paper (skip on edit/update so students are not re-notified).
                         $this->load->library('notification_service');
-                        if($paper_type==1){
-                            @$this->notification_service->push_notify($this->lang->line('ltr_view_mock_paper'),'New Mock Paper Added','Exam','student/mock-paper',array('batch_id'=>$batch_id));
-                        }else{
-                            @$this->notification_service->push_notify($this->lang->line('ltr_view_practice_paper'),'New Practice Paper Added','Exam','student/practice-paper',array('batch_id'=>$batch_id));
+                        $is_new_paper = !isset($_POST['modifyType']) || $_POST['modifyType'] === 'newpaper';
+                        if($batch_id > 0 && $is_new_paper){
+                            $bn = $this->db_model->select_data('batch_name','batches use index (id)',array('id'=>$batch_id),1);
+                            $bname = !empty($bn[0]['batch_name']) ? $bn[0]['batch_name'] : '';
+                            $is_mock = ($paper_type == 1);
+                            @$this->notification_service->notify_batch_event(
+                                $batch_id,
+                                'new_exam',
+                                array('BATCH_NAME'=>$bname,'PAPER_TYPE'=>($is_mock?'Mock':'Practice'),'CURRENT_YEAR'=>date('Y')),
+                                array('url'=>($is_mock?'student/mock-paper':'student/practice-paper'),'notification_type'=>'Exam')
+                            );
                         }
 
                     }else{
