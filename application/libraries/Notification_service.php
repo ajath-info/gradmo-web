@@ -288,18 +288,17 @@ class Notification_service
 			return $result;
 		}
 
-		// Derive push title/body from the same email template (templates has no 'push' type).
+		// Notification title/body come from the SAME email template row (one query): title => title,
+		// body => the `notification` column. Explicit push_title/push_message in $opts win.
 		$push_title = isset($opts['push_title']) ? (string) $opts['push_title'] : '';
 		$push_message = isset($opts['push_message']) ? (string) $opts['push_message'] : '';
 		if ($push_title === '' || $push_message === '') {
-			$tpl = $this->CI->db_model->select_data('title,description,html_code', 'templates', array('purpose' => $purpose), 1);
-			$tpl = !empty($tpl[0]) ? $tpl[0] : array();
+			$tpl = $this->notification_template_content($purpose, $vars);
 			if ($push_title === '') {
-				$push_title = $this->apply_vars(isset($tpl['title']) ? $tpl['title'] : $purpose, $vars);
+				$push_title = $tpl['title'];
 			}
 			if ($push_message === '') {
-				$raw = !empty($tpl['description']) ? $tpl['description'] : (isset($tpl['html_code']) ? $tpl['html_code'] : '');
-				$push_message = trim(preg_replace('/\s+/', ' ', strip_tags($this->apply_vars($raw, $vars))));
+				$push_message = $tpl['message'];
 			}
 		}
 		if ($push_title === '') {
@@ -448,16 +447,14 @@ class Notification_service
 			$result['email_sent'] = !empty($res['status']);
 		}
 
-		// Derive push title/body from the same template.
+		// Notification title/body from the email template row (title => title, body => notification col).
 		$msg_vars = array_merge($vars, array($name_var => $name, 'NAME' => $name));
 		$push_title = '';
 		$push_message = '';
 		if ($do_push || $do_in_app) {
-			$tpl = $this->CI->db_model->select_data('title,description,html_code', 'templates', array('purpose' => $purpose), 1);
-			$tpl = !empty($tpl[0]) ? $tpl[0] : array();
-			$push_title = $this->apply_vars(!empty($tpl['title']) ? $tpl['title'] : $purpose, $msg_vars);
-			$raw = !empty($tpl['description']) ? $tpl['description'] : (isset($tpl['html_code']) ? $tpl['html_code'] : '');
-			$push_message = trim(preg_replace('/\s+/', ' ', strip_tags($this->apply_vars($raw, $msg_vars))));
+			$tpl = $this->notification_template_content($purpose, $msg_vars);
+			$push_title = $tpl['title'];
+			$push_message = $tpl['message'];
 			if ($push_title === '') {
 				$push_title = ucwords(str_replace('_', ' ', $purpose));
 			}
@@ -586,8 +583,50 @@ class Notification_service
 	{
 		$text = (string) $text;
 		foreach ($vars as $k => $v) {
-			$text = str_ireplace(array('{{' . $k . '}}', '{' . $k . '}'), (string) (is_scalar($v) ? $v : ''), $text);
+			$val = (string) (is_scalar($v) ? $v : '');
+			$key = preg_quote((string) $k, '/');
+			// Whitespace/case tolerant: {{KEY}}, {{ KEY }}, {KEY}, { KEY }.
+			$text = preg_replace_callback('/\{\{\s*' . $key . '\s*\}\}|\{\s*' . $key . '\s*\}/i', function () use ($val) {
+				return $val;
+			}, $text);
 		}
 		return $text;
+	}
+
+	/**
+	 * Notification (push + in-app) title/body from the email template row: title => templates.title,
+	 * body => templates.notification (the column added for notifications). Falls back to
+	 * description/html_code when the notification column is empty or missing. Variables are applied
+	 * and the body is flattened to plain text.
+	 *
+	 * @return array{title:string,message:string}
+	 */
+	private function notification_template_content($purpose, array $vars)
+	{
+		$purpose = trim((string) $purpose);
+		$has_notif_col = $this->CI->db->field_exists('notification', 'templates');
+		$cols = 'title,description,html_code' . ($has_notif_col ? ',notification' : '');
+		$rows = $this->CI->db_model->select_data(
+			$cols,
+			'templates',
+			array('purpose' => $purpose, 'template_for' => 'email'),
+			1
+		);
+		$tpl = !empty($rows[0]) ? $rows[0] : array();
+
+		$title = $this->apply_vars(isset($tpl['title']) ? $tpl['title'] : $purpose, $vars);
+
+		// Prefer the dedicated notification body; fall back to description, then html_code.
+		$body_raw = '';
+		if ($has_notif_col && !empty($tpl['notification'])) {
+			$body_raw = (string) $tpl['notification'];
+		} elseif (!empty($tpl['description'])) {
+			$body_raw = (string) $tpl['description'];
+		} elseif (!empty($tpl['html_code'])) {
+			$body_raw = (string) $tpl['html_code'];
+		}
+		$message = trim(preg_replace('/\s+/', ' ', strip_tags($this->apply_vars($body_raw, $vars))));
+
+		return array('title' => $title, 'message' => $message);
 	}
 }
