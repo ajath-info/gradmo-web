@@ -1154,8 +1154,16 @@ class Batch extends MY_Controller
 			echo json_encode(array('status' => 'false', 'msg' => 'Failed to add book'));
 			return;
 		}
-		// Email enrolled students of the batch about the new study material (best-effort).
-		@$this->send_library_material_emails($batch_id);
+		// One call = email + push + in-app to enrolled students (template: new_study_material_added_to_elibrary).
+		$this->load->library('notification_service');
+		$bn_book = $this->db_model->select_data('batch_name', 'batches use index (id)', array('id' => (int) $batch_id), 1);
+		$bname_book = !empty($bn_book[0]['batch_name']) ? $bn_book[0]['batch_name'] : '';
+		@$this->notification_service->notify_batch_event(
+			(int) $batch_id,
+			'new_study_material_added_to_elibrary',
+			array('BATCH_NAME' => $bname_book, 'MATERIAL_TYPE' => 'Book', 'CURRENT_YEAR' => date('Y')),
+			array('url' => 'student/book', 'notification_type' => 'Library')
+		);
 		$download_url = $image !== '' ? base_url('uploads/book/') . $image : '';
 		echo json_encode(array(
 			'status' => 'true',
@@ -2283,8 +2291,16 @@ class Batch extends MY_Controller
 			'added_at' => date('Y-m-d H:i:s'),
 		));
 		$new_id = (int) $this->db_model->insert_data('notes_pdf', $insert);
-		// Email enrolled students of the batch about the new study material (best-effort).
-		@$this->send_library_material_emails($batch_id);
+		// One call = email + push + in-app to enrolled students (template: new_study_material_added_to_elibrary).
+		$this->load->library('notification_service');
+		$bn_notes = $this->db_model->select_data('batch_name', 'batches use index (id)', array('id' => (int) $batch_id), 1);
+		$bname_notes = !empty($bn_notes[0]['batch_name']) ? $bn_notes[0]['batch_name'] : '';
+		@$this->notification_service->notify_batch_event(
+			(int) $batch_id,
+			'new_study_material_added_to_elibrary',
+			array('BATCH_NAME' => $bname_notes, 'MATERIAL_TYPE' => 'Notes', 'CURRENT_YEAR' => date('Y')),
+			array('url' => 'student/notes', 'notification_type' => 'Notes')
+		);
 		$this->api_json(true, 'Notes added successfully', array(
 			'id' => $new_id,
 			'batch_id' => $batch_id,
