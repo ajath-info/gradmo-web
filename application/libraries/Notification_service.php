@@ -566,8 +566,9 @@ class Notification_service
 		$note = isset($a['note']) ? (string) $a['note'] : '';
 
 		// SINGLE query: this one template row carries both the email content (html_code/description)
-		// and the notification body (`notification` column).
-		$has_notif_col = $this->CI->db->field_exists('notification', 'templates');
+		// and the notification body (`notification` column). Using SELECT * means the notification
+		// column is present in the row whenever it exists — no separate field_exists() check needed
+		// (field_exists metadata can be stale and wrongly report the column as missing).
 		$rows = $this->CI->db_model->select_data(
 			'*',
 			'templates',
@@ -603,7 +604,7 @@ class Notification_service
 		// 2) Notification (push + in-app) ONLY when this template's `notification` column is filled.
 		//    Pass the RAW template strings so notify_account_status substitutes vars (incl. the
 		//    recipient's name) itself — no extra template fetch.
-		$notif_raw = ($has_notif_col && isset($tpl_row['notification'])) ? trim((string) $tpl_row['notification']) : '';
+		$notif_raw = isset($tpl_row['notification']) ? trim((string) $tpl_row['notification']) : '';
 		if ($notif_raw !== '' && ($do_push || $do_in_app)) {
 			$title_raw = isset($tpl_row['title']) && trim((string) $tpl_row['title']) !== '' ? (string) $tpl_row['title'] : $purpose;
 			$ns = $this->notify_account_status($user_type, $user_id, $purpose, $vars, array(
@@ -713,10 +714,10 @@ class Notification_service
 	private function notification_template_content($purpose, array $vars)
 	{
 		$purpose = trim((string) $purpose);
-		$has_notif_col = $this->CI->db->field_exists('notification', 'templates');
-		$cols = 'title,description,html_code' . ($has_notif_col ? ',notification' : '');
+		// SELECT * so the `notification` column is present whenever it exists (no field_exists check,
+		// whose cached metadata can wrongly report the column as missing).
 		$rows = $this->CI->db_model->select_data(
-			$cols,
+			'*',
 			'templates',
 			array('purpose' => $purpose, 'template_for' => 'email'),
 			1
@@ -727,7 +728,7 @@ class Notification_service
 
 		// Prefer the dedicated notification body; fall back to description, then html_code.
 		$body_raw = '';
-		if ($has_notif_col && !empty($tpl['notification'])) {
+		if (!empty($tpl['notification'])) {
 			$body_raw = (string) $tpl['notification'];
 		} elseif (!empty($tpl['description'])) {
 			$body_raw = (string) $tpl['description'];
