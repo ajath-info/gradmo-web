@@ -10398,6 +10398,34 @@ function result_table($type){
     }
 
     /**
+     * Email + push + in-app (template-driven) to enrolled students of the given batch(es), one
+     * notify_batch_event per batch. $batch_data may be an array, a JSON string ("[11,12]") or a
+     * comma-separated string. Push fires only when the template's `notification` column is set.
+     */
+    private function notify_batch_material($batch_data, $purpose, $url, $notification_type, array $extra_vars = array()){
+        if(is_array($batch_data)){
+            $batches = $batch_data;
+        }else{
+            $decoded = json_decode((string)$batch_data, true);
+            $batches = is_array($decoded) ? $decoded : array_filter(array_map('trim', explode(',', (string)$batch_data)));
+        }
+        if(empty($batches)){ return; }
+        $this->load->library('notification_service');
+        foreach($batches as $b){
+            $bid = (int)$b;
+            if($bid < 1){ continue; }
+            $bn = $this->db_model->select_data('batch_name','batches use index (id)',array('id'=>$bid),1);
+            $bname = !empty($bn[0]['batch_name']) ? $bn[0]['batch_name'] : '';
+            @$this->notification_service->notify_batch_event(
+                $bid,
+                $purpose,
+                array_merge(array('BATCH_NAME'=>$bname,'CURRENT_YEAR'=>date('Y')), $extra_vars),
+                array('url'=>$url, 'notification_type'=>$notification_type)
+            );
+        }
+    }
+
+    /**
      * Email the `new_study_material_added_to_elibrary` template to enrolled, active students of the
      * given batch(es). $batch_ids may be an array of ids or a comma-separated string. Best-effort.
      */
@@ -12735,11 +12763,8 @@ function result_table($type){
                 
                 if($ins==true){
                     $resp = array('status'=>1,'msg'=>$this->lang->line('ltr_notes_added_msg'));
-                    // 1 master + 1 push_notifications_details row per enrolled student of the batch(es).
-                    $this->load->library('notification_service');
-                    @$this->notification_service->push_notify('add New Notes','New Notes Added','Notes','student/notes',array('batch_ids'=>(array)$batch_data));
-                    // Email enrolled students of the batch(es) about the new study material (best-effort).
-                    @$this->send_library_material_emails($batch_data);
+                    // One call per batch = email + push + in-app (template: new_study_material_added_to_elibrary).
+                    @$this->notify_batch_material($batch_data,'new_study_material_added_to_elibrary','student/notes','Notes',array('MATERIAL_TYPE'=>'Notes'));
 
                 }else{
                     $resp = array('status'=>0);
@@ -13120,16 +13145,8 @@ function result_table($type){
                 $ins = $this->db_model->insert_data('old_paper_pdf',$data_arr);
                 if($ins==true){
                     $resp = array('status'=>1,'msg'=>$this->lang->line('ltr_oldp_added_msg'));
-                    //send push notice
-                    
-                    for($i=0;$i<count($batch_data);$i++){
-                        $title="add old paper";
-                        $where ="addOldPaper";
-                        $batch_id=$batch_data[$i];
-                        $this->push_notification_android($batch_id,$title,$where);
-                    }
-                    // Email enrolled students of the batch(es) about the new study material (best-effort).
-                    @$this->send_library_material_emails($batch_data);
+                    // One call per batch = email + push + in-app (template: new_study_material_added_to_elibrary).
+                    @$this->notify_batch_material($batch_data,'new_study_material_added_to_elibrary','student/old-paper','Library',array('MATERIAL_TYPE'=>'Old paper'));
                 }else{
                     $resp = array('status'=>0);
                 }
