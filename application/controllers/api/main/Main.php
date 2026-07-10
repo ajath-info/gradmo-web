@@ -125,64 +125,34 @@ class Main extends MY_Controller
 			return;
 		}
 
-		// Resolve teacher batch IDs before touching the notifications query.
-		// Db_model::select_data() calls reset_query(), which would wipe a half-built QB.
-		$teacher_batch_ids = null;
-		if ($ut === 'teacher') {
-			$teacher_id = (int) $payload['uid'];
-			$rows = $this->db_model->select_data('batch_id', 'batch_subjects', array('teacher_id' => $teacher_id));
-			$teacher_batch_ids = array();
-			if (!empty($rows)) {
-				foreach ($rows as $r) {
-					$bid = isset($r['batch_id']) ? (int) $r['batch_id'] : 0;
-					if ($bid > 0 && !in_array($bid, $teacher_batch_ids, true)) {
-						$teacher_batch_ids[] = $bid;
-					}
-				}
-			}
-			if (empty($teacher_batch_ids)) {
-				echo json_encode(array(
-					'status' => 'true',
-					'userType' => 'teacher',
-					'notifications' => array(),
-					'pagination' => $this->build_api_list_pagination_meta($page, $limit, 0),
-					'msg' => $this->lang->line('ltr_no_record_msg')
-				));
-				return;
-			}
-		}
+		// Both students and teachers read their OWN per-recipient rows from push_notifications_details.
+		// user_type code: student => 1, teacher => 2. This ensures a teacher only sees notifications
+		// addressed to the teacher — NOT the student notifications of their batches.
+		$ut_code = ($ut === 'teacher') ? 2 : 1;
 
 		$n = 'notifications';
 		$has_title = $this->db->field_exists('title', $n);
 
-		// Build the (filtered) query for either list or count. Students read per-recipient state
-		// from push_notifications_details (1 master row -> N detail rows); teachers see batch master rows.
-		$build = function ($for_count) use ($n, $ut, $payload, $teacher_batch_ids, $data, $has_title, $include_cleared) {
+		// Build the (filtered) query for either list or count. 1 master row -> N detail rows; each user
+		// sees only the detail rows written for them (their userid + user_type).
+		$build = function ($for_count) use ($n, $ut_code, $payload, $data, $has_title, $include_cleared) {
 			$this->db->reset_query();
 			if (!$for_count) {
 				$cols = $n . '.id, ' . $n . '.batch_id as batchId, ' . $n . '.notification_type as notificationType, ' .
 					($has_title ? $n . '.title as title, ' : '') .
 					$n . '.msg, ' . $n . '.url, ' . $n . '.time';
-				if ($ut === 'student') {
-					// detailId = the per-recipient row (push_notifications_details.id) so the UI can
-					// read/clear exactly one row even when duplicates share the same pushnotify_id.
-					$cols .= ', pd.id as detailId, pd.userid as userId, pd.`read` as `read`, pd.status as pushStatus';
-				} else {
-					$cols .= ', ' . $n . '.status, ' . $n . '.seen_by as seenBy';
-				}
+				// detailId = the per-recipient row (push_notifications_details.id) so the UI can
+				// read/clear exactly one row even when duplicates share the same pushnotify_id.
+				$cols .= ', pd.id as detailId, pd.userid as userId, pd.`read` as `read`, pd.status as pushStatus';
 				$this->db->select($cols, false);
 			}
 			$this->db->from($n);
-			if ($ut === 'student') {
-				$this->db->join('push_notifications_details pd', 'pd.pushnotify_id = ' . $n . '.id', 'inner')
-					->where('pd.userid', (int) $payload['uid'])
-					->where('pd.user_type', 1);
-				// Active list hides cleared rows; the "all" (history) list includes them.
-				if (!$include_cleared && $this->db->field_exists('clear', 'push_notifications_details')) {
-					$this->db->where('pd.clear', '0');
-				}
-			} else {
-				$this->db->where_in($n . '.batch_id', $teacher_batch_ids);
+			$this->db->join('push_notifications_details pd', 'pd.pushnotify_id = ' . $n . '.id', 'inner')
+				->where('pd.userid', (int) $payload['uid'])
+				->where('pd.user_type', $ut_code);
+			// Active list hides cleared rows; the "all" (history) list includes them.
+			if (!$include_cleared && $this->db->field_exists('clear', 'push_notifications_details')) {
+				$this->db->where('pd.clear', '0');
 			}
 			if (!empty($data['notification_type'])) {
 				$this->db->where($n . '.notification_type', $data['notification_type']);
@@ -197,19 +167,16 @@ class Main extends MY_Controller
 		$build(true);
 		$total = (int) $this->db->count_all_results();
 
-		// Unread badge count for students: unread + not cleared, ignoring the type filter.
-		$unread = 0;
-		if ($ut === 'student') {
-			$this->db->reset_query();
-			$this->db->from('push_notifications_details pd')
-				->where('pd.userid', (int) $payload['uid'])
-				->where('pd.user_type', 1)
-				->where('pd.`read`', 0);
-			if ($this->db->field_exists('clear', 'push_notifications_details')) {
-				$this->db->where('pd.clear', '0');
-			}
-			$unread = (int) $this->db->count_all_results();
+		// Unread badge count (unread + not cleared) for the caller's own rows, ignoring the type filter.
+		$this->db->reset_query();
+		$this->db->from('push_notifications_details pd')
+			->where('pd.userid', (int) $payload['uid'])
+			->where('pd.user_type', $ut_code)
+			->where('pd.`read`', 0);
+		if ($this->db->field_exists('clear', 'push_notifications_details')) {
+			$this->db->where('pd.clear', '0');
 		}
+		$unread = (int) $this->db->count_all_results();
 
 		echo json_encode(array(
 			'status' => 'true',
@@ -268,30 +235,8 @@ class Main extends MY_Controller
 			return;
 		}
 
-		// Teacher rows are scoped to mapped batches; resolve before building the QB (select_data resets it).
-		$teacher_batch_ids = null;
-		if ($ut === 'teacher') {
-			$teacher_id = (int) $payload['uid'];
-			$rows = $this->db_model->select_data('batch_id', 'batch_subjects', array('teacher_id' => $teacher_id));
-			$teacher_batch_ids = array();
-			if (!empty($rows)) {
-				foreach ($rows as $r) {
-					$bid = isset($r['batch_id']) ? (int) $r['batch_id'] : 0;
-					if ($bid > 0 && !in_array($bid, $teacher_batch_ids, true)) {
-						$teacher_batch_ids[] = $bid;
-					}
-				}
-			}
-			if (empty($teacher_batch_ids)) {
-				echo json_encode(array(
-					'status' => 'true',
-					'userType' => 'teacher',
-					'affected' => 0,
-					'msg' => $this->lang->line('ltr_no_record_msg')
-				));
-				return;
-			}
-		}
+		// Both students and teachers act on their OWN per-recipient rows (user_type: student=1, teacher=2).
+		$ut_code = ($ut === 'teacher') ? 2 : 1;
 
 		// Master ids from `id`/`ids` (notifications.id => affects all of the caller's rows for that
 		// master) and per-row detail ids from `detail_id`/`detail_ids` (push_notifications_details.id
@@ -326,41 +271,27 @@ class Main extends MY_Controller
 			return;
 		}
 
-		$n = 'notifications';
 		$this->db->reset_query();
 
-		if ($ut === 'student') {
-			// Per-recipient state lives in push_notifications_details. Prefer per-row detail ids so a
-			// single action affects exactly one row; fall back to master pushnotify_id, else all.
-			$pd = 'push_notifications_details';
-			$this->db->where('userid', (int) $payload['uid'])->where('user_type', 1);
-			if (!empty($detailIds)) {
-				$this->db->where_in('id', $detailIds);
-			} elseif (!empty($ids)) {
-				$this->db->where_in('pushnotify_id', $ids);
-			}
-			if ($action === 'delete') {
-				// Soft "clear": keep the row (still visible in the all/history list) but hide it from
-				// the active list. Hard-delete only if the clear column is missing.
-				if ($this->db->field_exists('clear', $pd)) {
-					$this->db->update($pd, array('clear' => '1'));
-				} else {
-					$this->db->delete($pd);
-				}
+		// Per-recipient state lives in push_notifications_details. Prefer per-row detail ids so a
+		// single action affects exactly one row; fall back to master pushnotify_id, else all.
+		$pd = 'push_notifications_details';
+		$this->db->where('userid', (int) $payload['uid'])->where('user_type', $ut_code);
+		if (!empty($detailIds)) {
+			$this->db->where_in('id', $detailIds);
+		} elseif (!empty($ids)) {
+			$this->db->where_in('pushnotify_id', $ids);
+		}
+		if ($action === 'delete') {
+			// Soft "clear": keep the row (still visible in the all/history list) but hide it from
+			// the active list. Hard-delete only if the clear column is missing.
+			if ($this->db->field_exists('clear', $pd)) {
+				$this->db->update($pd, array('clear' => '1'));
 			} else {
-				$this->db->where('`read`', 0)->update($pd, array('read' => 1));
+				$this->db->delete($pd);
 			}
 		} else {
-			// Teacher: batch-scoped master rows (no per-recipient copy).
-			$this->db->where_in($n . '.batch_id', $teacher_batch_ids);
-			if (!empty($ids)) {
-				$this->db->where_in($n . '.id', $ids);
-			}
-			if ($action === 'delete') {
-				$this->db->delete($n);
-			} else {
-				$this->db->update($n, array('status' => 1));
-			}
+			$this->db->where('`read`', 0)->update($pd, array('read' => 1));
 		}
 		$affected = (int) $this->db->affected_rows();
 

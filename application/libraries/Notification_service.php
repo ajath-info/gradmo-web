@@ -107,6 +107,28 @@ class Notification_service
 	}
 
 	/**
+	 * SQL expression that yields the recipient's FCM token from a table: a non-empty device_token,
+	 * else the legacy `token` column. Returns "''" when neither column exists.
+	 *
+	 * @return string
+	 */
+	private function device_token_select_expr($table)
+	{
+		$has_dt = $this->CI->db->field_exists('device_token', $table);
+		$has_t = $this->CI->db->field_exists('token', $table);
+		if ($has_dt && $has_t) {
+			return "COALESCE(NULLIF(TRIM(device_token), ''), token)";
+		}
+		if ($has_dt) {
+			return 'device_token';
+		}
+		if ($has_t) {
+			return 'token';
+		}
+		return "''";
+	}
+
+	/**
 	 * Map the internal user_type code to the string the apps expect.
 	 *
 	 * @return string student|teacher|institute
@@ -426,15 +448,16 @@ class Notification_service
 			$vars = array_merge($vars, array('REASON' => $note, 'ADMIN_NOTE' => $note, 'NOTE' => $note));
 		}
 
-		// Resolve recipient + device token.
+		// Resolve recipient + device token. Prefer a non-empty device_token, else fall back to the
+		// legacy `token` column (some accounts, e.g. teachers, only have `token` filled).
 		if ($user_type === 'student') {
 			$ut_code = self::UT_STUDENT;
-			$token_col = $this->CI->db->field_exists('device_token', 'students') ? 'device_token' : 'token';
-			$row = $this->CI->db_model->select_data('id,name,email,' . $token_col . ' AS device_token', 'students use index (id)', array('id' => $user_id), 1);
+			$tok_expr = $this->device_token_select_expr('students');
+			$row = $this->CI->db_model->select_data('id,name,email,' . $tok_expr . ' AS device_token', 'students use index (id)', array('id' => $user_id), 1);
 		} else {
 			$ut_code = ($user_type === 'institute') ? self::UT_INSTITUTE : self::UT_TEACHER;
-			$token_col = $this->CI->db->field_exists('device_token', 'users') ? 'device_token' : ($this->CI->db->field_exists('token', 'users') ? 'token' : '');
-			$cols = 'id,name,email' . ($token_col !== '' ? ',' . $token_col . ' AS device_token' : '');
+			$tok_expr = $this->device_token_select_expr('users');
+			$cols = 'id,name,email' . ($tok_expr !== "''" ? ',' . $tok_expr . ' AS device_token' : '');
 			$row = $this->CI->db_model->select_data($cols, 'users use index (id)', array('id' => $user_id), 1);
 		}
 		if (empty($row[0])) {
