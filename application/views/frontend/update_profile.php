@@ -18,7 +18,7 @@
 					<h4 class="mb-3">Personal information</h4>
 					<div class="row">
 						<div class="col-md-6"><div class="edu_field_holder"><input id="up_name" class="edu_form_field" type="text" placeholder="First name" maxlength="10" value="<?php echo html_escape(isset($profile['name']) ? $profile['name'] : ''); ?>"></div></div>
-						<div class="col-md-6"><div class="edu_field_holder"><input id="up_last_name" class="edu_form_field" type="text" placeholder="Last name" maxlength="10" value="<?php echo html_escape(isset($profile['last_name']) ? $profile['last_name'] : ''); ?>"></div></div>
+						<div class="col-md-6"><div class="edu_field_holder"><input id="up_last_name" class="edu_form_field" type="text" placeholder="Last name" value="<?php echo html_escape(isset($profile['last_name']) ? $profile['last_name'] : ''); ?>"></div></div>
 						<div class="col-12"><div class="edu_field_holder"><input id="up_email" class="edu_form_field" type="email" placeholder="Email" value="<?php echo html_escape(isset($profile['email']) ? $profile['email'] : ''); ?>"></div></div>
 						<div class="col-12"><div class="edu_field_holder"><input id="up_mobile" class="edu_form_field" type="text" placeholder="Phone number" maxlength="10" inputmode="numeric" value="<?php echo html_escape(isset($profile['mobile']) ? $profile['mobile'] : ''); ?>"></div></div>
 						<div class="col-12"><div class="edu_field_holder"><input id="up_address" class="edu_form_field" type="text" placeholder="Address" value="<?php echo html_escape(isset($profile['address']) ? $profile['address'] : ''); ?>"></div></div>
