@@ -192,10 +192,7 @@
 				if (typeof toastr !== 'undefined') { toastr.error('First name must be at most 10 characters.'); }
 				return;
 			}
-			if (lastName.length > 10) {
-				if (typeof toastr !== 'undefined') { toastr.error('Last name must be at most 10 characters.'); }
-				return;
-			}
+			
 			var payload = {
 				name: firstName,
 				last_name: lastName,

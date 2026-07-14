@@ -57,10 +57,7 @@
 				if (typeof toastr !== 'undefined') { toastr.error('First name must be at most 10 characters.'); }
 				return;
 			}
-			if (lastName.length > 10) {
-				if (typeof toastr !== 'undefined') { toastr.error('Last name must be at most 10 characters.'); }
-				return;
-			}
+			
 			if (mob.length !== 10) {
 				if (typeof toastr !== 'undefined') { toastr.error('Please enter a valid 10-digit mobile number.'); }
 				return;

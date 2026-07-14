@@ -521,14 +521,7 @@ class Home extends MY_Controller {
 	        ]);
 	        return;
 	    }
-	    if ($last_name_check !== '' && mb_strlen($last_name_check) > 10) {
-	        echo json_encode([
-	            'status' => 'false',
-	            'msg' => 'Last name must be at most 10 characters.'
-	        ]);
-	        return;
-	    }
-
+	   
 	    $user_type = strtolower(trim((string) $data['user_type']));
 
 	    if (!in_array($user_type, ['student', 'teacher', 'institute'])) {
@@ -1283,10 +1276,7 @@ public function otherBatchData($data){
         echo json_encode(array('status' => 'false', 'msg' => 'First name must be at most 10 characters.'));
         return;
     }
-    if (isset($data['last_name']) && trim((string) $data['last_name']) !== '' && mb_strlen(trim((string) $data['last_name'])) > 10) {
-        echo json_encode(array('status' => 'false', 'msg' => 'Last name must be at most 10 characters.'));
-        return;
-    }
+    
 
     if ($ut === 'student') {
         if ($this->authorize_student_request($uid, is_array($data) ? $data : null) === false) {
