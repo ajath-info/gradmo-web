@@ -95,7 +95,7 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 			/** @var object{db_model: Db_model} $ci */
 			$ci = $this->CI;
 			$data = $ci->db_model->select_data('*','general_settings',array('key_text'=>$key_text),1);
-			return $data[0]['velue_text'];
+			return (!empty($data[0]) && isset($data[0]['velue_text'])) ? $data[0]['velue_text'] : '';
 		}
 		function languageTranslator($traWord=''){
             return $this->CI->lang->line($traWord);
