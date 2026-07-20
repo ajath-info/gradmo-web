@@ -19,9 +19,9 @@
 						<select id="ta_add_status" class="edu_form_field">
 							<option value="">Auto (present/late by time)</option>
 							<option value="present">Present</option>
-							<option value="late">Late</option>
-							<option value="half">Half day</option>
 							<option value="absent">Absent</option>
+							<!-- <option value="late">Late</option>
+							<option value="half">Half day</option> -->
 						</select>
 					</div>
 				</div>

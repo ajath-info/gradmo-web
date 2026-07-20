@@ -28,10 +28,10 @@
 						</div>
 						<p class="att-dash-legend small text-muted mb-2">
 							<span class="att-leg att-leg-present">Present</span>
-							<span class="att-leg att-leg-late">Late</span>
-							<span class="att-leg att-leg-half">Half day</span>
 							<span class="att-leg att-leg-absent">Absent</span>
-							<span class="att-leg att-leg-weekend">Weekend</span>
+							<!-- <span class="att-leg att-leg-late">Late</span>
+							<span class="att-leg att-leg-half">Half day</span> 
+							<span class="att-leg att-leg-weekend">Weekend</span>-->
 						</p>
 						<div id="attCalendarGrid"></div>
 						<div id="attTeacherRoster" class="att-teacher-roster att-hidden"></div>
