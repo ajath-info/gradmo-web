@@ -231,7 +231,7 @@
 			var stu = students[s];
 			var sid = stu.studentId;
 			h += '<tr><td class="ta-mx-sticky-col"><span class="ta-mx-name">' + esc(stu.name || '') + '</span>';
-			h += '<div class="ta-mx-sub">' + esc(stu.mobile || stu.email || '') + '</div></td>';
+			h += '<div class="ta-mx-sub">' + esc(stu.enrollment_id || stu.email || '') + '</div></td>';
 			for (var j = 0; j < dates.length; j++) {
 				var ymd = dates[j].date;
 				var key = cellKey(sid, ymd);
