@@ -1402,7 +1402,7 @@ class Batch extends MY_Controller
 		$batch_row = $this->db_model->select_data('id,start_time', 'batches', array('id' => $batch_id, 'status' => 1), 1);
 		$batch_start = !empty($batch_row[0]['start_time']) ? (string) $batch_row[0]['start_time'] : '';
 
-		$this->db->select('s.id as studentId,s.name,s.email,s.contact_no as mobile');
+		$this->db->select('s.id as studentId,s.name,s.email,s.contact_no as mobile,s.enrollment_id');
 		$this->db->from('student_batchs sb');
 		$this->db->join('students s', 's.id = sb.student_id', 'inner');
 		$this->db->where('sb.batch_id', $batch_id);
@@ -1417,6 +1417,7 @@ class Batch extends MY_Controller
 				'name' => isset($r['name']) ? $r['name'] : '',
 				'email' => isset($r['email']) ? $r['email'] : '',
 				'mobile' => isset($r['mobile']) ? $r['mobile'] : '',
+				'enrollment_id' => isset($r['enrollment_id']) ? $r['enrollment_id'] : '',
 			);
 		}
 
