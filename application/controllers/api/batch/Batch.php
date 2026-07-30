@@ -3436,14 +3436,25 @@ class Batch extends MY_Controller
 				echo json_encode(array('status' => 'false', 'msg' => 'batch_zoom_meetings is not installed'));
 				return;
 			}
-			$bz = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id_req, 'status' => 1), 1, array('id', 'desc'));
-			$has_zoom = !empty($bz[0]) && (trim((string) (isset($bz[0]['zoom_meeting_id']) ? $bz[0]['zoom_meeting_id'] : '')) !== '' || trim((string) (isset($bz[0]['join_url']) ? $bz[0]['join_url'] : '')) !== '');
-			if (!$has_zoom) {
-				echo json_encode(array('status' => 'false', 'msg' => 'No batch Zoom meeting is linked for this batch'));
-				return;
-			}
 			if (!$this->assert_batch_zoom_viewer($payload, $batch_id_req, $data)) {
 				return;
+			}
+
+			$bz = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id_req, 'status' => 1), 1, array('id', 'desc'));
+			$has_zoom = !empty($bz[0]) && (trim((string) (isset($bz[0]['zoom_meeting_id']) ? $bz[0]['zoom_meeting_id'] : '')) !== '' || trim((string) (isset($bz[0]['join_url']) ? $bz[0]['join_url'] : '')) !== '');
+			// End Class sets status=0. Teachers continue so attach_meeting can create a new Zoom meeting.
+			if (!$has_zoom) {
+				$ended = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id_req, 'status' => 0), 1, array('id', 'desc'));
+				$is_host = ((int) $this->zoom_meeting_role_from_payload($payload) === 1);
+				if ($is_host && !empty($ended[0])) {
+					$bz = $ended;
+				} elseif (!$is_host && !empty($ended[0])) {
+					echo json_encode(array('status' => 'false', 'msg' => 'This class session has ended. Wait for the teacher to start a new session.'));
+					return;
+				} else {
+					echo json_encode(array('status' => 'false', 'msg' => 'No batch Zoom meeting is linked for this batch'));
+					return;
+				}
 			}
 			$topic = !empty($bz[0]['topic']) ? (string) $bz[0]['topic'] : 'Batch Zoom';
 			$row = array(
@@ -6836,12 +6847,18 @@ class Batch extends MY_Controller
 			$this->api_json(false, 'batch_zoom_meetings table is not installed. Run installer/create_batch_zoom_meetings_and_zoom_s2s.sql');
 			return;
 		}
+		// Prefer active meeting; if End Class set status=0, still treat batch as Zoom-linked
+		// so the details card can show "Zoom already linked" + "Join live class".
 		$row = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id, 'status' => 1), 1, array('id', 'desc'));
+		if (empty($row)) {
+			$row = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id), 1, array('id', 'desc'));
+		}
 		if (empty($row)) {
 			$this->api_json(false, 'No Zoom meeting linked for this batch', array('batchId' => $batch_id));
 			return;
 		}
 		$r = $row[0];
+		$meeting_status = isset($r['status']) ? (int) $r['status'] : 0;
 		$out = array(
 			'batchId' => $batch_id,
 			'zoomMeetingId' => isset($r['zoom_meeting_id']) ? (string) $r['zoom_meeting_id'] : '',
@@ -6851,6 +6868,9 @@ class Batch extends MY_Controller
 			'duration' => isset($r['duration']) ? (int) $r['duration'] : 60,
 			'timezone' => isset($r['timezone']) ? (string) $r['timezone'] : 'UTC',
 			'inAppOnly' => 1,
+			'meetingStatus' => $meeting_status,
+			'isActive' => $meeting_status === 1 ? 1 : 0,
+			'joinUrl' => isset($r['join_url']) ? (string) $r['join_url'] : '',
 		);
 		$ut = strtolower(trim((string) $payload['ut']));
 		if ($ut === 'teacher' || $ut === 'institute') {

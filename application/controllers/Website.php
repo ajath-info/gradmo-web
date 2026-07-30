@@ -1468,6 +1468,8 @@ class Website extends MY_Controller
 			$data['live_meeting_end_url'] = site_url('api/batch/live-meeting-end');
 			$data['live_recording_start_url'] = site_url('api/batch/live-recording-start');
 			$data['live_recording_stop_url'] = site_url('api/batch/live-recording-stop');
+			$data['recorded_meeting_list_url'] = site_url('api/batch/recorded-meeting-list');
+			$data['recorded_meeting_sync_url'] = site_url('api/batch/recorded-meeting-sync');
 			$data['is_teacher_host'] = $this->website_session_is_teacher() || $this->website_session_is_institute();
 			$data['auto_join'] = in_array(strtolower((string) $this->input->get('join')), array('1', 'true', 'yes'), true);
 			$data['batch_details_url'] = site_url('batch/details');
