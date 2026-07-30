@@ -22,4 +22,4 @@ $config['meeting_sdk_secret'] = '';
  * Get this from Zoom App → Event Subscriptions → Webhook Token.
  * Leave empty to disable webhook signature verification.
  */
-$config['webhook_secret'] = 'l8hb5CWyTnGU5UI0LO9NOw';
+$config['webhook_secret'] = 'lo0ud2QiTCezuxZZ0mnSfQ';
