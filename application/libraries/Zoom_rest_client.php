@@ -179,14 +179,24 @@ class Zoom_rest_client
 	{
 		$r = $this->get_credential_row();
 		$cached = isset($r['zoom_host_user_id']) ? $this->normalize_credential_field($r['zoom_host_user_id']) : '';
+		// Misconfigured installs sometimes paste the host EMAIL into zoom_host_user_id.
+		if ($cached !== '' && filter_var($cached, FILTER_VALIDATE_EMAIL)) {
+			if (empty($r['zoom_host_email'])) {
+				$r['zoom_host_email'] = $cached;
+			}
+			$cached = '';
+		}
 		if ($cached !== '') {
 			return array('ok' => true, 'id' => $cached);
 		}
 		$fallback = $this->get_fallback_zoom_host_user_id();
-		if ($fallback !== '') {
+		if ($fallback !== '' && !filter_var($fallback, FILTER_VALIDATE_EMAIL)) {
 			return array('ok' => true, 'id' => $fallback);
 		}
 		$email = isset($r['zoom_host_email']) ? trim((string) $r['zoom_host_email']) : '';
+		if ($email === '' && $fallback !== '' && filter_var($fallback, FILTER_VALIDATE_EMAIL)) {
+			$email = $fallback;
+		}
 		if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
 			return array('ok' => false, 'error' => 'Set zoom_host_user_id in zoom_api_credentials, or zoom_host_user_id in application/config/zoom.php, or environment ZOOM_HOST_USER_ID (Zoom Admin → Users → host → User ID). Or set zoom_host_email and add User read scopes on the Zoom app.');
 		}
@@ -203,7 +213,17 @@ class Zoom_rest_client
 			}
 			return array('ok' => false, 'error' => $err);
 		}
-		return array('ok' => true, 'id' => (string) $res['json']['id']);
+		$host_id = (string) $res['json']['id'];
+		// Cache the real Zoom user id so later calls do not depend on User scopes.
+		if ($this->CI->db->table_exists('zoom_api_credentials') && $this->CI->db->field_exists('zoom_host_user_id', 'zoom_api_credentials')) {
+			@$this->CI->db_model->update_data_limit(
+				'zoom_api_credentials',
+				array('zoom_host_user_id' => $host_id),
+				array('id' => isset($r['id']) ? (int) $r['id'] : 1),
+				1
+			);
+		}
+		return array('ok' => true, 'id' => $host_id);
 	}
 
 	/**

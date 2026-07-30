@@ -3549,11 +3549,68 @@ class Batch extends MY_Controller
 				return;
 			}
 			// Find active meeting and mark teacher as joined
-			$bz = $this->db_model->select_data('id', 'batch_zoom_meetings', array('batch_id' => $batch_id, 'status' => 1), 1, array('id', 'desc'));
+			$bz = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id, 'status' => 1), 1, array('id', 'desc'));
+			$start_rec = array('ok' => false);
 			if (!empty($bz[0])) {
 				@$this->db_model->update_data_limit('batch_zoom_meetings', array(
 					'host_joined_at' => date('Y-m-d H:i:s')
 				), array('id' => (int) $bz[0]['id']), 1);
+
+				// After teacher starts the class, start Zoom cloud recording (teacher-only path).
+				$zoom_meeting_id = $this->zoom_public_meeting_number_from_batch_zoom_row($bz[0]);
+				if ($zoom_meeting_id !== '') {
+					$this->load->library('zoom_rest_client');
+					if ($this->zoom_rest_client->is_configured()) {
+						// Give Zoom a moment after host join before recording control.
+						usleep(800000);
+						$start_rec = $this->zoom_rest_client->set_meeting_recording_status($zoom_meeting_id, 'start');
+						$now_rec = date('Y-m-d H:i:s');
+						if (!empty($start_rec['ok']) && $this->batch_zoom_recordings_table_exists()) {
+							$batch_info = $this->db_model->select_data('batch_name', 'batches use index (id)', array('id' => $batch_id), 1);
+							$topic = !empty($batch_info[0]['batch_name']) ? (string) $batch_info[0]['batch_name'] : 'Zoom Recording';
+							$existing = $this->db_model->select_data('id', 'batch_zoom_recordings', array(
+								'batch_id' => $batch_id,
+								'zoom_meeting_id' => $zoom_meeting_id,
+							), 1);
+							$row = array(
+								'batch_id' => $batch_id,
+								'live_class_id' => $live_class_id > 0 ? $live_class_id : 0,
+								'zoom_meeting_id' => $zoom_meeting_id,
+								'topic' => $topic,
+								'recording_start' => $now_rec,
+								'status' => 'recording',
+								'synced_at' => $now_rec,
+							);
+							if ($this->db->field_exists('teacher_id', 'batch_zoom_recordings')) {
+								$row['teacher_id'] = (int) $payload['uid'];
+							}
+							if ($this->db->field_exists('source', 'batch_zoom_recordings')) {
+								$row['source'] = 'zoom_cloud';
+							}
+							if ($this->db->field_exists('sync_error', 'batch_zoom_recordings')) {
+								$row['sync_error'] = '';
+							}
+							if (!empty($existing[0]['id'])) {
+								@$this->db_model->update_data_limit('batch_zoom_recordings', $row, array('id' => (int) $existing[0]['id']), 1);
+							} else {
+								$row['created_at'] = $now_rec;
+								@$this->db_model->insert_data('batch_zoom_recordings', $row);
+							}
+							$this->zoom_log($batch_id, 'recording_start', 200, 'Cloud recording auto-started on class start', array('meeting_id' => $zoom_meeting_id), '', $payload);
+						} else {
+							$err = isset($start_rec['error']) ? $start_rec['error'] : 'Could not start cloud recording';
+							$this->zoom_log(
+								$batch_id,
+								'recording_start',
+								isset($start_rec['code']) ? (int) $start_rec['code'] : 0,
+								$err,
+								array('meeting_id' => $zoom_meeting_id),
+								'',
+								$payload
+							);
+						}
+					}
+				}
 			}
 
 			// Email + push + in-app (1 master + N push_notifications_details) via the common
@@ -3600,7 +3657,12 @@ class Batch extends MY_Controller
 				array('url' => 'batch/live-room?batch_id=' . $batch_id . '&live_class_id=0&join=1', 'student_name_var' => 'NAME')
 			);
 
-			$this->api_json(true, 'Class started and notifications sent');
+			$this->api_json(true, 'Class started and notifications sent', array(
+				'batchId' => $batch_id,
+				'recordingStarted' => !empty($start_rec['ok']),
+				'recordingStatus' => !empty($start_rec['ok']) ? 'recording' : 'idle',
+				'recordingError' => empty($start_rec['ok']) && isset($start_rec['error']) ? $start_rec['error'] : '',
+			));
 			return;
 		}
 
@@ -3682,38 +3744,54 @@ class Batch extends MY_Controller
 			$recording_start = !empty($bz[0]['host_joined_at']) ? $bz[0]['host_joined_at'] : $now;
 			$recording_end = $now; // Use the exact time when teacher ended the class
 
+			$existing_recording = $this->db_model->select_data('*', 'batch_zoom_recordings', array('batch_id' => $batch_id, 'zoom_meeting_id' => $zoom_meeting_id), 1);
+			$had_recording = !empty($existing_recording[0]) && in_array(
+				strtolower((string) (isset($existing_recording[0]['status']) ? $existing_recording[0]['status'] : '')),
+				array('recording', 'processing', 'completed'),
+				true
+			);
+			// If teacher never started cloud recording, do not leave a forever-processing empty row.
+			$was_recording = !empty($existing_recording[0]) && strtolower((string) $existing_recording[0]['status']) === 'recording';
+			$recording_started = $was_recording || !empty($stop_rec['ok']);
+
 			$recording_data = array(
 				'batch_id' => $batch_id,
-				'live_class_id' => $live_class_id > 0 ? $live_class_id : NULL,
+				'live_class_id' => $live_class_id > 0 ? $live_class_id : 0,
 				'zoom_meeting_id' => $zoom_meeting_id,
 				'topic' => $topic,
-				'recording_start' => $recording_start,
+				'recording_start' => !empty($existing_recording[0]['recording_start']) ? $existing_recording[0]['recording_start'] : $recording_start,
 				'recording_end' => $recording_end,
-				'status' => 'processing',
+				'status' => $recording_started ? 'processing' : 'no_recording',
 				'synced_at' => date('Y-m-d H:i:s'),
-				'created_at' => date('Y-m-d H:i:s'),
 			);
+			if ($this->db->field_exists('source', 'batch_zoom_recordings')) {
+				$recording_data['source'] = 'zoom_cloud';
+			}
+			if ($this->db->field_exists('sync_error', 'batch_zoom_recordings')) {
+				$recording_data['sync_error'] = $recording_started
+					? 'Waiting for Zoom cloud file (can take a few minutes)'
+					: 'Cloud recording was not started for this class. Teacher must start the class (recording starts automatically) or click Start recording.';
+			}
+			if ($this->db->field_exists('teacher_id', 'batch_zoom_recordings') && empty($existing_recording[0]['teacher_id'])) {
+				$recording_data['teacher_id'] = (int) $payload['uid'];
+			}
 
-			// Check if recording already exists for this batch+zoom_meeting
-			$existing_recording = $this->db_model->select_data('id', 'batch_zoom_recordings', array('batch_id' => $batch_id, 'zoom_meeting_id' => $zoom_meeting_id), 1);
-
-			if (!empty($existing_recording)) {
-				// Update existing recording
+			if (!empty($existing_recording[0]['id'])) {
+				unset($recording_data['created_at']);
 				@$this->db_model->update_data_limit('batch_zoom_recordings', $recording_data, array('id' => (int) $existing_recording[0]['id']), 1);
-			} else {
-				// Try to create new recording entry, but handle duplicate key errors
+			} elseif ($recording_started || $had_recording) {
+				$recording_data['created_at'] = date('Y-m-d H:i:s');
 				$insert_result = @$this->db_model->insert_data('batch_zoom_recordings', $recording_data);
-
-				// If insert failed due to duplicate key, try updating instead
 				if ($insert_result === false) {
-					// Duplicate detected - try to update any existing record with same batch_id
 					@$this->db_model->update_data_limit('batch_zoom_recordings', $recording_data, array('batch_id' => $batch_id, 'zoom_meeting_id' => $zoom_meeting_id), 1);
 				}
 			}
 
-			// Now sync actual recording details from Zoom
-			sleep(2); // Wait for Zoom to process
-			$this->sync_batch_zoom_recordings($batch_id, $payload);
+			// Sync URLs only when a recording was actually started.
+			if ($recording_started) {
+				sleep(2); // Wait for Zoom to process
+				$this->sync_batch_zoom_recordings($batch_id, $payload);
+			}
 		}
 
 		// Send notification to all students in this batch that the meeting has ended
@@ -7459,6 +7537,7 @@ class Batch extends MY_Controller
 
 		$this->db->from('batch_zoom_recordings');
 		$this->db->where('batch_id', $batch_id);
+		$this->db->where_not_in('status', array('no_recording'));
 		// INCLUDE processing recordings so users can see they're being processed
 		if ($search !== '') {
 			$this->db->group_start();
@@ -7471,6 +7550,7 @@ class Batch extends MY_Controller
 		$this->db->select('*');
 		$this->db->from('batch_zoom_recordings');
 		$this->db->where('batch_id', $batch_id);
+		$this->db->where_not_in('status', array('no_recording'));
 		// INCLUDE processing recordings so users can see they're being processed
 		if ($search !== '') {
 			$this->db->group_start();

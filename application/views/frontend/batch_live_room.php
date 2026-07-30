@@ -357,13 +357,22 @@
 					closeBtn.disabled = false;
 				}
 				syncRecordButton();
-				// Notify server that teacher has joined
+				// Notify server that teacher has joined (also auto-starts cloud recording)
 				var notifyBody = { batch_id: batchId, action: 'host_joined' };
 				if (liveClassId > 0) { notifyBody.live_class_id = liveClassId; }
 				fetch(endMeetingUrl, {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
 					body: JSON.stringify(notifyBody)
+				}).then(function (r) { return r.json(); }).then(function (j) {
+					var data = (j && j.data) ? j.data : {};
+					if (ok(j.status) && (data.recordingStarted === true || data.recordingStarted === 1 || data.recordingStarted === '1' || data.recordingStatus === 'recording')) {
+						recordingActive = true;
+						syncRecordButton();
+						showAlert('Class started. Cloud recording is ON.', false);
+					} else if (ok(j.status) && data.recordingError) {
+						showAlert('Class started, but cloud recording did not start: ' + data.recordingError + ' Use Start recording if needed.', true);
+					}
 				}).catch(function () {
 					// Silently continue even if notification fails
 				});
