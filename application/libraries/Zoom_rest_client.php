@@ -290,12 +290,16 @@ class Zoom_rest_client
 		if ($m === 'POST') {
 			$opts[CURLOPT_POST] = true;
 			$opts[CURLOPT_POSTFIELDS] = $body !== null ? json_encode($body) : '{}';
-		} elseif ($m === 'PATCH') {
-			$opts[CURLOPT_CUSTOMREQUEST] = 'PATCH';
+		} elseif ($m === 'PUT' || $m === 'PATCH') {
+			$opts[CURLOPT_CUSTOMREQUEST] = $m;
 			$opts[CURLOPT_POSTFIELDS] = $body !== null ? json_encode($body) : '{}';
 		} elseif ($m === 'DELETE') {
 			$opts[CURLOPT_CUSTOMREQUEST] = 'DELETE';
+			if ($body !== null) {
+				$opts[CURLOPT_POSTFIELDS] = json_encode($body);
+			}
 		} else {
+			// GET
 			$opts[CURLOPT_HTTPHEADER] = array('Authorization: Bearer ' . $access_token);
 		}
 		curl_setopt_array($ch, $opts);
@@ -477,11 +481,11 @@ class Zoom_rest_client
 	 */
 	public function cloud_recording_scopes_hint()
 	{
-		return ' In Zoom Marketplace → your Server-to-Server OAuth app → Scopes → Cloud Recording, add: '
+		return ' In Zoom Marketplace → your Server-to-Server OAuth app → Scopes, add: '
+			. 'meeting:write:meeting:admin (or meeting:update:in_meeting_controls / meeting:write:admin) to start/stop live cloud recording, '
 			. 'cloud_recording:read:recording:admin (view meeting recordings), '
-			. 'cloud_recording:write:recording:admin (start/stop cloud recording), '
 			. 'cloud_recording:read:list_user_recordings:admin (optional list fallback). '
-			. 'Click Continue → Activation → Activate, delete application/cache/zoom_s2s_token.json, then refresh recordings.';
+			. 'Click Continue → Activation → Activate, delete application/cache/zoom_s2s_token.json, then try again.';
 	}
 
 	/**
@@ -511,10 +515,12 @@ class Zoom_rest_client
 
 	/**
 	 * Start or stop cloud recording for an in-progress meeting.
-	 * Zoom: PUT /meetings/{meetingId}/recordings/status  body { action: start|stop }
+	 * Correct Zoom API: PATCH /live_meetings/{meetingId}/events
+	 * Body: { "method": "recording.start" } | { "method": "recording.stop" }
+	 * (PUT /meetings/.../recordings/status is only for recovering deleted recordings.)
 	 *
 	 * @param string $zoom_meeting_id
-	 * @param string $action start|stop
+	 * @param string $action start|stop|pause|resume
 	 * @return array{ok:bool, error?:string, code?:int, json?:array}
 	 */
 	public function set_meeting_recording_status($zoom_meeting_id, $action)
@@ -524,17 +530,24 @@ class Zoom_rest_client
 		if ($mid === '') {
 			return array('ok' => false, 'error' => 'Invalid meeting id');
 		}
-		if (!in_array($action, array('start', 'stop'), true)) {
-			return array('ok' => false, 'error' => 'action must be start or stop');
-		}
-		$res = $this->api_request(
-			'PUT',
-			'meetings/' . rawurlencode($mid) . '/recordings/status',
-			array('action' => $action)
+		$method_map = array(
+			'start' => 'recording.start',
+			'stop' => 'recording.stop',
+			'pause' => 'recording.pause',
+			'resume' => 'recording.resume',
 		);
+		if (!isset($method_map[$action])) {
+			return array('ok' => false, 'error' => 'action must be start, stop, pause, or resume');
+		}
+
+		$res = $this->api_request(
+			'PATCH',
+			'live_meetings/' . rawurlencode($mid) . '/events',
+			array('method' => $method_map[$action])
+		);
+		$http = isset($res['code']) ? (int) $res['code'] : 0;
 		if (!$res['ok']) {
-			$http = isset($res['code']) ? (int) $res['code'] : 0;
-			// Already stopped / no active recording — treat stop as success.
+			// Already stopped / not recording — treat stop as success.
 			if ($action === 'stop' && ($http === 404 || $http === 400)) {
 				$err = isset($res['error']) ? strtolower((string) $res['error']) : '';
 				if ($http === 404 || strpos($err, 'not') !== false || strpos($err, '3301') !== false) {
@@ -546,12 +559,12 @@ class Zoom_rest_client
 				'error' => isset($res['error']) ? $res['error'] : 'Recording control failed',
 				'code' => $http,
 			);
-			if ($this->is_missing_scope_error($res)) {
+			if ($this->is_missing_scope_error($res) || $http === 404 || (isset($res['json']['code']) && (int) $res['json']['code'] === 2300)) {
 				$out['error'] = $out['error'] . $this->cloud_recording_scopes_hint();
 			}
 			return $out;
 		}
-		return array('ok' => true);
+		return array('ok' => true, 'code' => $http);
 	}
 
 	/**

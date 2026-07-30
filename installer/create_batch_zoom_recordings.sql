@@ -1,10 +1,10 @@
 -- Gradmo / Education: cached Zoom cloud recordings per batch (synced via api/batch/recorded-meeting-list).
 -- Run once after create_batch_zoom_meetings_and_zoom_s2s.sql.
 --
--- Zoom Server-to-Server app scopes (Marketplace → Scopes → Cloud Recording):
---   cloud_recording:read:recording:admin           (required — GET /meetings/{id}/recordings)
---   cloud_recording:write:recording:admin          (required — start/stop cloud recording)
---   cloud_recording:read:list_user_recordings:admin (optional — host recording list fallback)
+-- Zoom Server-to-Server app scopes (Marketplace → Scopes):
+--   meeting:write:meeting:admin (or meeting:write:admin) — start/stop live cloud recording via /live_meetings/{id}/events
+--   cloud_recording:read:recording:admin                 — GET /meetings/{id}/recordings
+--   cloud_recording:read:list_user_recordings:admin      — optional host recording list fallback
 -- After adding scopes: Activate the app, delete application/cache/zoom_s2s_token.json, refresh recordings.
 
 CREATE TABLE IF NOT EXISTS `batch_zoom_recordings` (
