@@ -89,6 +89,7 @@
 	var endMeetingUrl = <?php echo json_encode((string) (isset($live_meeting_end_url) ? $live_meeting_end_url : site_url('api/batch/live-meeting-end'))); ?>;
 	var recordingStartUrl = <?php echo json_encode((string) (isset($live_recording_start_url) ? $live_recording_start_url : site_url('api/batch/live-recording-start'))); ?>;
 	var recordingStopUrl = <?php echo json_encode((string) (isset($live_recording_stop_url) ? $live_recording_stop_url : site_url('api/batch/live-recording-stop'))); ?>;
+	var batchDetailsUrl = <?php echo json_encode((string) (isset($batch_details_url) ? $batch_details_url : site_url('batch/details'))); ?>;
 	var pageIsTeacherHost = <?php echo !empty($is_teacher_host) ? 'true' : 'false'; ?>;
 	var currentMeeting = null;
 	var zoomClient = null;
@@ -190,9 +191,16 @@
 		}).then(function (r) { return r.json(); }).then(function (j) {
 			if (ok(j.status)) {
 				recordingActive = false;
-				showAlert('Class ended. Recording is saving to Zoom cloud and will appear under Recorded meetings shortly.', false);
+				var data = (j && j.data) ? j.data : {};
+				var endedOnZoom = data.zoomMeetingEnded === 1 || data.zoomMeetingEnded === '1' || data.zoomMeetingEnded === true;
+				showAlert(
+					endedOnZoom
+						? 'Class ended. Recording is saving to Zoom cloud and will appear under Recorded meetings shortly.'
+						: 'Class closed. Recording stopped and is saving to Zoom cloud. Redirecting to batch details...',
+					false
+				);
 				setTimeout(function () {
-					leaveClass();
+					window.location.href = batchDetailsUrl + '?batch_id=' + encodeURIComponent(batchId);
 				}, 2000);
 			} else {
 				showAlert('Error ending class: ' + (j.msg || 'Unknown error'), true);

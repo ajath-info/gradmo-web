@@ -3714,9 +3714,20 @@ class Batch extends MY_Controller
 		}
 
 		$end = $this->zoom_rest_client->end_meeting($zoom_meeting_id);
+		$zoom_meeting_ended = !empty($end['ok']);
 		if (empty($end['ok'])) {
-			$this->api_json(false, isset($end['error']) ? $end['error'] : 'Could not end meeting on Zoom');
-			return;
+			$end_err = isset($end['error']) ? (string) $end['error'] : 'Could not end meeting on Zoom';
+			$end_scope_missing = (
+				isset($end['code']) && (int) $end['code'] === 400 &&
+				(stripos($end_err, 'meeting:update:status') !== false || stripos($end_err, '4711') !== false)
+			);
+			if (!$end_scope_missing) {
+				$this->api_json(false, $end_err);
+				return;
+			}
+			// Fallback: close the class locally even if Zoom API cannot force-end the meeting.
+			$zoom_meeting_ended = false;
+			$this->zoom_log($batch_id, 'meeting_end_scope_missing', isset($end['code']) ? (int) $end['code'] : 0, $end_err, array('meeting_id' => $zoom_meeting_id), '', $payload);
 		}
 
 		// Mark batch_zoom_meetings as inactive (status = 0) so students can't join anymore
@@ -3814,12 +3825,13 @@ class Batch extends MY_Controller
 			}
 		}
 
-		$this->zoom_log($batch_id, 'meeting_end', 200, 'Meeting ended via API', array('meeting_id' => $zoom_meeting_id), '', $payload);
-		$this->api_json(true, 'Meeting ended for all participants', array(
+		$this->zoom_log($batch_id, 'meeting_end', 200, $zoom_meeting_ended ? 'Meeting ended via API' : 'Class ended locally; Zoom meeting not force-ended due to missing scope', array('meeting_id' => $zoom_meeting_id), '', $payload);
+		$this->api_json(true, $zoom_meeting_ended ? 'Meeting ended for all participants' : 'Class ended. Recording stopped and class closed locally.', array(
 			'batchId' => $batch_id,
 			'liveClassId' => $live_class_id,
 			'meetingNumber' => $zoom_meeting_id,
 			'recordingStatus' => 'processing',
+			'zoomMeetingEnded' => $zoom_meeting_ended ? 1 : 0,
 		));
 	}
 
@@ -8961,10 +8973,17 @@ class Batch extends MY_Controller
 
 		// Handle Zoom validation request - Zoom sends: {event: "endpoint.url_validation", payload: {plainToken: "..."}}
 		if (isset($data['event']) && $data['event'] === 'endpoint.url_validation') {
+			$webhook_secret = $this->get_zoom_webhook_secret();
 			header('Content-Type: application/json');
 			http_response_code(200);
 			$plain_token = isset($data['payload']['plainToken']) ? (string) $data['payload']['plainToken'] : '';
-			$response = array('plainToken' => $plain_token);
+			$encrypted_token = ($plain_token !== '' && $webhook_secret !== '')
+				? hash_hmac('sha256', $plain_token, $webhook_secret)
+				: '';
+			$response = array(
+				'plainToken' => $plain_token,
+				'encryptedToken' => $encrypted_token,
+			);
 			@error_log('[ZOOM_WEBHOOK] Validation response: ' . json_encode($response), 0);
 			echo json_encode($response, JSON_UNESCAPED_SLASHES);
 			exit(0);
@@ -9026,7 +9045,7 @@ class Batch extends MY_Controller
 		$expected_sig = "v0=$hash";
 
 		// Compare signatures
-		return hash_equals($expected_sig, str_replace('v0=', '', $auth_header));
+		return hash_equals($expected_sig, trim((string) $auth_header));
 	}
 
 	/**
