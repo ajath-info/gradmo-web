@@ -7262,8 +7262,20 @@ class Batch extends MY_Controller
 			}
 		}
 		$file_size = isset($row['file_size']) ? (int) $row['file_size'] : 0;
+		$play_url = isset($row['play_url']) ? (string) $row['play_url'] : '';
+		$download_url = isset($row['download_url']) ? (string) $row['download_url'] : '';
+		$passcode = '';
+		if ($this->db->field_exists('recording_passcode', 'batch_zoom_recordings') && !empty($row['recording_passcode'])) {
+			$passcode = trim((string) $row['recording_passcode']);
+		}
+		$play_url = $this->zoom_recording_url_with_passcode($play_url, $passcode);
+		$rec_id = isset($row['id']) ? (int) $row['id'] : 0;
+		// Always expose stream endpoint when any Zoom URL exists — it authenticates via S2S token (no passcode UI).
+		$stream_url = ($rec_id > 0 && ($download_url !== '' || $play_url !== ''))
+			? site_url('api/batch/recorded-meeting-stream') . '?id=' . $rec_id
+			: '';
 		return array(
-			'id' => isset($row['id']) ? (int) $row['id'] : 0,
+			'id' => $rec_id,
 			'batchId' => isset($row['batch_id']) ? (int) $row['batch_id'] : 0,
 			'liveClassId' => isset($row['live_class_id']) ? (int) $row['live_class_id'] : 0,
 			'zoomMeetingId' => isset($row['zoom_meeting_id']) ? (string) $row['zoom_meeting_id'] : '',
@@ -7274,12 +7286,49 @@ class Batch extends MY_Controller
 			'fileType' => isset($row['file_type']) ? (string) $row['file_type'] : '',
 			'fileSize' => $file_size,
 			'fileSizeLabel' => $this->format_file_size_label($file_size),
-			'playUrl' => isset($row['play_url']) ? (string) $row['play_url'] : '',
-			'downloadUrl' => isset($row['download_url']) ? (string) $row['download_url'] : '',
+			'playUrl' => $play_url,
+			'downloadUrl' => $download_url,
+			'streamUrl' => $stream_url,
+			'hasPasscode' => $passcode !== '' ? 1 : 0,
 			'recordingType' => isset($row['recording_type']) ? (string) $row['recording_type'] : '',
 			'status' => isset($row['status']) ? (string) $row['status'] : '',
 			'syncedAt' => isset($row['synced_at']) ? (string) $row['synced_at'] : '',
 		);
+	}
+
+	/**
+	 * Append Zoom recording passcode so iframe/play opens without asking the user.
+	 */
+	private function zoom_recording_url_with_passcode($url, $passcode)
+	{
+		$url = trim((string) $url);
+		$passcode = trim((string) $passcode);
+		if ($url === '' || $passcode === '') {
+			return $url;
+		}
+		if (stripos($url, 'pwd=') !== false) {
+			return $url;
+		}
+		$sep = (strpos($url, '?') !== false) ? '&' : '?';
+		return $url . $sep . 'pwd=' . rawurlencode($passcode);
+	}
+
+	/**
+	 * Extract Zoom recording passcode from meeting recordings API payload.
+	 *
+	 * @param array<string, mixed> $meeting_block
+	 */
+	private function zoom_recording_passcode_from_meeting_block(array $meeting_block)
+	{
+		foreach (array('recording_play_passcode', 'password', 'recording_password') as $k) {
+			if (!empty($meeting_block[$k]) && is_scalar($meeting_block[$k])) {
+				$v = trim((string) $meeting_block[$k]);
+				if ($v !== '') {
+					return substr($v, 0, 128);
+				}
+			}
+		}
+		return '';
 	}
 
 	/**
@@ -7347,6 +7396,7 @@ class Batch extends MY_Controller
 			$file_id = md5($uuid . '|' . (isset($pick['recording_start']) ? $pick['recording_start'] : '') . '|' . (isset($pick['file_type']) ? $pick['file_type'] : ''));
 		}
 		$now = date('Y-m-d H:i:s');
+		$passcode = $this->zoom_recording_passcode_from_meeting_block($meeting_block);
 		$row = array(
 			'batch_id' => $batch_id,
 			'live_class_id' => $live_class_id,
@@ -7366,6 +7416,9 @@ class Batch extends MY_Controller
 				: 'processing',
 			'synced_at' => $now,
 		);
+		if ($this->db->field_exists('recording_passcode', 'batch_zoom_recordings')) {
+			$row['recording_passcode'] = $passcode;
+		}
 		if ($this->db->field_exists('source', 'batch_zoom_recordings')) {
 			$row['source'] = 'zoom_cloud';
 		}
@@ -7387,10 +7440,23 @@ class Batch extends MY_Controller
 		if (!empty($existing[0]['id'])) {
 			$this->db->where('id', (int) $existing[0]['id']);
 			$this->db->update('batch_zoom_recordings', $row);
-			return 1;
+		} else {
+			$row['created_at'] = $now;
+			$this->db->insert('batch_zoom_recordings', $row);
 		}
-		$row['created_at'] = $now;
-		$this->db->insert('batch_zoom_recordings', $row);
+
+		// Best effort: remove Zoom share passcode wall when account policy allows.
+		if ($zoom_meeting_id !== '') {
+			$this->load->library('zoom_rest_client');
+			@$this->zoom_rest_client->update_meeting_recording_settings($zoom_meeting_id, array(
+				'password' => '',
+				'on_demand' => false,
+				'approval_type' => 0,
+				'recording_authentication' => false,
+				'viewer_download' => true,
+			));
+		}
+
 		return 1;
 	}
 
@@ -7642,6 +7708,84 @@ class Batch extends MY_Controller
 			),
 		), JSON_UNESCAPED_SLASHES);
 		die;
+	}
+
+	/**
+	 * GET/POST api/batch/recorded-meeting-stream
+	 * Streams Zoom download_url with Server-to-Server token so browser <video> plays without passcode.
+	 * Required: id (recording row id). Auth: Bearer access_token (query or header).
+	 */
+	public function recorded_meeting_stream()
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array(), $data);
+		if ($payload === false) {
+			return;
+		}
+		$rec_id = 0;
+		if (!empty($data['id'])) {
+			$rec_id = (int) $data['id'];
+		} elseif (!empty($data['recorded_meeting_id'])) {
+			$rec_id = (int) $data['recorded_meeting_id'];
+		}
+		if ($rec_id < 1) {
+			$this->output->set_status_header(400);
+			echo 'recorded meeting id is required';
+			return;
+		}
+		if (!$this->batch_zoom_recordings_table_exists()) {
+			$this->output->set_status_header(500);
+			echo 'recordings table missing';
+			return;
+		}
+		$row = $this->db_model->select_data('*', 'batch_zoom_recordings', array('id' => $rec_id), 1);
+		if (empty($row[0])) {
+			$this->output->set_status_header(404);
+			echo 'Recording not found';
+			return;
+		}
+		$batch_id = (int) $row[0]['batch_id'];
+		if (!$this->assert_batch_zoom_viewer($payload, $batch_id, $data)) {
+			return;
+		}
+		$download = isset($row[0]['download_url']) ? trim((string) $row[0]['download_url']) : '';
+		$play = isset($row[0]['play_url']) ? trim((string) $row[0]['play_url']) : '';
+		$source = $download !== '' ? $download : $play;
+		if ($source === '') {
+			$this->output->set_status_header(404);
+			echo 'No download URL for this recording';
+			return;
+		}
+		// Zoom play URLs cannot stream as MP4; convert to download path when needed.
+		if (stripos($source, '/rec/play/') !== false) {
+			$source = str_ireplace('/rec/play/', '/rec/download/', $source);
+		}
+
+		$this->load->library('zoom_rest_client');
+		$token_res = $this->zoom_rest_client->get_access_token();
+		$zoom_token = '';
+		if (is_array($token_res) && !empty($token_res['ok']) && !empty($token_res['access_token'])) {
+			$zoom_token = (string) $token_res['access_token'];
+		} elseif (is_string($token_res) && $token_res !== '') {
+			$zoom_token = $token_res;
+		}
+		if ($zoom_token === '') {
+			// Fallback: open Zoom play page with stored passcode (no manual typing).
+			$passcode = '';
+			if ($this->db->field_exists('recording_passcode', 'batch_zoom_recordings') && !empty($row[0]['recording_passcode'])) {
+				$passcode = trim((string) $row[0]['recording_passcode']);
+			}
+			$redirect = $this->zoom_recording_url_with_passcode($play !== '' ? $play : $source, $passcode);
+			redirect($redirect);
+			return;
+		}
+
+		$sep = (strpos($source, '?') !== false) ? '&' : '?';
+		$remote = $source . $sep . 'access_token=' . rawurlencode($zoom_token);
+
+		// Redirect keeps streaming simple and avoids buffering large files in PHP.
+		header('Location: ' . $remote, true, 302);
+		exit;
 	}
 
 	/**

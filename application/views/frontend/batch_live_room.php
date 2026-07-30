@@ -543,17 +543,18 @@
 		return parts.join(' · ');
 	}
 	function recordingCard(row) {
-		var play = row.playUrl || row.downloadUrl || '';
+		var play = row.streamUrl || row.playUrl || row.downloadUrl || '';
 		var meta = recordingMeta(row);
+		var isStream = !!(row.streamUrl);
 		return '<article class="lr-record-card" role="listitem">' +
 			'<h4>' + esc(row.topic || 'Recorded class') + '</h4>' +
 			(meta ? '<p class="lr-record-meta">' + esc(meta) + '</p>' : '') +
 			'<div class="lr-record-actions">' +
 			(play
-				? '<button type="button" class="btn btn-primary btn-sm lr-rec-play" data-play="' + esc(play) + '" data-title="' + esc(row.topic || 'Recording') + '"><i class="fas fa-play"></i> Watch</button>'
+				? '<button type="button" class="btn btn-primary btn-sm lr-rec-play" data-play="' + esc(play) + '" data-stream="' + (isStream ? '1' : '0') + '" data-title="' + esc(row.topic || 'Recording') + '"><i class="fas fa-play"></i> Watch</button>'
 				: '<span class="inst-muted small">No playback URL</span>') +
 			(row.downloadUrl
-				? ' <a class="btn btn-outline-secondary btn-sm" href="' + esc(row.downloadUrl) + '" target="_blank" rel="noopener noreferrer"><i class="fas fa-download"></i> Download</a>'
+				? ' <a class="btn btn-outline-secondary btn-sm" href="' + esc(row.streamUrl || row.downloadUrl) + '" target="_blank" rel="noopener noreferrer"><i class="fas fa-download"></i> Download</a>'
 				: '') +
 			'</div>' +
 		'</article>';
@@ -569,16 +570,23 @@
 		document.getElementById('lrRecordingPrev').disabled = recordingsPage <= 1;
 		document.getElementById('lrRecordingNext').disabled = recordingsPage >= recordingsTotalPages;
 	}
-	function openRecordingPlayer(url, title) {
+	function openRecordingPlayer(url, title, useVideo) {
 		var modal = document.getElementById('lrPlayerModal');
 		var body = document.getElementById('lrPlayerBody');
 		document.getElementById('lrPlayerTitle').textContent = title || 'Recording';
 		body.innerHTML = '';
-		if (/\.(mp4|webm|ogg)(\?|$)/i.test(url)) {
+		var asVideo = !!useVideo || /\.(mp4|webm|ogg)(\?|$)/i.test(url) || /recorded-meeting-stream/i.test(url);
+		if (asVideo) {
 			var v = document.createElement('video');
 			v.controls = true;
 			v.playsInline = true;
-			v.src = url;
+			v.autoplay = true;
+			// Attach access token for same-origin stream endpoint.
+			var src = url;
+			if (/recorded-meeting-stream/i.test(url) && token) {
+				src += (url.indexOf('?') >= 0 ? '&' : '?') + 'access_token=' + encodeURIComponent(token);
+			}
+			v.src = src;
 			body.appendChild(v);
 		} else {
 			var iframe = document.createElement('iframe');
@@ -805,7 +813,11 @@
 	document.getElementById('lr_recordings_list').addEventListener('click', function (ev) {
 		var btn = ev.target.closest('.lr-rec-play');
 		if (!btn) { return; }
-		openRecordingPlayer(btn.getAttribute('data-play') || '', btn.getAttribute('data-title') || 'Recording');
+		openRecordingPlayer(
+			btn.getAttribute('data-play') || '',
+			btn.getAttribute('data-title') || 'Recording',
+			btn.getAttribute('data-stream') === '1'
+		);
 	});
 	document.getElementById('lrPlayerClose').addEventListener('click', closeRecordingPlayer);
 	document.getElementById('lrPlayerModal').addEventListener('click', function (ev) {

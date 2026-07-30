@@ -621,6 +621,29 @@ class Zoom_rest_client
 	}
 
 	/**
+	 * Clear / relax shared cloud recording passcode when Zoom account allows it.
+	 * PATCH /meetings/{meetingId}/recordings/settings
+	 *
+	 * @return array{ok:bool, error?:string}
+	 */
+	public function update_meeting_recording_settings($zoom_meeting_id, array $settings)
+	{
+		$mid = preg_replace('/\D+/', '', trim((string) $zoom_meeting_id));
+		if ($mid === '') {
+			return array('ok' => false, 'error' => 'Invalid meeting id');
+		}
+		$res = $this->api_request('PATCH', 'meetings/' . rawurlencode($mid) . '/recordings/settings', $settings);
+		if (!$res['ok']) {
+			return array(
+				'ok' => false,
+				'error' => $res['error'],
+				'code' => isset($res['code']) ? (int) $res['code'] : 0,
+			);
+		}
+		return array('ok' => true);
+	}
+
+	/**
 	 * List host user cloud recordings (filter by meeting id in caller).
 	 * Optional fallback; requires cloud_recording:read:list_user_recordings:admin.
 	 *

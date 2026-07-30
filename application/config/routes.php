@@ -434,6 +434,7 @@ $route['api/batch/live-recording-start'] = 'api/batch/batch/live_recording_start
 $route['api/batch/live-recording-stop'] = 'api/batch/batch/live_recording_stop';
 $route['api/batch/recorded-meeting-list'] = 'api/batch/batch/recorded_meeting_list';
 $route['api/batch/recorded-meeting-details'] = 'api/batch/batch/recorded_meeting_details';
+$route['api/batch/recorded-meeting-stream'] = 'api/batch/batch/recorded_meeting_stream';
 $route['api/batch/recorded-meeting-sync'] = 'api/batch/batch/recorded_meeting_sync';
 $route['api/batch/upload-recording'] = 'api/batch/batch/upload_recording';
 $route['api/batch/batch-zoom-details'] = 'api/batch/batch/batch_zoom_details';
