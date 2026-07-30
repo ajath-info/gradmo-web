@@ -3272,11 +3272,16 @@ class Batch extends MY_Controller
 								'batch_id' => $batch_id,
 								'zoom_meeting_id' => (string) $new_meeting['meeting_id'],
 								'password' => !empty($new_meeting['password']) ? (string) $new_meeting['password'] : '',
+								'join_url' => !empty($new_meeting['join_url']) ? (string) $new_meeting['join_url'] : '',
+								'start_url' => !empty($new_meeting['start_url']) ? (string) $new_meeting['start_url'] : '',
 								'status' => 1,
 								'host_joined_at' => NULL,
 								'ended_at' => NULL,
 								'created_at' => date('Y-m-d H:i:s'),
 							);
+							if ($this->db->field_exists('updated_at', 'batch_zoom_meetings')) {
+								$meeting_rec['updated_at'] = date('Y-m-d H:i:s');
+							}
 							@$this->db_model->insert_data('batch_zoom_meetings', $meeting_rec);
 
 							// Use new meeting
@@ -3631,6 +3636,21 @@ class Batch extends MY_Controller
 			$this->api_json(false, 'Zoom Server-to-Server OAuth is not configured');
 			return;
 		}
+
+		// Stop cloud recording before ending (best-effort).
+		$stop_rec = $this->zoom_rest_client->set_meeting_recording_status($zoom_meeting_id, 'stop');
+		if (empty($stop_rec['ok'])) {
+			$this->zoom_log(
+				$batch_id,
+				'recording_stop',
+				isset($stop_rec['code']) ? (int) $stop_rec['code'] : 0,
+				isset($stop_rec['error']) ? $stop_rec['error'] : 'stop failed',
+				array('meeting_id' => $zoom_meeting_id),
+				'',
+				$payload
+			);
+		}
+
 		$end = $this->zoom_rest_client->end_meeting($zoom_meeting_id);
 		if (empty($end['ok'])) {
 			$this->api_json(false, isset($end['error']) ? $end['error'] : 'Could not end meeting on Zoom');
@@ -3721,6 +3741,153 @@ class Batch extends MY_Controller
 			'batchId' => $batch_id,
 			'liveClassId' => $live_class_id,
 			'meetingNumber' => $zoom_meeting_id,
+			'recordingStatus' => 'processing',
+		));
+	}
+
+	/**
+	 * POST api/batch/live-recording-start — teacher/institute starts Zoom cloud recording (class must be started).
+	 * POST api/batch/live-recording-stop — teacher/institute stops Zoom cloud recording.
+	 * Params: batch_id (required), live_class_id (optional)
+	 */
+	public function live_recording_start()
+	{
+		$this->live_recording_control('start');
+	}
+
+	public function live_recording_stop()
+	{
+		$this->live_recording_control('stop');
+	}
+
+	/**
+	 * @param string $action start|stop
+	 */
+	private function live_recording_control($action)
+	{
+		$data = $this->read_request_data();
+		$payload = $this->require_auth_payload(array('teacher', 'institute'), $data);
+		if ($payload === false) {
+			return;
+		}
+
+		$action = strtolower(trim((string) $action));
+		if (!in_array($action, array('start', 'stop'), true)) {
+			$this->api_json(false, 'Invalid recording action');
+			return;
+		}
+
+		$batch_id = isset($data['batch_id']) ? (int) $data['batch_id'] : 0;
+		$live_class_id = isset($data['live_class_id']) ? (int) $data['live_class_id'] : 0;
+		if ($batch_id < 1 && $live_class_id > 0) {
+			$lch = $this->db_model->select_data('batch_id', 'live_class_history', array('id' => $live_class_id), 1);
+			if (!empty($lch[0]['batch_id'])) {
+				$batch_id = (int) $lch[0]['batch_id'];
+			}
+		}
+		if ($batch_id < 1) {
+			$this->api_json(false, 'batch_id is required');
+			return;
+		}
+		if (!$this->assert_batch_access_teacher_or_institute($payload, $batch_id)) {
+			return;
+		}
+		if (!$this->db->table_exists('batch_zoom_meetings')) {
+			$this->api_json(false, 'batch_zoom_meetings is not installed');
+			return;
+		}
+
+		$bz = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id, 'status' => 1), 1, array('id', 'desc'));
+		if (empty($bz[0])) {
+			$this->api_json(false, 'No active Zoom meeting for this batch. Start the class first.');
+			return;
+		}
+		if ($action === 'start' && empty($bz[0]['host_joined_at'])) {
+			$this->api_json(false, 'Start the class first, then start recording.');
+			return;
+		}
+
+		$zoom_meeting_id = $this->zoom_public_meeting_number_from_batch_zoom_row($bz[0]);
+		if ($zoom_meeting_id === '') {
+			$this->api_json(false, 'Zoom meeting id is missing for this batch');
+			return;
+		}
+
+		$this->load->library('zoom_rest_client');
+		if (!$this->zoom_rest_client->is_configured()) {
+			$this->api_json(false, 'Zoom Server-to-Server OAuth is not configured');
+			return;
+		}
+
+		$res = $this->zoom_rest_client->set_meeting_recording_status($zoom_meeting_id, $action);
+		if (empty($res['ok'])) {
+			$this->zoom_log(
+				$batch_id,
+				'recording_' . $action,
+				isset($res['code']) ? (int) $res['code'] : 0,
+				isset($res['error']) ? $res['error'] : 'failed',
+				array('meeting_id' => $zoom_meeting_id),
+				'',
+				$payload
+			);
+			$this->api_json(false, isset($res['error']) ? $res['error'] : ('Could not ' . $action . ' recording'));
+			return;
+		}
+
+		$now = date('Y-m-d H:i:s');
+		if ($this->batch_zoom_recordings_table_exists()) {
+			$batch_info = $this->db_model->select_data('batch_name', 'batches use index (id)', array('id' => $batch_id), 1);
+			$topic = !empty($batch_info[0]['batch_name']) ? (string) $batch_info[0]['batch_name'] : 'Zoom Recording';
+			$existing = $this->db_model->select_data('id', 'batch_zoom_recordings', array(
+				'batch_id' => $batch_id,
+				'zoom_meeting_id' => $zoom_meeting_id,
+			), 1);
+
+			if ($action === 'start') {
+				$row = array(
+					'batch_id' => $batch_id,
+					'live_class_id' => $live_class_id > 0 ? $live_class_id : 0,
+					'zoom_meeting_id' => $zoom_meeting_id,
+					'topic' => $topic,
+					'recording_start' => $now,
+					'status' => 'recording',
+					'synced_at' => $now,
+				);
+				if ($this->db->field_exists('teacher_id', 'batch_zoom_recordings')) {
+					$row['teacher_id'] = (int) $payload['uid'];
+				}
+				if ($this->db->field_exists('source', 'batch_zoom_recordings')) {
+					$row['source'] = 'zoom_cloud';
+				}
+				if ($this->db->field_exists('sync_error', 'batch_zoom_recordings')) {
+					$row['sync_error'] = '';
+				}
+				if (!empty($existing[0]['id'])) {
+					@$this->db_model->update_data_limit('batch_zoom_recordings', $row, array('id' => (int) $existing[0]['id']), 1);
+				} else {
+					$row['created_at'] = $now;
+					@$this->db_model->insert_data('batch_zoom_recordings', $row);
+				}
+			} else {
+				$row = array(
+					'recording_end' => $now,
+					'status' => 'processing',
+					'synced_at' => $now,
+				);
+				if (!empty($existing[0]['id'])) {
+					@$this->db_model->update_data_limit('batch_zoom_recordings', $row, array('id' => (int) $existing[0]['id']), 1);
+				}
+				// Cloud file URLs usually appear a few minutes after stop.
+				@$this->sync_batch_zoom_recordings($batch_id, $payload);
+			}
+		}
+
+		$this->zoom_log($batch_id, 'recording_' . $action, 200, 'Cloud recording ' . $action, array('meeting_id' => $zoom_meeting_id), '', $payload);
+		$this->api_json(true, $action === 'start' ? 'Cloud recording started' : 'Cloud recording stopped', array(
+			'batchId' => $batch_id,
+			'meetingNumber' => $zoom_meeting_id,
+			'recordingAction' => $action,
+			'recordingStatus' => $action === 'start' ? 'recording' : 'processing',
 		));
 	}
 
@@ -7099,13 +7266,29 @@ class Batch extends MY_Controller
 			'play_url' => isset($pick['play_url']) ? substr((string) $pick['play_url'], 0, 2048) : '',
 			'download_url' => isset($pick['download_url']) ? substr((string) $pick['download_url'], 0, 2048) : '',
 			'recording_type' => isset($pick['recording_type']) ? substr((string) $pick['recording_type'], 0, 64) : '',
-			'status' => isset($pick['status']) ? substr((string) $pick['status'], 0, 32) : 'completed',
+			'status' => !empty($pick['play_url']) || !empty($pick['download_url'])
+				? (isset($pick['status']) && (string) $pick['status'] !== '' ? substr((string) $pick['status'], 0, 32) : 'completed')
+				: 'processing',
 			'synced_at' => $now,
 		);
+		if ($this->db->field_exists('source', 'batch_zoom_recordings')) {
+			$row['source'] = 'zoom_cloud';
+		}
+		if ($this->db->field_exists('sync_error', 'batch_zoom_recordings')) {
+			$row['sync_error'] = '';
+		}
+
+		// Prefer updating the placeholder row created on start/end (same batch + meeting).
 		$existing = $this->db_model->select_data('id', 'batch_zoom_recordings', array(
 			'batch_id' => $batch_id,
-			'zoom_file_id' => $row['zoom_file_id'],
+			'zoom_meeting_id' => $zoom_meeting_id,
 		), 1);
+		if (empty($existing[0]['id']) && $row['zoom_file_id'] !== '') {
+			$existing = $this->db_model->select_data('id', 'batch_zoom_recordings', array(
+				'batch_id' => $batch_id,
+				'zoom_file_id' => $row['zoom_file_id'],
+			), 1);
+		}
 		if (!empty($existing[0]['id'])) {
 			$this->db->where('id', (int) $existing[0]['id']);
 			$this->db->update('batch_zoom_recordings', $row);
@@ -7178,8 +7361,28 @@ class Batch extends MY_Controller
 			if ($direct_scope_missing || ($list_failed && !empty($list['scope_missing']))) {
 				$err .= $this->zoom_rest_client->cloud_recording_scopes_hint();
 			}
+			if ($this->db->field_exists('sync_error', 'batch_zoom_recordings')) {
+				@$this->db_model->update_data_limit(
+					'batch_zoom_recordings',
+					array('sync_error' => substr($err, 0, 512), 'synced_at' => date('Y-m-d H:i:s')),
+					array('batch_id' => $batch_id, 'zoom_meeting_id' => $zoom_meeting_id),
+					1
+				);
+			}
 			$this->zoom_log($batch_id, 'recordings_sync', isset($res['code']) ? (int) $res['code'] : 0, $err, array('meeting_id' => $zoom_meeting_id), '', $payload);
 			return array('ok' => false, 'error' => $err);
+		}
+
+		if ($inserted < 1 && $direct_empty) {
+			$pending = 'No cloud recordings found yet for this meeting (still processing on Zoom)';
+			if ($this->db->field_exists('sync_error', 'batch_zoom_recordings')) {
+				@$this->db_model->update_data_limit(
+					'batch_zoom_recordings',
+					array('sync_error' => $pending, 'synced_at' => date('Y-m-d H:i:s')),
+					array('batch_id' => $batch_id, 'zoom_meeting_id' => $zoom_meeting_id),
+					1
+				);
+			}
 		}
 
 		$log_msg = $inserted > 0
@@ -7441,17 +7644,29 @@ class Batch extends MY_Controller
 
 		$recording_data = array(
 			'batch_id' => $batch_id,
-			'zoom_meeting_id' => 'local_' . $batch_id,  // Mark as local upload
+			'live_class_id' => 0,
+			'zoom_meeting_id' => 'local_' . $batch_id . '_' . time(),
 			'zoom_file_id' => $filename,
-			'playback_url' => base_url('uploads/recordings/' . $filename),
-			'file_type' => $file['type'],
+			'topic' => $title,
+			'play_url' => base_url('uploads/recordings/' . $filename),
+			'download_url' => base_url('uploads/recordings/' . $filename),
+			'file_type' => $file_ext !== '' ? strtoupper($file_ext) : 'MP4',
 			'file_size' => (int) $file['size'],
 			'recording_start' => date('Y-m-d H:i:s'),
 			'recording_end' => date('Y-m-d H:i:s'),
-			'title' => $title,
 			'status' => 'completed',
+			'synced_at' => date('Y-m-d H:i:s'),
 			'created_at' => date('Y-m-d H:i:s'),
 		);
+		if ($this->db->field_exists('teacher_id', 'batch_zoom_recordings')) {
+			$recording_data['teacher_id'] = (int) $payload['uid'];
+		}
+		if ($this->db->field_exists('source', 'batch_zoom_recordings')) {
+			$recording_data['source'] = 'local_upload';
+		}
+		if ($this->db->field_exists('sync_error', 'batch_zoom_recordings')) {
+			$recording_data['sync_error'] = '';
+		}
 
 		@$this->db->insert('batch_zoom_recordings', $recording_data);
 
@@ -8762,14 +8977,17 @@ class Batch extends MY_Controller
 	 */
 	private function handle_zoom_recording_completed($data)
 	{
-		if (!isset($data['object']) || !is_array($data['object'])) {
+		$zoom_event = null;
+		if (isset($data['object']) && is_array($data['object'])) {
+			$zoom_event = $data['object'];
+		} elseif (isset($data['payload']['object']) && is_array($data['payload']['object'])) {
+			$zoom_event = $data['payload']['object'];
+		}
+		if ($zoom_event === null) {
 			return;
 		}
 
-		$zoom_event = $data['object'];
 		$zoom_meeting_id = isset($zoom_event['id']) ? (string) $zoom_event['id'] : '';
-		$recording_uuid = isset($zoom_event['uuid']) ? (string) $zoom_event['uuid'] : '';
-
 		if ($zoom_meeting_id === '') {
 			return;
 		}
@@ -8786,9 +9004,8 @@ class Batch extends MY_Controller
 
 		$batch_id = (int) $meetings[0]['batch_id'];
 
-		// Sync this recording immediately
+		// Sync this recording immediately (play_url / download_url into batch_zoom_recordings)
 		if ($this->batch_zoom_recordings_table_exists()) {
-			// Create a fake payload for sync function
 			$fake_payload = array('uid' => 0, 'user_type' => 'system');
 			$this->sync_batch_zoom_recordings($batch_id, $fake_payload);
 		}

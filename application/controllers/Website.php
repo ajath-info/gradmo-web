@@ -1466,6 +1466,8 @@ class Website extends MY_Controller
 			$data['api_access_token'] = $this->website_session_access_token();
 			$data['live_class_details_url'] = site_url('api/batch/live-class-details');
 			$data['live_meeting_end_url'] = site_url('api/batch/live-meeting-end');
+			$data['live_recording_start_url'] = site_url('api/batch/live-recording-start');
+			$data['live_recording_stop_url'] = site_url('api/batch/live-recording-stop');
 			$data['is_teacher_host'] = $this->website_session_is_teacher() || $this->website_session_is_institute();
 			$data['auto_join'] = in_array(strtolower((string) $this->input->get('join')), array('1', 'true', 'yes'), true);
 			$data['batch_details_url'] = site_url('batch/details');

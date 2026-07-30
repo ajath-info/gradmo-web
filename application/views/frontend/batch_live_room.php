@@ -35,7 +35,15 @@
 	right: 12px;
 	z-index: 10000;
 }
+#lr_zoom_record {
+	display: none;
+	position: fixed;
+	top: 12px;
+	right: 120px;
+	z-index: 10000;
+}
 #lr_zoom_wrap.lr-zoom-active #lr_zoom_close { display: inline-block; }
+#lr_zoom_wrap.lr-zoom-active #lr_zoom_record.lr-record-show { display: inline-block; }
 </style>
 <div class="inst-detail-page">
 	<div class="inst-detail-mobile-bar">
@@ -58,6 +66,7 @@
 				</div>
 			</div>
 			<div id="lr_zoom_wrap" class="inst-detail-summary-card mt-3 inst-detail-hidden">
+				<button type="button" id="lr_zoom_record" class="btn btn-danger btn-sm">Start recording</button>
 				<button type="button" id="lr_zoom_close" class="btn btn-light btn-sm">Leave class</button>
 				<div id="zmmtg-root-embedded" style="width:100%;min-height:520px;"></div>
 			</div>
@@ -78,6 +87,8 @@
 	var detailsUrl = <?php echo json_encode((string) (isset($live_class_details_url) ? $live_class_details_url : site_url('api/batch/live-class-details'))); ?>;
 	var classStatusUrl = <?php echo json_encode((string) site_url('api/batch/class-status')); ?>;
 	var endMeetingUrl = <?php echo json_encode((string) (isset($live_meeting_end_url) ? $live_meeting_end_url : site_url('api/batch/live-meeting-end'))); ?>;
+	var recordingStartUrl = <?php echo json_encode((string) (isset($live_recording_start_url) ? $live_recording_start_url : site_url('api/batch/live-recording-start'))); ?>;
+	var recordingStopUrl = <?php echo json_encode((string) (isset($live_recording_stop_url) ? $live_recording_stop_url : site_url('api/batch/live-recording-stop'))); ?>;
 	var pageIsTeacherHost = <?php echo !empty($is_teacher_host) ? 'true' : 'false'; ?>;
 	var currentMeeting = null;
 	var zoomClient = null;
@@ -86,6 +97,7 @@
 	var pollInterval = null;
 	var lastClassStarted = false;
 	var lastClassEnded = false;
+	var recordingActive = false;
 
 	function ok(s) { return s === true || s === 'true'; }
 	function showMsg(t) { document.getElementById('lr_msg').textContent = t || ''; }
@@ -155,15 +167,17 @@
 			showAlert('Only teachers can end the class.', true);
 			return;
 		}
-		if (!confirm('Are you sure you want to end the class for all students?')) {
+		if (!confirm('Are you sure you want to end the class for all students? Recording will stop and save to cloud.')) {
 			return;
 		}
 
 		var closeBtn = document.getElementById('lr_zoom_close');
+		var recBtn = document.getElementById('lr_zoom_record');
 		if (closeBtn) {
 			closeBtn.disabled = true;
 			closeBtn.textContent = 'Ending class...';
 		}
+		if (recBtn) { recBtn.disabled = true; }
 
 		// Call API to end meeting and notify all students
 		var body = { batch_id: batchId, access_token: token };
@@ -175,7 +189,8 @@
 			body: JSON.stringify(body)
 		}).then(function (r) { return r.json(); }).then(function (j) {
 			if (ok(j.status)) {
-				showAlert('Class ended. All students have been disconnected.', false);
+				recordingActive = false;
+				showAlert('Class ended. Recording is saving to Zoom cloud and will appear under Recorded meetings shortly.', false);
 				setTimeout(function () {
 					leaveClass();
 				}, 2000);
@@ -185,6 +200,7 @@
 					closeBtn.disabled = false;
 					closeBtn.textContent = 'End class';
 				}
+				if (recBtn) { recBtn.disabled = false; }
 			}
 		}).catch(function (e) {
 			showAlert('Could not end class: ' + (e.message || 'Network error'), true);
@@ -192,6 +208,56 @@
 				closeBtn.disabled = false;
 				closeBtn.textContent = 'End class';
 			}
+			if (recBtn) { recBtn.disabled = false; }
+		});
+	}
+
+	function syncRecordButton() {
+		var recBtn = document.getElementById('lr_zoom_record');
+		if (!recBtn || !pageIsTeacherHost) { return; }
+		recBtn.classList.add('lr-record-show');
+		recBtn.disabled = false;
+		if (recordingActive) {
+			recBtn.textContent = 'Stop recording';
+			recBtn.className = 'btn btn-warning btn-sm lr-record-show';
+		} else {
+			recBtn.textContent = 'Start recording';
+			recBtn.className = 'btn btn-danger btn-sm lr-record-show';
+		}
+	}
+
+	function toggleCloudRecording() {
+		if (!pageIsTeacherHost) {
+			showAlert('Only teachers can control recording.', true);
+			return;
+		}
+		var recBtn = document.getElementById('lr_zoom_record');
+		var starting = !recordingActive;
+		var url = starting ? recordingStartUrl : recordingStopUrl;
+		if (recBtn) {
+			recBtn.disabled = true;
+			recBtn.textContent = starting ? 'Starting…' : 'Stopping…';
+		}
+		var body = { batch_id: batchId, access_token: token };
+		if (liveClassId > 0) { body.live_class_id = liveClassId; }
+		fetch(url, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+			body: JSON.stringify(body)
+		}).then(function (r) { return r.json(); }).then(function (j) {
+			if (ok(j.status)) {
+				recordingActive = starting;
+				syncRecordButton();
+				showAlert(starting
+					? 'Cloud recording started. It will save when you stop recording or end the class.'
+					: 'Recording stopped. Zoom is processing the cloud file — check Recorded meetings in a few minutes.', false);
+			} else {
+				showAlert((j && j.msg) ? j.msg : 'Could not control recording.', true);
+				syncRecordButton();
+			}
+		}).catch(function (e) {
+			showAlert('Could not control recording: ' + (e.message || 'Network error'), true);
+			syncRecordButton();
 		});
 	}
 	function fetchMeetingDetails() {
@@ -290,6 +356,7 @@
 					closeBtn.textContent = 'End Class';
 					closeBtn.disabled = false;
 				}
+				syncRecordButton();
 				// Notify server that teacher has joined
 				var notifyBody = { batch_id: batchId, action: 'host_joined' };
 				if (liveClassId > 0) { notifyBody.live_class_id = liveClassId; }
@@ -316,6 +383,7 @@
 							closeBtn.textContent = 'End Class';
 							closeBtn.disabled = false;
 						}
+						syncRecordButton();
 					}
 				}).catch(function (e2) {
 					err = (e2 && (e2.reason || e2.message)) ? String(e2.reason || e2.message) : err;
@@ -354,6 +422,10 @@
 			leaveClass();
 		}
 	});
+	var recordBtn = document.getElementById('lr_zoom_record');
+	if (recordBtn) {
+		recordBtn.addEventListener('click', toggleCloudRecording);
+	}
 
 	fetchMeetingDetails().then(function (row) {
 		var m = row.meeting || {};

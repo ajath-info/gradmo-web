@@ -362,8 +362,9 @@ class Zoom_rest_client
 			'settings' => array(
 				'join_before_host' => true,
 				'waiting_room' => false,
-				'auto_recording' => 'cloud',  // Enable automatic cloud recording
-				'approval_type' => 0,          // No approval needed
+				// Teacher starts cloud recording after class starts (via live-recording-start).
+				'auto_recording' => 'none',
+				'approval_type' => 0,
 			),
 		);
 		if ($agenda !== '') {
@@ -458,8 +459,79 @@ class Zoom_rest_client
 	{
 		return ' In Zoom Marketplace → your Server-to-Server OAuth app → Scopes → Cloud Recording, add: '
 			. 'cloud_recording:read:recording:admin (view meeting recordings), '
+			. 'cloud_recording:write:recording:admin (start/stop cloud recording), '
 			. 'cloud_recording:read:list_user_recordings:admin (optional list fallback). '
 			. 'Click Continue → Activation → Activate, delete application/cache/zoom_s2s_token.json, then refresh recordings.';
+	}
+
+	/**
+	 * Create meeting and return a flat shape used by batch live-class code.
+	 *
+	 * @return array{ok:bool, meeting_id?:string, password?:string, join_url?:string, start_url?:string, data?:array, error?:string}
+	 */
+	public function create_meeting($topic, $agenda = '')
+	{
+		$created = $this->create_meeting_for_batch($topic, $agenda);
+		if (empty($created['ok']) || empty($created['data']) || !is_array($created['data'])) {
+			return array(
+				'ok' => false,
+				'error' => isset($created['error']) ? $created['error'] : 'Could not create Zoom meeting',
+			);
+		}
+		$d = $created['data'];
+		return array(
+			'ok' => true,
+			'meeting_id' => isset($d['id']) ? (string) $d['id'] : '',
+			'password' => isset($d['password']) ? (string) $d['password'] : '',
+			'join_url' => isset($d['join_url']) ? (string) $d['join_url'] : '',
+			'start_url' => isset($d['start_url']) ? (string) $d['start_url'] : '',
+			'data' => $d,
+		);
+	}
+
+	/**
+	 * Start or stop cloud recording for an in-progress meeting.
+	 * Zoom: PUT /meetings/{meetingId}/recordings/status  body { action: start|stop }
+	 *
+	 * @param string $zoom_meeting_id
+	 * @param string $action start|stop
+	 * @return array{ok:bool, error?:string, code?:int, json?:array}
+	 */
+	public function set_meeting_recording_status($zoom_meeting_id, $action)
+	{
+		$mid = preg_replace('/\D+/', '', trim((string) $zoom_meeting_id));
+		$action = strtolower(trim((string) $action));
+		if ($mid === '') {
+			return array('ok' => false, 'error' => 'Invalid meeting id');
+		}
+		if (!in_array($action, array('start', 'stop'), true)) {
+			return array('ok' => false, 'error' => 'action must be start or stop');
+		}
+		$res = $this->api_request(
+			'PUT',
+			'meetings/' . rawurlencode($mid) . '/recordings/status',
+			array('action' => $action)
+		);
+		if (!$res['ok']) {
+			$http = isset($res['code']) ? (int) $res['code'] : 0;
+			// Already stopped / no active recording — treat stop as success.
+			if ($action === 'stop' && ($http === 404 || $http === 400)) {
+				$err = isset($res['error']) ? strtolower((string) $res['error']) : '';
+				if ($http === 404 || strpos($err, 'not') !== false || strpos($err, '3301') !== false) {
+					return array('ok' => true);
+				}
+			}
+			$out = array(
+				'ok' => false,
+				'error' => isset($res['error']) ? $res['error'] : 'Recording control failed',
+				'code' => $http,
+			);
+			if ($this->is_missing_scope_error($res)) {
+				$out['error'] = $out['error'] . $this->cloud_recording_scopes_hint();
+			}
+			return $out;
+		}
+		return array('ok' => true);
 	}
 
 	/**
