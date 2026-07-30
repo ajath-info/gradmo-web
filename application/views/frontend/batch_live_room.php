@@ -321,7 +321,13 @@
 		}).then(function (r) { return r.json(); }).then(function (j) {
 			var okz = ok(j.status);
 			var z = (j.data && j.data.zoom) ? j.data.zoom : {};
-			if (okz && (z.zoomMeetingId || z.joinUrl)) {
+			var active = okz && (z.isActive === 1 || z.isActive === '1' || z.meetingStatus === 1 || z.meetingStatus === '1')
+				&& (z.zoomMeetingId || z.joinUrl);
+			// Fallback for older API payloads that only return active meetings.
+			if (!active && okz && (z.zoomMeetingId || z.joinUrl) && z.isActive == null && z.meetingStatus == null) {
+				active = true;
+			}
+			if (active) {
 				statusEl.textContent = 'Zoom is linked. Everyone joins only inside your website/app (Live classes).';
 				btnCreate.textContent = 'Zoom already linked';
 				btnCreate.disabled = true;
@@ -335,6 +341,9 @@
 			btnJoin.classList.add('inst-detail-hidden');
 		}).catch(function () {
 			statusEl.textContent = 'Could not check Zoom status. Try again or verify Zoom API credentials.';
+			btnCreate.textContent = 'Create Zoom link';
+			btnCreate.disabled = false;
+			btnJoin.classList.add('inst-detail-hidden');
 		});
 	}
 	function isJoinReady(m) {
@@ -420,17 +429,17 @@
 		}).then(function (r) { return r.json(); }).then(function (j) {
 			if (ok(j.status)) {
 				recordingActive = false;
-				var data = (j && j.data) ? j.data : {};
-				var endedOnZoom = data.zoomMeetingEnded === 1 || data.zoomMeetingEnded === '1' || data.zoomMeetingEnded === true;
-				showAlert(
-					endedOnZoom
-						? 'Class ended. Recording is saving to Zoom cloud and will appear under Recorded meetings shortly.'
-						: 'Class closed. Recording stopped and is saving to Zoom cloud. Redirecting to batch details...',
-					false
-				);
-				setTimeout(function () {
-					window.location.href = batchDetailsUrl + '?batch_id=' + encodeURIComponent(batchId);
-				}, 2000);
+				leaveClass();
+				refreshBatchZoomPanel();
+				loadRecordings();
+				showAlert('Class ended. Recording is saving to Zoom cloud. Create a new Zoom link to start the next session.', false);
+				var closeBtn2 = document.getElementById('lr_zoom_close');
+				var recBtn2 = document.getElementById('lr_zoom_record');
+				if (closeBtn2) {
+					closeBtn2.disabled = false;
+					closeBtn2.textContent = pageIsTeacherHost ? 'End Class' : 'Leave class';
+				}
+				if (recBtn2) { recBtn2.disabled = false; }
 			} else {
 				showAlert('Error ending class: ' + (j.msg || 'Unknown error'), true);
 				if (closeBtn) {
@@ -900,7 +909,7 @@
 
 		var joinBtn = document.getElementById('lr_join_embed');
 		joinBtn.textContent = (isHost || pageIsTeacherHost) ? 'Start / join class' : 'Join class';
-		// Teacher uses "Join live class" on the Zoom Meeting card (screenshot UI).
+		// Teacher uses "Join live class" / "Create Zoom link" on the Zoom Meeting card.
 		if (pageIsTeacherHost) {
 			var actions = joinBtn.parentNode;
 			if (actions) { actions.classList.add('inst-detail-hidden'); }
@@ -909,6 +918,15 @@
 		if (m.type !== 'zoom') {
 			joinBtn.disabled = true;
 			showAlert('This batch does not use Zoom.', true);
+			return;
+		}
+		if (!m.meetingNumber) {
+			joinBtn.disabled = true;
+			if (pageIsTeacherHost) {
+				showAlert('Class ended or no Zoom link yet. Click Create Zoom link to start a new session.', false);
+			} else {
+				showAlert('No live Zoom meeting yet. Please wait for the teacher to create one.', false);
+			}
 			return;
 		}
 		if (!isJoinReady(m)) {

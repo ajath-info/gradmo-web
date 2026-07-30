@@ -3254,44 +3254,7 @@ class Batch extends MY_Controller
 
 		if ($this->db->table_exists('batch_zoom_meetings')) {
 			$bz = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id, 'status' => 1), 1, array('id', 'desc'));
-
-			// If no active meeting, check if previous one ended and create new one for teacher
-			if (empty($bz[0]) && $is_teacher_or_institute) {
-				$old_meeting = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id, 'status' => 0), 1, array('id', 'desc'));
-				if (!empty($old_meeting[0])) {
-					// Previous meeting ended, create a NEW one
-					$this->load->library('zoom_rest_client');
-					if ($this->zoom_rest_client->is_configured()) {
-						$batch_info = $this->db_model->select_data('batch_name', 'batches', array('id' => $batch_id), 1);
-						$topic = !empty($batch_info[0]['batch_name']) ? (string) $batch_info[0]['batch_name'] : 'Zoom Class';
-
-						$new_meeting = $this->zoom_rest_client->create_meeting($topic);
-						if (!empty($new_meeting['ok']) && !empty($new_meeting['meeting_id'])) {
-							// Save new meeting to database
-							$meeting_rec = array(
-								'batch_id' => $batch_id,
-								'zoom_meeting_id' => (string) $new_meeting['meeting_id'],
-								'password' => !empty($new_meeting['password']) ? (string) $new_meeting['password'] : '',
-								'join_url' => !empty($new_meeting['join_url']) ? (string) $new_meeting['join_url'] : '',
-								'start_url' => !empty($new_meeting['start_url']) ? (string) $new_meeting['start_url'] : '',
-								'status' => 1,
-								'host_joined_at' => NULL,
-								'ended_at' => NULL,
-								'created_at' => date('Y-m-d H:i:s'),
-							);
-							if ($this->db->field_exists('updated_at', 'batch_zoom_meetings')) {
-								$meeting_rec['updated_at'] = date('Y-m-d H:i:s');
-							}
-							@$this->db_model->insert_data('batch_zoom_meetings', $meeting_rec);
-
-							// Use new meeting
-							$meeting_number = (string) $new_meeting['meeting_id'];
-							$meeting_pwd = !empty($new_meeting['password']) ? (string) $new_meeting['password'] : '';
-							$bz = array(array('zoom_meeting_id' => $meeting_number, 'password' => $meeting_pwd));
-						}
-					}
-				}
-			}
+			// Do not auto-create after End Class — teacher must click Create Zoom link.
 
 			if (!empty($bz[0])) {
 				$api_mid = $this->zoom_public_meeting_number_from_batch_zoom_row($bz[0]);
@@ -3442,19 +3405,46 @@ class Batch extends MY_Controller
 
 			$bz = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id_req, 'status' => 1), 1, array('id', 'desc'));
 			$has_zoom = !empty($bz[0]) && (trim((string) (isset($bz[0]['zoom_meeting_id']) ? $bz[0]['zoom_meeting_id'] : '')) !== '' || trim((string) (isset($bz[0]['join_url']) ? $bz[0]['join_url'] : '')) !== '');
-			// End Class sets status=0. Teachers continue so attach_meeting can create a new Zoom meeting.
+			// After End Class (status=0): keep page usable for teacher so they can click Create Zoom link.
 			if (!$has_zoom) {
 				$ended = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id_req, 'status' => 0), 1, array('id', 'desc'));
 				$is_host = ((int) $this->zoom_meeting_role_from_payload($payload) === 1);
-				if ($is_host && !empty($ended[0])) {
-					$bz = $ended;
-				} elseif (!$is_host && !empty($ended[0])) {
+				if ($is_host) {
+					// Stub row — no active Zoom meeting until teacher creates one.
+					$topic = (!empty($ended[0]['topic']) ? (string) $ended[0]['topic'] : 'Batch Zoom');
+					$row = array(
+						'liveClassId' => 0,
+						'teacherId' => 0,
+						'batchId' => $batch_id_req,
+						'subjectId' => 0,
+						'chapterId' => 0,
+						'startTime' => '',
+						'endTime' => '',
+						'date' => '',
+						'entryDateTime' => '',
+						'adminId' => 0,
+						'typeClass' => 1,
+						'teacherName' => '',
+						'teacherImage' => '',
+						'subjectName' => $topic,
+						'chapterName' => '',
+					);
+					$this->live_class_details_attach_meeting($row, $payload);
+					$row['isBatchZoom'] = 1;
+					$row['needsZoomCreate'] = 1;
+					echo json_encode(array(
+						'status' => 'true',
+						'message' => 'Success',
+						'liveClass' => $row
+					), JSON_UNESCAPED_SLASHES);
+					die;
+				}
+				if (!empty($ended[0])) {
 					echo json_encode(array('status' => 'false', 'msg' => 'This class session has ended. Wait for the teacher to start a new session.'));
 					return;
-				} else {
-					echo json_encode(array('status' => 'false', 'msg' => 'No batch Zoom meeting is linked for this batch'));
-					return;
 				}
+				echo json_encode(array('status' => 'false', 'msg' => 'No batch Zoom meeting is linked for this batch'));
+				return;
 			}
 			$topic = !empty($bz[0]['topic']) ? (string) $bz[0]['topic'] : 'Batch Zoom';
 			$row = array(
@@ -6847,18 +6837,13 @@ class Batch extends MY_Controller
 			$this->api_json(false, 'batch_zoom_meetings table is not installed. Run installer/create_batch_zoom_meetings_and_zoom_s2s.sql');
 			return;
 		}
-		// Prefer active meeting; if End Class set status=0, still treat batch as Zoom-linked
-		// so the details card can show "Zoom already linked" + "Join live class".
 		$row = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id, 'status' => 1), 1, array('id', 'desc'));
 		if (empty($row)) {
-			$row = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id), 1, array('id', 'desc'));
-		}
-		if (empty($row)) {
+			// After End Class status becomes 0 — treat as unlinked so UI shows Create Zoom link again.
 			$this->api_json(false, 'No Zoom meeting linked for this batch', array('batchId' => $batch_id));
 			return;
 		}
 		$r = $row[0];
-		$meeting_status = isset($r['status']) ? (int) $r['status'] : 0;
 		$out = array(
 			'batchId' => $batch_id,
 			'zoomMeetingId' => isset($r['zoom_meeting_id']) ? (string) $r['zoom_meeting_id'] : '',
@@ -6868,8 +6853,8 @@ class Batch extends MY_Controller
 			'duration' => isset($r['duration']) ? (int) $r['duration'] : 60,
 			'timezone' => isset($r['timezone']) ? (string) $r['timezone'] : 'UTC',
 			'inAppOnly' => 1,
-			'meetingStatus' => $meeting_status,
-			'isActive' => $meeting_status === 1 ? 1 : 0,
+			'meetingStatus' => 1,
+			'isActive' => 1,
 			'joinUrl' => isset($r['join_url']) ? (string) $r['join_url'] : '',
 		);
 		$ut = strtolower(trim((string) $payload['ut']));
