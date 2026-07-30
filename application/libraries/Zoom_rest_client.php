@@ -200,6 +200,10 @@ class Zoom_rest_client
 		if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
 			return array('ok' => false, 'error' => 'Set zoom_host_user_id in zoom_api_credentials, or zoom_host_user_id in application/config/zoom.php, or environment ZOOM_HOST_USER_ID (Zoom Admin → Users → host → User ID). Or set zoom_host_email and add User read scopes on the Zoom app.');
 		}
+		// Most Zoom user endpoints accept the licensed host email directly, which avoids
+		// requiring extra User-read scopes just to resolve an internal Zoom user id.
+		return array('ok' => true, 'id' => $email);
+
 		$tok = $this->get_access_token();
 		if (!$tok['ok']) {
 			return array('ok' => false, 'error' => $tok['error']);
@@ -482,7 +486,7 @@ class Zoom_rest_client
 	public function cloud_recording_scopes_hint()
 	{
 		return ' In Zoom Marketplace → your Server-to-Server OAuth app → Scopes, add: '
-			. 'meeting:write:meeting:admin (or meeting:update:in_meeting_controls / meeting:write:admin) to start/stop live cloud recording, '
+			. 'meeting:update:in_meeting_controls:admin (or meeting:update:in_meeting_controls) to start/stop live cloud recording, '
 			. 'cloud_recording:read:recording:admin (view meeting recordings), '
 			. 'cloud_recording:read:list_user_recordings:admin (optional list fallback). '
 			. 'Click Continue → Activation → Activate, delete application/cache/zoom_s2s_token.json, then try again.';
