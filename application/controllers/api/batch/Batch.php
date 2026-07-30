@@ -7269,6 +7269,10 @@ class Batch extends MY_Controller
 			$passcode = trim((string) $row['recording_passcode']);
 		}
 		$play_url = $this->zoom_recording_url_with_passcode($play_url, $passcode);
+		// Prefer Zoom share URL — works better with ?pwd= than /rec/play/.
+		if ($play_url !== '' && stripos($play_url, '/rec/play/') !== false) {
+			$play_url = preg_replace('#/rec/play/#i', '/rec/share/', $play_url, 1);
+		}
 		$rec_id = isset($row['id']) ? (int) $row['id'] : 0;
 		// Always expose stream endpoint when any Zoom URL exists — it authenticates via S2S token (no passcode UI).
 		$stream_url = ($rec_id > 0 && ($download_url !== '' || $play_url !== ''))
@@ -7750,41 +7754,35 @@ class Batch extends MY_Controller
 		}
 		$download = isset($row[0]['download_url']) ? trim((string) $row[0]['download_url']) : '';
 		$play = isset($row[0]['play_url']) ? trim((string) $row[0]['play_url']) : '';
-		$source = $download !== '' ? $download : $play;
-		if ($source === '') {
-			$this->output->set_status_header(404);
-			echo 'No download URL for this recording';
-			return;
-		}
-		// Zoom play URLs cannot stream as MP4; convert to download path when needed.
-		if (stripos($source, '/rec/play/') !== false) {
-			$source = str_ireplace('/rec/play/', '/rec/download/', $source);
+		$passcode = '';
+		if ($this->db->field_exists('recording_passcode', 'batch_zoom_recordings') && !empty($row[0]['recording_passcode'])) {
+			$passcode = trim((string) $row[0]['recording_passcode']);
 		}
 
-		$this->load->library('zoom_rest_client');
-		$token_res = $this->zoom_rest_client->get_access_token();
-		$zoom_token = '';
-		if (is_array($token_res) && !empty($token_res['ok']) && !empty($token_res['access_token'])) {
-			$zoom_token = (string) $token_res['access_token'];
-		} elseif (is_string($token_res) && $token_res !== '') {
-			$zoom_token = $token_res;
-		}
-		if ($zoom_token === '') {
-			// Fallback: open Zoom play page with stored passcode (no manual typing).
-			$passcode = '';
-			if ($this->db->field_exists('recording_passcode', 'batch_zoom_recordings') && !empty($row[0]['recording_passcode'])) {
-				$passcode = trim((string) $row[0]['recording_passcode']);
+		// Prefer authenticated MP4 download only when URL is a real download path.
+		$is_download = ($download !== '' && stripos($download, '/rec/download/') !== false);
+		if ($is_download) {
+			$this->load->library('zoom_rest_client');
+			$token_res = $this->zoom_rest_client->get_access_token();
+			$zoom_token = '';
+			if (is_array($token_res) && !empty($token_res['ok']) && !empty($token_res['access_token'])) {
+				$zoom_token = (string) $token_res['access_token'];
 			}
-			$redirect = $this->zoom_recording_url_with_passcode($play !== '' ? $play : $source, $passcode);
-			redirect($redirect);
-			return;
+			if ($zoom_token !== '') {
+				$sep = (strpos($download, '?') !== false) ? '&' : '?';
+				header('Location: ' . $download . $sep . 'access_token=' . rawurlencode($zoom_token), true, 302);
+				exit;
+			}
 		}
 
-		$sep = (strpos($source, '?') !== false) ? '&' : '?';
-		$remote = $source . $sep . 'access_token=' . rawurlencode($zoom_token);
-
-		// Redirect keeps streaming simple and avoids buffering large files in PHP.
-		header('Location: ' . $remote, true, 302);
+		// Watch fallback: Zoom play page with passcode embedded (no manual passkey).
+		$redirect = $this->zoom_recording_url_with_passcode($play !== '' ? $play : $download, $passcode);
+		if ($redirect === '') {
+			$this->output->set_status_header(404);
+			echo 'No playback URL for this recording';
+			return;
+		}
+		header('Location: ' . $redirect, true, 302);
 		exit;
 	}
 

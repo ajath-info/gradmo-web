@@ -14,34 +14,63 @@
 #lr_alert.lr-alert-show { display: block; }
 #lr_alert.lr-alert-error { background: #fdecea; border-color: #f5c6c6; color: #7a1f1f; }
 .lr-actions { margin-top: 8px; }
+/*
+ * In-meeting: hide website chrome so only Zoom shows.
+ * Keep meeting shell z-index LOW — Zoom Chat/Settings portals use a very low
+ * z-index on document.body; a high shell covers them (or custom anchors clip them).
+ */
+body.lr-zoom-in-meeting {
+	overflow: hidden !important;
+}
+body.lr-zoom-in-meeting header.edu-header-gradmo,
+body.lr-zoom-in-meeting .edu_header_top,
+body.lr-zoom-in-meeting .edu_footer_wrapper,
+body.lr-zoom-in-meeting footer,
+body.lr-zoom-in-meeting .inst-detail-mobile-bar,
+body.lr-zoom-in-meeting #lr_msg,
+body.lr-zoom-in-meeting #lr_body > *:not(#lr_zoom_wrap) {
+	display: none !important;
+}
+body.lr-zoom-in-meeting > div[role="presentation"],
+body.lr-zoom-in-meeting > div[role="dialog"],
+body.lr-zoom-in-meeting > .ReactModalPortal,
+body.lr-zoom-in-meeting > div[class*="MuiPopover"],
+body.lr-zoom-in-meeting > div[class*="MuiModal"],
+body.lr-zoom-in-meeting > div[class*="MuiDialog"],
+body.lr-zoom-in-meeting > div[id^="menu-"] {
+	z-index: 100 !important;
+}
 #lr_zoom_wrap.lr-zoom-active {
 	position: fixed;
 	inset: 0;
-	z-index: 9999;
+	z-index: 1;
 	background: #1a1a1a;
 	padding: 0;
 	margin: 0;
 	border-radius: 0;
 	max-width: none;
+	width: 100%;
+	height: 100%;
+	overflow: visible !important;
+	box-shadow: none;
+	border: 0;
 }
 #lr_zoom_wrap.lr-zoom-active #zmmtg-root-embedded {
+	position: relative;
+	width: 100% !important;
+	height: 100% !important;
 	min-height: 100vh !important;
-	height: 100vh !important;
+	overflow: visible !important;
 }
-#lr_zoom_close {
-	display: none;
-	position: fixed;
-	top: 12px;
-	right: 12px;
-	z-index: 10000;
-}
+#lr_zoom_close,
 #lr_zoom_record {
 	display: none;
-	position: fixed;
+	position: absolute;
 	top: 12px;
-	right: 120px;
-	z-index: 10000;
+	z-index: 20;
 }
+#lr_zoom_close { right: 12px; }
+#lr_zoom_record { right: 120px; }
 #lr_zoom_wrap.lr-zoom-active #lr_zoom_close { display: inline-block; }
 #lr_zoom_wrap.lr-zoom-active #lr_zoom_record.lr-record-show { display: inline-block; }
 .lr-recordings {
@@ -349,23 +378,51 @@
 	function isJoinReady(m) {
 		return m && (m.joinReady === 1 || m.joinReady === '1' || (m.sdkKey && m.signature && m.meetingNumber));
 	}
-	function leaveClass() {
-		console.log('[Leave] Leaving class, cleaning up Zoom');
-
-		// Disconnect from Zoom meeting
-		if (zoomClient && zoomInitialized) {
-			try {
-				console.log('[Leave] Calling zoomClient.leave()');
-				zoomClient.leave();
-			} catch (e) {
-				console.log('[Leave] Error leaving Zoom:', e.message);
-			}
+	var zoomTeardownBusy = false;
+	function stopZoomMediaTracks() {
+		try {
+			document.querySelectorAll('#zmmtg-root-embedded video, #zmmtg-root-embedded audio, #lr_zoom_wrap video, #lr_zoom_wrap audio').forEach(function (el) {
+				try {
+					if (el.srcObject && typeof el.srcObject.getTracks === 'function') {
+						el.srcObject.getTracks().forEach(function (t) {
+							try { t.stop(); } catch (e1) {}
+						});
+						el.srcObject = null;
+					}
+				} catch (e2) {}
+			});
+		} catch (e3) {}
+	}
+	function purgeZoomDomOrphans() {
+		var root = document.getElementById('zmmtg-root-embedded');
+		if (root) {
+			try { root.innerHTML = ''; } catch (e) {}
 		}
-
+		['zmmtg-root', 'svg-resource-host'].forEach(function (id) {
+			var el = document.getElementById(id);
+			if (el && el.parentNode) {
+				try { el.parentNode.removeChild(el); } catch (e) {}
+			}
+		});
+		Array.prototype.slice.call(document.querySelectorAll('body > .ReactModalPortal')).forEach(function (el) {
+			try { el.parentNode.removeChild(el); } catch (e) {}
+		});
+	}
+	function resetLiveRoomChromeAfterLeave() {
+		try { document.body.classList.remove('lr-zoom-in-meeting'); } catch (eBody) {}
 		var wrap = document.getElementById('lr_zoom_wrap');
 		if (wrap) {
 			wrap.classList.remove('lr-zoom-active');
 			wrap.classList.add('inst-detail-hidden');
+			if (wrap._lrOriginalParent) {
+				try {
+					if (wrap._lrOriginalNext && wrap._lrOriginalNext.parentNode === wrap._lrOriginalParent) {
+						wrap._lrOriginalParent.insertBefore(wrap, wrap._lrOriginalNext);
+					} else {
+						wrap._lrOriginalParent.appendChild(wrap);
+					}
+				} catch (eRestore) {}
+			}
 		}
 		var card = document.getElementById('lr_card');
 		if (card && !pageIsTeacherHost) {
@@ -382,14 +439,70 @@
 			closeBtn.textContent = 'Leave class';
 			closeBtn.disabled = false;
 		}
-
-		// CRITICAL: Reset ALL flags so user can rejoin without page refresh
+		var recBtn = document.getElementById('lr_zoom_record');
+		if (recBtn) {
+			recBtn.style.display = 'none';
+			recBtn.classList.remove('lr-record-show');
+		}
+		showMsg('');
+	}
+	function destroyZoomClientHard() {
+		try {
+			if (window.ZoomMtgEmbedded && typeof window.ZoomMtgEmbedded.destroyClient === 'function') {
+				window.ZoomMtgEmbedded.destroyClient();
+			}
+		} catch (e) {
+			console.log('[Leave] destroyClient error:', e && e.message);
+		}
+		zoomClient = null;
+		stopZoomMediaTracks();
+		purgeZoomDomOrphans();
+	}
+	function leaveClass() {
+		console.log('[Leave] Leaving class, cleaning up Zoom');
+		if (zoomTeardownBusy) {
+			resetLiveRoomChromeAfterLeave();
+			return;
+		}
+		zoomTeardownBusy = true;
 		joinStarted = false;
 		zoomInitialized = false;
 
-		console.log('[Leave] Cleanup complete');
-		showMsg('');
-		showAlert('');
+		var client = zoomClient;
+		var leavePromise = null;
+		if (client) {
+			try {
+				var leaveFn = null;
+				if (typeof client.leave === 'function') leaveFn = client.leave;
+				else if (typeof client.leaveMeeting === 'function') leaveFn = client.leaveMeeting;
+				if (leaveFn) {
+					console.log('[Leave] Calling Zoom leave');
+					leavePromise = leaveFn.call(client);
+				}
+			} catch (e) {
+				console.log('[Leave] Error leaving Zoom:', e && e.message);
+			}
+		}
+
+		function finishTeardown() {
+			destroyZoomClientHard();
+			resetLiveRoomChromeAfterLeave();
+			zoomTeardownBusy = false;
+			console.log('[Leave] Cleanup complete');
+		}
+
+		if (leavePromise && typeof leavePromise.then === 'function') {
+			var done = false;
+			var once = function () {
+				if (done) return;
+				done = true;
+				finishTeardown();
+			};
+			leavePromise.then(once).catch(once);
+			setTimeout(once, 1200);
+			return;
+		}
+		finishTeardown();
 	}
 
 	function onZoomConnectionChange(payload) {
@@ -543,18 +656,27 @@
 		return parts.join(' · ');
 	}
 	function recordingCard(row) {
-		var play = row.streamUrl || row.playUrl || row.downloadUrl || '';
+		// Prefer Zoom share/play URL with embedded passcode (no manual passkey).
+		var play = row.playUrl || row.downloadUrl || row.streamUrl || '';
 		var meta = recordingMeta(row);
-		var isStream = !!(row.streamUrl);
+		var isZoomCloud = /zoom\.us\/rec\//i.test(play);
+		var isLocalVideo = /\.(mp4|webm|ogg)(\?|$)/i.test(play) && play.indexOf('zoom.us') === -1;
+		var watchBtn = '';
+		if (!play) {
+			watchBtn = '<span class="inst-muted small">No playback URL</span>';
+		} else if (isZoomCloud) {
+			// Direct link avoids popup blockers and Zoom iframe cookie blocks.
+			watchBtn = '<a class="btn btn-primary btn-sm" href="' + esc(play) + '" target="_blank" rel="noopener noreferrer"><i class="fas fa-play"></i> Watch</a>';
+		} else {
+			watchBtn = '<button type="button" class="btn btn-primary btn-sm lr-rec-play" data-play="' + esc(play) + '" data-stream="' + (isLocalVideo ? '1' : '0') + '" data-title="' + esc(row.topic || 'Recording') + '"><i class="fas fa-play"></i> Watch</button>';
+		}
 		return '<article class="lr-record-card" role="listitem">' +
 			'<h4>' + esc(row.topic || 'Recorded class') + '</h4>' +
 			(meta ? '<p class="lr-record-meta">' + esc(meta) + '</p>' : '') +
 			'<div class="lr-record-actions">' +
-			(play
-				? '<button type="button" class="btn btn-primary btn-sm lr-rec-play" data-play="' + esc(play) + '" data-stream="' + (isStream ? '1' : '0') + '" data-title="' + esc(row.topic || 'Recording') + '"><i class="fas fa-play"></i> Watch</button>'
-				: '<span class="inst-muted small">No playback URL</span>') +
-			(row.downloadUrl
-				? ' <a class="btn btn-outline-secondary btn-sm" href="' + esc(row.streamUrl || row.downloadUrl) + '" target="_blank" rel="noopener noreferrer"><i class="fas fa-download"></i> Download</a>'
+			watchBtn +
+			(row.streamUrl || row.downloadUrl
+				? ' <a class="btn btn-outline-secondary btn-sm" href="' + esc((row.streamUrl || row.downloadUrl) + ((row.streamUrl && token) ? ((row.streamUrl.indexOf('?') >= 0 ? '&' : '?') + 'access_token=' + encodeURIComponent(token)) : '')) + '" target="_blank" rel="noopener noreferrer"><i class="fas fa-download"></i> Download</a>'
 				: '') +
 			'</div>' +
 		'</article>';
@@ -575,24 +697,40 @@
 		var body = document.getElementById('lrPlayerBody');
 		document.getElementById('lrPlayerTitle').textContent = title || 'Recording';
 		body.innerHTML = '';
-		var asVideo = !!useVideo || /\.(mp4|webm|ogg)(\?|$)/i.test(url) || /recorded-meeting-stream/i.test(url);
+		var asVideo = !!useVideo || (/\.(mp4|webm|ogg)(\?|$)/i.test(url) && url.indexOf('zoom.us') === -1);
+
+		// Zoom cloud pages do not play reliably inside our site iframe (browser blocks their cookies).
+		// Open the share/play URL (already includes ?pwd=) in a new tab so video plays without typing passcode.
+		if (!asVideo && /zoom\.us\/rec\//i.test(url)) {
+			var shareUrl = url.replace(/\/rec\/play\//i, '/rec/share/');
+			var opened = window.open(shareUrl, '_blank', 'noopener');
+			body.innerHTML =
+				'<div style="padding:28px 20px;text-align:center;color:#f8fafc;line-height:1.5;">' +
+				'<p style="margin:0 0 10px;font-size:1.05rem;font-weight:600;">Playing recording</p>' +
+				'<p style="margin:0 0 18px;color:#cbd5e1;">Zoom cloud recordings open in a new tab so they play without a passcode.</p>' +
+				'<a class="btn btn-primary" href="' + esc(shareUrl) + '" target="_blank" rel="noopener noreferrer">Open recording</a>' +
+				(opened ? '' : '<p style="margin:14px 0 0;color:#fca5a5;font-size:0.9rem;">Popup was blocked — use the button above.</p>') +
+				'</div>';
+			modal.classList.add('lr-open');
+			return;
+		}
+
 		if (asVideo) {
 			var v = document.createElement('video');
 			v.controls = true;
 			v.playsInline = true;
 			v.autoplay = true;
-			// Attach access token for same-origin stream endpoint.
-			var src = url;
-			if (/recorded-meeting-stream/i.test(url) && token) {
-				src += (url.indexOf('?') >= 0 ? '&' : '?') + 'access_token=' + encodeURIComponent(token);
-			}
-			v.src = src;
+			v.src = url;
 			body.appendChild(v);
 		} else {
 			var iframe = document.createElement('iframe');
 			iframe.src = url;
-			iframe.allow = 'autoplay; fullscreen';
+			iframe.allow = 'autoplay; fullscreen; encrypted-media';
+			iframe.setAttribute('allowfullscreen', 'true');
 			iframe.title = title || 'Recording';
+			iframe.style.width = '100%';
+			iframe.style.minHeight = '480px';
+			iframe.style.border = '0';
 			body.appendChild(iframe);
 		}
 		modal.classList.add('lr-open');
@@ -709,9 +847,24 @@
 			document.getElementById('lr_card').classList.add('inst-detail-hidden');
 			wrap.classList.remove('inst-detail-hidden');
 			wrap.classList.add('lr-zoom-active');
-			if (!zoomClient) {
-				zoomClient = window.ZoomMtgEmbedded.createClient();
+			document.body.classList.add('lr-zoom-in-meeting');
+			if (!wrap._lrOriginalParent) {
+				wrap._lrOriginalParent = wrap.parentNode;
+				wrap._lrOriginalNext = wrap.nextSibling;
 			}
+			if (wrap.parentNode !== document.body) {
+				document.body.appendChild(wrap);
+			}
+			if (zoomClient) {
+				try {
+					if (window.ZoomMtgEmbedded && typeof window.ZoomMtgEmbedded.destroyClient === 'function') {
+						window.ZoomMtgEmbedded.destroyClient();
+					}
+				} catch (eDestroy) {}
+				zoomClient = null;
+				purgeZoomDomOrphans();
+			}
+			zoomClient = window.ZoomMtgEmbedded.createClient();
 			return zoomClient.init({
 				zoomAppRoot: document.getElementById('zmmtg-root-embedded'),
 				language: 'en-US',
@@ -719,6 +872,11 @@
 				leaveOnPageUnload: true
 			}).then(function () {
 				zoomInitialized = true;
+				try {
+					if (typeof zoomClient.on === 'function') {
+						zoomClient.on('connection-change', onZoomConnectionChange);
+					}
+				} catch (eOn) {}
 				return runZoomJoin(m);
 			});
 		}).then(function () {
