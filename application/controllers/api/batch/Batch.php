@@ -2466,30 +2466,46 @@ class Batch extends MY_Controller
 
 		try {
 			$batch = $this->db_model->select_data('start_date', 'batches', array('id' => (int) $batch_id), 1);
-			$start_date = !empty($batch[0]['start_date']) ? (string) $batch[0]['start_date'] : '';
+			$start_date = !empty($batch[0]['start_date']) ? trim((string) $batch[0]['start_date']) : '';
 
 			$now = new DateTime('now');
-			try {
-				$anchor = ($start_date !== '' && $start_date !== '0000-00-00') ? new DateTime($start_date) : clone $now;
-			} catch (Exception $e) {
-				$anchor = clone $now;
-			}
-			$cycle_start = clone $anchor;
-			if ($cycle_start <= $now) {
-				while (true) {
-					$next = clone $cycle_start;
-					$next->modify('+1 year');
-					if ($next > $now) {
-						break;
-					}
-					$cycle_start = $next;
+			// Never use "now" as cycle_start — that excludes every past recording/upload in the same request window.
+			if ($start_date !== '' && $start_date !== '0000-00-00' && strpos($start_date, '0000-00-00') !== 0) {
+				try {
+					$anchor = new DateTime(substr($start_date, 0, 10));
+					$anchor->setTime(0, 0, 0);
+				} catch (Exception $e) {
+					$anchor = null;
 				}
+			} else {
+				$anchor = null;
 			}
-			$cycle_end = clone $cycle_start;
-			$cycle_end->modify('+1 year');
+			if ($anchor === null) {
+				// Rolling 12-month window ending at end of today.
+				$cycle_end = clone $now;
+				$cycle_end->setTime(23, 59, 59);
+				$cycle_start = clone $cycle_end;
+				$cycle_start->modify('-1 year')->modify('+1 second');
+			} else {
+				$cycle_start = clone $anchor;
+				if ($cycle_start <= $now) {
+					while (true) {
+						$next = clone $cycle_start;
+						$next->modify('+1 year');
+						if ($next > $now) {
+							break;
+						}
+						$cycle_start = $next;
+					}
+				}
+				$cycle_end = clone $cycle_start;
+				$cycle_end->modify('+1 year');
+			}
 
 			$cs = $cycle_start->format('Y-m-d H:i:s');
 			$ce = $cycle_end->format('Y-m-d H:i:s');
+			$cs_ts = $cycle_start->getTimestamp();
+			$ce_ts = $cycle_end->getTimestamp();
 			$bid = (int) $batch_id;
 
 			$video_used = 0;
@@ -2515,46 +2531,17 @@ class Batch extends MY_Controller
 			$recording_used = 0;
 			$recorded_meeting_ids = array();
 			if ($this->db->table_exists('batch_zoom_recordings')) {
-				$has_start = $this->db->field_exists('recording_start', 'batch_zoom_recordings');
-				$has_end = $this->db->field_exists('recording_end', 'batch_zoom_recordings');
-				$has_dur_col = $this->db->field_exists('duration_seconds', 'batch_zoom_recordings');
-				$has_created = $this->db->field_exists('created_at', 'batch_zoom_recordings');
-				$has_synced = $this->db->field_exists('synced_at', 'batch_zoom_recordings');
-				$fallback_col = $has_created ? 'created_at' : ($has_synced ? 'synced_at' : '');
-
+				// Keep the SQL simple (batch_id only). Apply the yearly cycle filter in PHP so
+				// missing/extra columns or raw WHERE quirks on some hosts cannot zero out Zoom usage.
 				$cols = array('zoom_meeting_id');
-				if ($has_start) {
-					$cols[] = 'recording_start';
+				foreach (array('recording_start', 'recording_end', 'duration_seconds', 'created_at', 'synced_at') as $col) {
+					if ($this->db->field_exists($col, 'batch_zoom_recordings')) {
+						$cols[] = $col;
+					}
 				}
-				if ($has_end) {
-					$cols[] = 'recording_end';
-				}
-				if ($has_dur_col) {
-					$cols[] = 'duration_seconds';
-				}
-
 				$this->db->select(implode(', ', $cols));
 				$this->db->from('batch_zoom_recordings');
 				$this->db->where('batch_id', $bid);
-				if ($has_start && $fallback_col !== '') {
-					$cs_esc = $this->db->escape($cs);
-					$ce_esc = $this->db->escape($ce);
-					$this->db->where(
-						'(
-							(recording_start IS NOT NULL AND recording_start != \'0000-00-00 00:00:00\' AND recording_start >= ' . $cs_esc . ' AND recording_start < ' . $ce_esc . ')
-							OR (
-								(recording_start IS NULL OR recording_start = \'0000-00-00 00:00:00\')
-								AND `' . $fallback_col . '` >= ' . $cs_esc . '
-								AND `' . $fallback_col . '` < ' . $ce_esc . '
-							)
-						)',
-						null,
-						false
-					);
-				} elseif ($fallback_col !== '') {
-					$this->db->where('`' . $fallback_col . '` >=', $cs);
-					$this->db->where('`' . $fallback_col . '` <', $ce);
-				}
 				$q = $this->db->get();
 				$rec_rows = ($q !== FALSE) ? $q->result_array() : array();
 				if ($q === FALSE) {
@@ -2562,6 +2549,19 @@ class Batch extends MY_Controller
 				}
 				if (!empty($rec_rows)) {
 					foreach ($rec_rows as $rr) {
+						$when = '';
+						foreach (array('recording_start', 'created_at', 'synced_at') as $when_col) {
+							if (!empty($rr[$when_col]) && (string) $rr[$when_col] !== '0000-00-00 00:00:00') {
+								$when = (string) $rr[$when_col];
+								break;
+							}
+						}
+						if ($when !== '') {
+							$when_ts = strtotime($when);
+							if ($when_ts === false || $when_ts < $cs_ts || $when_ts >= $ce_ts) {
+								continue;
+							}
+						}
 						$sec = $this->zoom_recording_row_duration_seconds($rr);
 						if ($sec < 1) {
 							continue;
@@ -2631,20 +2631,19 @@ class Batch extends MY_Controller
 	 */
 	private function zoom_recording_row_duration_seconds(array $row)
 	{
+		$start = isset($row['recording_start']) ? (string) $row['recording_start'] : '';
+		$end = isset($row['recording_end']) ? (string) $row['recording_end'] : '';
+		if ($start !== '' && $end !== '' && $start !== '0000-00-00 00:00:00' && $end !== '0000-00-00 00:00:00') {
+			$ts0 = strtotime($start);
+			$ts1 = strtotime($end);
+			if ($ts0 && $ts1 && $ts1 > $ts0) {
+				return (int) ($ts1 - $ts0);
+			}
+		}
 		if (isset($row['duration_seconds']) && (int) $row['duration_seconds'] > 0) {
 			return (int) $row['duration_seconds'];
 		}
-		$start = isset($row['recording_start']) ? (string) $row['recording_start'] : '';
-		$end = isset($row['recording_end']) ? (string) $row['recording_end'] : '';
-		if ($start === '' || $end === '' || $start === '0000-00-00 00:00:00' || $end === '0000-00-00 00:00:00') {
-			return 0;
-		}
-		$ts0 = strtotime($start);
-		$ts1 = strtotime($end);
-		if (!$ts0 || !$ts1 || $ts1 <= $ts0) {
-			return 0;
-		}
-		return (int) ($ts1 - $ts0);
+		return 0;
 	}
 
 	private function format_hours_minutes($seconds)
