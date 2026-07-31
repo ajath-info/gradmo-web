@@ -2450,123 +2450,139 @@ class Batch extends MY_Controller
 	private function batch_video_quota($batch_id, $exclude_video_id = 0, $exclude_zoom_meeting_row_id = 0)
 	{
 		$limit = 330 * 3600; // 330 hours in seconds
+		$empty = array(
+			'used' => 0,
+			'limit' => $limit,
+			'videoUsedSeconds' => 0,
+			'recordingUsedSeconds' => 0,
+			'meetingReserveSeconds' => 0,
+			'cycle_start' => date('Y-m-d H:i:s'),
+			'cycle_end' => date('Y-m-d H:i:s', strtotime('+1 year')),
+		);
 
-		$batch = $this->db_model->select_data('start_date', 'batches use index (id)', array('id' => (int) $batch_id), 1);
-		$start_date = !empty($batch[0]['start_date']) ? (string) $batch[0]['start_date'] : '';
-
-		$now = new DateTime('now');
 		try {
-			$anchor = ($start_date !== '' && $start_date !== '0000-00-00') ? new DateTime($start_date) : clone $now;
-		} catch (Exception $e) {
-			$anchor = clone $now;
-		}
-		$cycle_start = clone $anchor;
-		if ($cycle_start <= $now) {
-			while (true) {
-				$next = clone $cycle_start;
-				$next->modify('+1 year');
-				if ($next > $now) {
-					break;
-				}
-				$cycle_start = $next;
+			$batch = $this->db_model->select_data('start_date', 'batches', array('id' => (int) $batch_id), 1);
+			$start_date = !empty($batch[0]['start_date']) ? (string) $batch[0]['start_date'] : '';
+
+			$now = new DateTime('now');
+			try {
+				$anchor = ($start_date !== '' && $start_date !== '0000-00-00') ? new DateTime($start_date) : clone $now;
+			} catch (Exception $e) {
+				$anchor = clone $now;
 			}
-		}
-		$cycle_end = clone $cycle_start;
-		$cycle_end->modify('+1 year');
+			$cycle_start = clone $anchor;
+			if ($cycle_start <= $now) {
+				while (true) {
+					$next = clone $cycle_start;
+					$next->modify('+1 year');
+					if ($next > $now) {
+						break;
+					}
+					$cycle_start = $next;
+				}
+			}
+			$cycle_end = clone $cycle_start;
+			$cycle_end->modify('+1 year');
 
-		$cs = $cycle_start->format('Y-m-d H:i:s');
-		$ce = $cycle_end->format('Y-m-d H:i:s');
-		$bid = (int) $batch_id;
+			$cs = $cycle_start->format('Y-m-d H:i:s');
+			$ce = $cycle_end->format('Y-m-d H:i:s');
+			$bid = (int) $batch_id;
 
-		$this->db->select_sum('duration_seconds', 'total');
-		$this->db->from('video_lectures');
-		$this->db->where('status', 1);
-		$this->db->where('added_at >=', $cs);
-		$this->db->where('added_at <', $ce);
-		if ((int) $exclude_video_id > 0) {
-			$this->db->where('id !=', (int) $exclude_video_id);
-		}
-		$this->apply_text_batch_filter('batch', $batch_id);
-		$row = $this->db->get()->row_array();
-		$video_used = isset($row['total']) ? (int) $row['total'] : 0;
+			$video_used = 0;
+			if ($this->db->field_exists('duration_seconds', 'video_lectures')) {
+				$this->db->select_sum('duration_seconds', 'total');
+				$this->db->from('video_lectures');
+				$this->db->where('status', 1);
+				$this->db->where('added_at >=', $cs);
+				$this->db->where('added_at <', $ce);
+				if ((int) $exclude_video_id > 0) {
+					$this->db->where('id !=', (int) $exclude_video_id);
+				}
+				$this->apply_text_batch_filter('batch', $batch_id);
+				$row = $this->db->get()->row_array();
+				$video_used = isset($row['total']) ? (int) $row['total'] : 0;
+			}
 
-		$recording_used = 0;
-		$recorded_meeting_ids = array();
-		if ($this->db->table_exists('batch_zoom_recordings')) {
-			$has_dur_col = $this->db->field_exists('duration_seconds', 'batch_zoom_recordings');
-			$select = $has_dur_col
-				? 'zoom_meeting_id, recording_start, recording_end, duration_seconds'
-				: 'zoom_meeting_id, recording_start, recording_end';
-			$this->db->select($select);
-			$this->db->from('batch_zoom_recordings');
-			$this->db->where('batch_id', $bid);
-			// Prefer recording_start in cycle; fall back to created_at/synced_at when start is empty.
-			$this->db->group_start();
-			$this->db->group_start();
-			$this->db->where('recording_start >=', $cs);
-			$this->db->where('recording_start <', $ce);
-			$this->db->group_end();
-			$this->db->or_group_start();
-			$this->db->where('(recording_start IS NULL OR recording_start = \'0000-00-00 00:00:00\')', null, false);
-			if ($this->db->field_exists('created_at', 'batch_zoom_recordings')) {
+			$recording_used = 0;
+			$recorded_meeting_ids = array();
+			if ($this->db->table_exists('batch_zoom_recordings')) {
+				$has_dur_col = $this->db->field_exists('duration_seconds', 'batch_zoom_recordings');
+				$has_created = $this->db->field_exists('created_at', 'batch_zoom_recordings');
+				$select = $has_dur_col
+					? 'zoom_meeting_id, recording_start, recording_end, duration_seconds'
+					: 'zoom_meeting_id, recording_start, recording_end';
+				$fallback_col = $has_created ? 'created_at' : 'synced_at';
+				$cs_esc = $this->db->escape($cs);
+				$ce_esc = $this->db->escape($ce);
+				$this->db->select($select);
+				$this->db->from('batch_zoom_recordings');
+				$this->db->where('batch_id', $bid);
+				// Simple raw filter — avoids nested group_start SQL issues on some hosts.
+				$this->db->where(
+					'(
+						(recording_start IS NOT NULL AND recording_start != \'0000-00-00 00:00:00\' AND recording_start >= ' . $cs_esc . ' AND recording_start < ' . $ce_esc . ')
+						OR (
+							(recording_start IS NULL OR recording_start = \'0000-00-00 00:00:00\')
+							AND `' . $fallback_col . '` >= ' . $cs_esc . '
+							AND `' . $fallback_col . '` < ' . $ce_esc . '
+						)
+					)',
+					null,
+					false
+				);
+				$rec_rows = $this->db->get()->result_array();
+				if (!empty($rec_rows)) {
+					foreach ($rec_rows as $rr) {
+						$sec = $this->zoom_recording_row_duration_seconds($rr);
+						if ($sec < 1) {
+							continue;
+						}
+						$recording_used += $sec;
+						$mid = isset($rr['zoom_meeting_id']) ? preg_replace('/\D+/', '', (string) $rr['zoom_meeting_id']) : '';
+						if ($mid !== '') {
+							$recorded_meeting_ids[$mid] = true;
+						}
+					}
+				}
+			}
+
+			$meeting_reserve = 0;
+			if ($this->db->table_exists('batch_zoom_meetings') && $this->db->field_exists('created_at', 'batch_zoom_meetings')) {
+				$this->db->select('id, zoom_meeting_id, duration');
+				$this->db->from('batch_zoom_meetings');
+				$this->db->where('batch_id', $bid);
+				$this->db->where('status', 1);
 				$this->db->where('created_at >=', $cs);
 				$this->db->where('created_at <', $ce);
-			} else {
-				$this->db->where('synced_at >=', $cs);
-				$this->db->where('synced_at <', $ce);
-			}
-			$this->db->group_end();
-			$this->db->group_end();
-			$rec_rows = $this->db->get()->result_array();
-			if (!empty($rec_rows)) {
-				foreach ($rec_rows as $rr) {
-					$sec = $this->zoom_recording_row_duration_seconds($rr);
-					if ($sec < 1) {
-						continue;
-					}
-					$recording_used += $sec;
-					$mid = isset($rr['zoom_meeting_id']) ? preg_replace('/\D+/', '', (string) $rr['zoom_meeting_id']) : '';
-					if ($mid !== '') {
-						$recorded_meeting_ids[$mid] = true;
+				if ((int) $exclude_zoom_meeting_row_id > 0) {
+					$this->db->where('id !=', (int) $exclude_zoom_meeting_row_id);
+				}
+				$meetings = $this->db->get()->result_array();
+				if (!empty($meetings)) {
+					foreach ($meetings as $m) {
+						$mid = isset($m['zoom_meeting_id']) ? preg_replace('/\D+/', '', (string) $m['zoom_meeting_id']) : '';
+						if ($mid !== '' && isset($recorded_meeting_ids[$mid])) {
+							continue;
+						}
+						$meeting_reserve += max(0, (int) $m['duration']) * 60;
 					}
 				}
 			}
-		}
 
-		// Active Zoom meetings with no synced recording yet reserve their scheduled duration.
-		$meeting_reserve = 0;
-		if ($this->db->table_exists('batch_zoom_meetings')) {
-			$this->db->select('id, zoom_meeting_id, duration');
-			$this->db->from('batch_zoom_meetings');
-			$this->db->where('batch_id', $bid);
-			$this->db->where('status', 1);
-			$this->db->where('created_at >=', $cs);
-			$this->db->where('created_at <', $ce);
-			if ((int) $exclude_zoom_meeting_row_id > 0) {
-				$this->db->where('id !=', (int) $exclude_zoom_meeting_row_id);
-			}
-			$meetings = $this->db->get()->result_array();
-			if (!empty($meetings)) {
-				foreach ($meetings as $m) {
-					$mid = isset($m['zoom_meeting_id']) ? preg_replace('/\D+/', '', (string) $m['zoom_meeting_id']) : '';
-					if ($mid !== '' && isset($recorded_meeting_ids[$mid])) {
-						continue; // already counted via cloud recording
-					}
-					$meeting_reserve += max(0, (int) $m['duration']) * 60;
-				}
-			}
+			$used = $video_used + $recording_used + $meeting_reserve;
+			return array(
+				'used' => $used,
+				'limit' => $limit,
+				'videoUsedSeconds' => $video_used,
+				'recordingUsedSeconds' => $recording_used,
+				'meetingReserveSeconds' => $meeting_reserve,
+				'cycle_start' => $cs,
+				'cycle_end' => $ce,
+			);
+		} catch (Exception $e) {
+			log_message('error', 'batch_video_quota failed: ' . $e->getMessage());
+			return $empty;
 		}
-
-		$used = $video_used + $recording_used + $meeting_reserve;
-		return array(
-			'used' => $used,
-			'limit' => $limit,
-			'videoUsedSeconds' => $video_used,
-			'recordingUsedSeconds' => $recording_used,
-			'meetingReserveSeconds' => $meeting_reserve,
-			'cycle_start' => $cs,
-			'cycle_end' => $ce,
-		);
 	}
 
 	/**
@@ -4206,7 +4222,11 @@ class Batch extends MY_Controller
 		}
 		$total = (int) $this->db->count_all_results();
 
-		$this->db->select('id,admin_id as adminId,title,batch,topic,subject,description,url,duration_seconds as durationSeconds,video_type as videoType,preview_type as previewType,added_by as addedBy,added_at as addedAt');
+		$select_cols = 'id,admin_id as adminId,title,batch,topic,subject,description,url,video_type as videoType,preview_type as previewType,added_by as addedBy,added_at as addedAt';
+		if ($this->db->field_exists('duration_seconds', 'video_lectures')) {
+			$select_cols = 'id,admin_id as adminId,title,batch,topic,subject,description,url,duration_seconds as durationSeconds,video_type as videoType,preview_type as previewType,added_by as addedBy,added_at as addedAt';
+		}
+		$this->db->select($select_cols);
 		$this->db->from('video_lectures');
 		$this->db->where('status', 1);
 		if ($batch_id > 0) {
@@ -4225,6 +4245,15 @@ class Batch extends MY_Controller
 		$this->db->order_by($order_map[$sort_by], $sort_dir);
 		$this->db->limit($limit, $offset);
 		$list = $this->db->get()->result_array();
+		if (!is_array($list)) {
+			$list = array();
+		}
+		foreach ($list as &$vl_row) {
+			if (!isset($vl_row['durationSeconds'])) {
+				$vl_row['durationSeconds'] = 0;
+			}
+		}
+		unset($vl_row);
 
 		$quota_used = 0;
 		$quota_limit = 330 * 3600;
@@ -4232,14 +4261,19 @@ class Batch extends MY_Controller
 		$quota_recording = 0;
 		$quota_meeting_reserve = 0;
 		if ($batch_id > 0) {
-			$quota = $this->batch_video_quota($batch_id);
-			$quota_used = $quota['used'];
-			$quota_limit = $quota['limit'];
-			$quota_video = isset($quota['videoUsedSeconds']) ? (int) $quota['videoUsedSeconds'] : 0;
-			$quota_recording = isset($quota['recordingUsedSeconds']) ? (int) $quota['recordingUsedSeconds'] : 0;
-			$quota_meeting_reserve = isset($quota['meetingReserveSeconds']) ? (int) $quota['meetingReserveSeconds'] : 0;
+			try {
+				$quota = $this->batch_video_quota($batch_id);
+				$quota_used = isset($quota['used']) ? (int) $quota['used'] : 0;
+				$quota_limit = isset($quota['limit']) ? (int) $quota['limit'] : $quota_limit;
+				$quota_video = isset($quota['videoUsedSeconds']) ? (int) $quota['videoUsedSeconds'] : 0;
+				$quota_recording = isset($quota['recordingUsedSeconds']) ? (int) $quota['recordingUsedSeconds'] : 0;
+				$quota_meeting_reserve = isset($quota['meetingReserveSeconds']) ? (int) $quota['meetingReserveSeconds'] : 0;
+			} catch (Exception $e) {
+				log_message('error', 'video_lecture_list quota: ' . $e->getMessage());
+			}
 		}
 
+		$this->output->set_content_type('application/json');
 		echo json_encode(array(
 			'status' => 'true',
 			'message' => 'Success',
