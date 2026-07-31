@@ -156,6 +156,7 @@
 	var token = <?php echo json_encode((string) (isset($api_access_token) ? $api_access_token : '')); ?>;
 	var listUrl = <?php echo json_encode((string) (isset($recorded_meeting_list_url) ? $recorded_meeting_list_url : site_url('api/batch/recorded-meeting-list'))); ?>;
 	var syncUrl = <?php echo json_encode((string) (isset($recorded_meeting_sync_url) ? $recorded_meeting_sync_url : site_url('api/batch/recorded-meeting-sync'))); ?>;
+	var streamBase = <?php echo json_encode(site_url('api/batch/recorded-meeting-stream')); ?>;
 	var canSync = <?php echo !empty($is_teacher_or_institute) ? 'true' : 'false'; ?>;
 	var currentPage = 1;
 	var pageLimit = 12;
@@ -201,22 +202,16 @@
 		return parts.join(' · ');
 	}
 	function card(row) {
-		var stream = row.streamUrl || '';
-		if (stream && token) {
-			stream += (stream.indexOf('?') >= 0 ? '&' : '?') + 'access_token=' + encodeURIComponent(token);
-		}
-		var play = stream || row.playUrl || row.downloadUrl || '';
+		var canPlay = !!(row.canPlay === 1 || row.canPlay === '1' || row.streamUrl);
+		var recId = parseInt(row.id || 0, 10) || 0;
 		var meta = formatWhen(row);
 		return '<article class="rm-card" role="listitem">' +
 			'<h4>' + esc(row.topic || 'Recorded class') + '</h4>' +
 			(meta ? '<p class="rm-meta">' + esc(meta) + '</p>' : '') +
 			'<div class="rm-actions">' +
-			(play
-				? '<button type="button" class="btn btn-primary btn-sm rm-play" data-play="' + esc(play) + '" data-stream="' + (stream ? '1' : '0') + '" data-title="' + esc(row.topic || 'Recording') + '"><i class="fas fa-play"></i> Watch</button>'
-				: '<span class="inst-muted small">No playback URL</span>') +
-			((stream || row.downloadUrl)
-				? ' <a class="btn btn-outline-secondary btn-sm" href="' + esc(stream || row.downloadUrl) + '" target="_blank" rel="noopener noreferrer"><i class="fas fa-download"></i> Download</a>'
-				: '') +
+			(canPlay && recId > 0
+				? '<button type="button" class="btn btn-primary btn-sm rm-play" data-id="' + esc(String(recId)) + '" data-title="' + esc(row.topic || 'Recording') + '"><i class="fas fa-play"></i> Watch</button>'
+				: '<span class="inst-muted small">Processing…</span>') +
 			'</div>' +
 		'</article>';
 	}
@@ -236,30 +231,34 @@
 		el.textContent = t || '';
 		el.className = 'text-center py-3 ' + (isError ? 'text-danger' : 'inst-muted');
 	}
-	function openPlayer(url, title, useStream) {
+	function openPlayer(recId, title) {
 		var modal = document.getElementById('rmPlayerModal');
 		var body = document.getElementById('rmPlayerBody');
 		document.getElementById('rmPlayerTitle').textContent = title || 'Recording';
 		body.innerHTML = '';
-		var asVideo = !!useStream || /\.(mp4|webm|ogg)(\?|$)/i.test(url) || /recorded-meeting-stream/i.test(url);
-		if (asVideo) {
-			var v = document.createElement('video');
-			v.controls = true;
-			v.playsInline = true;
-			v.autoplay = true;
-			v.preload = 'metadata';
-			v.src = url;
-			v.style.width = '100%';
-			v.style.minHeight = '360px';
-			v.style.background = '#000';
-			body.appendChild(v);
-		} else {
-			var iframe = document.createElement('iframe');
-			iframe.src = url;
-			iframe.allow = 'autoplay; fullscreen';
-			iframe.title = title || 'Recording';
-			body.appendChild(iframe);
+		recId = parseInt(recId, 10) || 0;
+		if (recId < 1 || !token) {
+			body.innerHTML = '<div style="padding:24px;text-align:center;"><p style="margin:0;">Recording is not available for in-app playback.</p></div>';
+			modal.classList.add('rm-open');
+			return;
 		}
+		var url = streamBase + (streamBase.indexOf('?') >= 0 ? '&' : '?') + 'id=' + encodeURIComponent(String(recId)) + '&access_token=' + encodeURIComponent(token);
+		var v = document.createElement('video');
+		v.controls = true;
+		v.setAttribute('controlsList', 'nodownload');
+		v.disablePictureInPicture = true;
+		v.playsInline = true;
+		v.autoplay = true;
+		v.preload = 'metadata';
+		v.src = url;
+		v.style.width = '100%';
+		v.style.minHeight = '360px';
+		v.style.background = '#000';
+		v.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+		v.addEventListener('error', function () {
+			body.innerHTML = '<div style="padding:24px;text-align:center;"><p style="margin:0;">Could not play this recording right now. Try again in a few minutes.</p></div>';
+		});
+		body.appendChild(v);
 		modal.classList.add('rm-open');
 	}
 	function closePlayer() {
@@ -310,9 +309,8 @@
 		var btn = ev.target.closest('.rm-play');
 		if (!btn) { return; }
 		openPlayer(
-			btn.getAttribute('data-play') || '',
-			btn.getAttribute('data-title') || 'Recording',
-			btn.getAttribute('data-stream') === '1'
+			btn.getAttribute('data-id') || '',
+			btn.getAttribute('data-title') || 'Recording'
 		);
 	});
 	document.getElementById('rmPlayerClose').addEventListener('click', closePlayer);

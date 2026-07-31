@@ -249,7 +249,7 @@ body.lr-zoom-in-meeting > div[id^="menu-"] {
 				<div class="lr-recordings-head">
 					<div>
 						<p style="margin:0;font-weight:700;font-size:1.05rem;color:#0f172a;">Recorded meetings</p>
-						<p class="inst-muted" style="margin:4px 0 0;">Watch or download cloud recordings for this batch from the same page.</p>
+						<p class="inst-muted" style="margin:4px 0 0;">Watch cloud recordings for this batch here (in-app only — links are not shared).</p>
 					</div>
 					<div class="lr-recordings-tools">
 						<input type="search" id="lrRecordingSearch" class="lr-recordings-search" placeholder="Search recordings">
@@ -297,6 +297,7 @@ body.lr-zoom-in-meeting > div[id^="menu-"] {
 	var recordingStopUrl = <?php echo json_encode((string) (isset($live_recording_stop_url) ? $live_recording_stop_url : site_url('api/batch/live-recording-stop'))); ?>;
 	var recordingsListUrl = <?php echo json_encode((string) (isset($recorded_meeting_list_url) ? $recorded_meeting_list_url : site_url('api/batch/recorded-meeting-list'))); ?>;
 	var recordingsSyncUrl = <?php echo json_encode((string) (isset($recorded_meeting_sync_url) ? $recorded_meeting_sync_url : site_url('api/batch/recorded-meeting-sync'))); ?>;
+	var recordingsStreamBase = <?php echo json_encode(site_url('api/batch/recorded-meeting-stream')); ?>;
 	var zoomDetailsUrl = <?php echo json_encode((string) site_url('api/batch/batch-zoom-details')); ?>;
 	var zoomCreateUrl = <?php echo json_encode((string) site_url('api/batch/batch-zoom-create')); ?>;
 	var batchDetailsUrl = <?php echo json_encode((string) (isset($batch_details_url) ? $batch_details_url : site_url('batch/details'))); ?>;
@@ -693,40 +694,17 @@ body.lr-zoom-in-meeting > div[id^="menu-"] {
 		return parts.join(' · ');
 	}
 	function recordingCard(row) {
-		// Prefer authenticated stream (our API + Zoom S2S token). Zoom /rec/share/ links often 3301.
-		var stream = row.streamUrl || '';
-		if (stream && token) {
-			stream += (stream.indexOf('?') >= 0 ? '&' : '?') + 'access_token=' + encodeURIComponent(token);
-		}
-		var play = stream || row.playUrl || row.downloadUrl || '';
+		// In-app stream only — never expose Zoom play/download URLs in the DOM.
+		var canPlay = !!(row.canPlay === 1 || row.canPlay === '1' || row.streamUrl);
+		var recId = parseInt(row.id || 0, 10) || 0;
 		var meta = recordingMeta(row);
-		var useStreamPlayer = !!stream;
-		var isZoomCloudPage = !useStreamPlayer && /zoom\.us\/rec\//i.test(play);
-		var watchBtn = '';
-		if (!play) {
-			watchBtn = '<span class="inst-muted small">No playback URL</span>';
-		} else if (useStreamPlayer) {
-			watchBtn = '<button type="button" class="btn btn-primary btn-sm lr-rec-play" data-play="' + esc(play) + '" data-stream="1" data-title="' + esc(row.topic || 'Recording') + '"><i class="fas fa-play"></i> Watch</button>';
-		} else if (isZoomCloudPage) {
-			watchBtn = '<a class="btn btn-primary btn-sm" href="' + esc(play) + '" target="_blank" rel="noopener noreferrer"><i class="fas fa-play"></i> Watch</a>';
-		} else {
-			watchBtn = '<button type="button" class="btn btn-primary btn-sm lr-rec-play" data-play="' + esc(play) + '" data-stream="0" data-title="' + esc(row.topic || 'Recording') + '"><i class="fas fa-play"></i> Watch</button>';
-		}
-		var downloadHref = '';
-		if (stream) {
-			downloadHref = stream;
-		} else if (row.downloadUrl) {
-			downloadHref = row.downloadUrl;
-		}
+		var watchBtn = canPlay && recId > 0
+			? '<button type="button" class="btn btn-primary btn-sm lr-rec-play" data-id="' + esc(String(recId)) + '" data-title="' + esc(row.topic || 'Recording') + '"><i class="fas fa-play"></i> Watch</button>'
+			: '<span class="inst-muted small">Processing…</span>';
 		return '<article class="lr-record-card" role="listitem">' +
 			'<h4>' + esc(row.topic || 'Recorded class') + '</h4>' +
 			(meta ? '<p class="lr-record-meta">' + esc(meta) + '</p>' : '') +
-			'<div class="lr-record-actions">' +
-			watchBtn +
-			(downloadHref
-				? ' <a class="btn btn-outline-secondary btn-sm" href="' + esc(downloadHref) + '" target="_blank" rel="noopener noreferrer"><i class="fas fa-download"></i> Download</a>'
-				: '') +
-			'</div>' +
+			'<div class="lr-record-actions">' + watchBtn + '</div>' +
 		'</article>';
 	}
 	function updateRecordingsPagination() {
@@ -740,60 +718,37 @@ body.lr-zoom-in-meeting > div[id^="menu-"] {
 		document.getElementById('lrRecordingPrev').disabled = recordingsPage <= 1;
 		document.getElementById('lrRecordingNext').disabled = recordingsPage >= recordingsTotalPages;
 	}
-	function openRecordingPlayer(url, title, useVideo) {
+	function openRecordingPlayer(recId, title) {
 		var modal = document.getElementById('lrPlayerModal');
 		var body = document.getElementById('lrPlayerBody');
 		document.getElementById('lrPlayerTitle').textContent = title || 'Recording';
 		body.innerHTML = '';
-		var asVideo = !!useVideo || (/\.(mp4|webm|ogg)(\?|$)/i.test(url) && url.indexOf('zoom.us') === -1);
-		// Our stream endpoint serves MP4 via Zoom S2S token.
-		if (!asVideo && /recorded-meeting-stream/i.test(url)) {
-			asVideo = true;
-		}
-
-		if (!asVideo && /zoom\.us\/rec\//i.test(url)) {
-			// Keep original Zoom play URL (never rewrite to /rec/share/ — causes 3301).
-			var opened = window.open(url, '_blank', 'noopener');
-			body.innerHTML =
-				'<div style="padding:28px 20px;text-align:center;color:#f8fafc;line-height:1.5;">' +
-				'<p style="margin:0 0 10px;font-size:1.05rem;font-weight:600;">Playing recording</p>' +
-				'<p style="margin:0 0 18px;color:#cbd5e1;">Opening Zoom recording in a new tab.</p>' +
-				'<a class="btn btn-primary" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">Open recording</a>' +
-				(opened ? '' : '<p style="margin:14px 0 0;color:#fca5a5;font-size:0.9rem;">Popup was blocked — use the button above.</p>') +
-				'</div>';
+		recId = parseInt(recId, 10) || 0;
+		if (recId < 1 || !token) {
+			body.innerHTML = '<div style="padding:24px;text-align:center;color:#f8fafc;"><p style="margin:0;">Recording is not available for in-app playback.</p></div>';
 			modal.classList.add('lr-open');
 			return;
 		}
-
-		if (asVideo) {
-			var v = document.createElement('video');
-			v.controls = true;
-			v.playsInline = true;
-			v.autoplay = true;
-			v.preload = 'metadata';
-			v.src = url;
-			v.style.width = '100%';
-			v.style.minHeight = '360px';
-			v.style.background = '#000';
-			v.addEventListener('error', function () {
-				body.innerHTML =
-					'<div style="padding:24px;text-align:center;color:#f8fafc;">' +
-					'<p style="margin:0 0 12px;">Could not play this recording in-page.</p>' +
-					'<a class="btn btn-primary" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">Open / download recording</a>' +
-					'</div>';
-			});
-			body.appendChild(v);
-		} else {
-			var iframe = document.createElement('iframe');
-			iframe.src = url;
-			iframe.allow = 'autoplay; fullscreen; encrypted-media';
-			iframe.setAttribute('allowfullscreen', 'true');
-			iframe.title = title || 'Recording';
-			iframe.style.width = '100%';
-			iframe.style.minHeight = '480px';
-			iframe.style.border = '0';
-			body.appendChild(iframe);
-		}
+		var url = recordingsStreamBase + (recordingsStreamBase.indexOf('?') >= 0 ? '&' : '?') + 'id=' + encodeURIComponent(String(recId)) + '&access_token=' + encodeURIComponent(token);
+		var v = document.createElement('video');
+		v.controls = true;
+		v.setAttribute('controlsList', 'nodownload');
+		v.disablePictureInPicture = true;
+		v.playsInline = true;
+		v.autoplay = true;
+		v.preload = 'metadata';
+		v.src = url;
+		v.style.width = '100%';
+		v.style.minHeight = '360px';
+		v.style.background = '#000';
+		v.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+		v.addEventListener('error', function () {
+			body.innerHTML =
+				'<div style="padding:24px;text-align:center;color:#f8fafc;">' +
+				'<p style="margin:0;">Could not play this recording right now. Try again in a few minutes.</p>' +
+				'</div>';
+		});
+		body.appendChild(v);
 		modal.classList.add('lr-open');
 	}
 	function closeRecordingPlayer() {
@@ -1033,9 +988,8 @@ body.lr-zoom-in-meeting > div[id^="menu-"] {
 		var btn = ev.target.closest('.lr-rec-play');
 		if (!btn) { return; }
 		openRecordingPlayer(
-			btn.getAttribute('data-play') || '',
-			btn.getAttribute('data-title') || 'Recording',
-			btn.getAttribute('data-stream') === '1'
+			btn.getAttribute('data-id') || '',
+			btn.getAttribute('data-title') || 'Recording'
 		);
 	});
 	document.getElementById('lrPlayerClose').addEventListener('click', closeRecordingPlayer);

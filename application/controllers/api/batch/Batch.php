@@ -7488,17 +7488,12 @@ class Batch extends MY_Controller
 			}
 		}
 		$file_size = isset($row['file_size']) ? (int) $row['file_size'] : 0;
-		$play_url = isset($row['play_url']) ? (string) $row['play_url'] : '';
-		$download_url = isset($row['download_url']) ? (string) $row['download_url'] : '';
-		$passcode = '';
-		if ($this->db->field_exists('recording_passcode', 'batch_zoom_recordings') && !empty($row['recording_passcode'])) {
-			$passcode = trim((string) $row['recording_passcode']);
-		}
-		// Keep Zoom's original /rec/play/ URL — rewriting to /rec/share/ breaks links (Zoom 3301).
-		$play_url = $this->zoom_recording_url_with_passcode($play_url, $passcode);
+		$play_url = isset($row['play_url']) ? trim((string) $row['play_url']) : '';
+		$download_url = isset($row['download_url']) ? trim((string) $row['download_url']) : '';
 		$rec_id = isset($row['id']) ? (int) $row['id'] : 0;
-		// Authenticated stream/download via our API (S2S token) — preferred for Watch.
-		$stream_url = ($rec_id > 0 && ($download_url !== '' || $play_url !== ''))
+		$can_play = ($rec_id > 0 && ($download_url !== '' || $play_url !== ''));
+		// In-app stream only — never expose Zoom play/download URLs (or passcodes) to clients.
+		$stream_url = $can_play
 			? site_url('api/batch/recorded-meeting-stream') . '?id=' . $rec_id
 			: '';
 		return array(
@@ -7513,10 +7508,8 @@ class Batch extends MY_Controller
 			'fileType' => isset($row['file_type']) ? (string) $row['file_type'] : '',
 			'fileSize' => $file_size,
 			'fileSizeLabel' => $this->format_file_size_label($file_size),
-			'playUrl' => $play_url,
-			'downloadUrl' => $download_url,
+			'canPlay' => $can_play ? 1 : 0,
 			'streamUrl' => $stream_url,
-			'hasPasscode' => $passcode !== '' ? 1 : 0,
 			'recordingType' => isset($row['recording_type']) ? (string) $row['recording_type'] : '',
 			'status' => isset($row['status']) ? (string) $row['status'] : '',
 			'syncedAt' => isset($row['synced_at']) ? (string) $row['synced_at'] : '',
