@@ -626,8 +626,21 @@
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
 			body: JSON.stringify({ access_token: token, batch_id: batchId, page: 1, limit: 200 })
-		}).then(function (r) { return r.json(); }).then(function (j) {
-			if (j.data && typeof j.data.quotaLimitSeconds !== 'undefined') {
+		}).then(function (r) {
+			return r.text().then(function (text) {
+				var j = null;
+				try {
+					j = text ? JSON.parse(text) : null;
+				} catch (e) {
+					throw new Error('Server returned an invalid response while loading videos.');
+				}
+				if (!r.ok && (!j || (j.status !== true && j.status !== 'true'))) {
+					throw new Error((j && (j.msg || j.message)) || ('Request failed (' + r.status + ')'));
+				}
+				return j;
+			});
+		}).then(function (j) {
+			if (j && j.data && typeof j.data.quotaLimitSeconds !== 'undefined') {
 				quotaLimitSeconds = parseInt(j.data.quotaLimitSeconds, 10) || quotaLimitSeconds;
 				quotaUsedSeconds = parseInt(j.data.quotaUsedSeconds, 10) || 0;
 				quotaVideoUsedSeconds = parseInt(j.data.quotaVideoUsedSeconds, 10) || 0;
@@ -635,7 +648,10 @@
 				quotaMeetingReserveSeconds = parseInt(j.data.quotaMeetingReserveSeconds, 10) || 0;
 				renderQuota();
 			}
-			var rows = j.data && j.data.videoLectures ? j.data.videoLectures : [];
+			if (j && j.status !== true && j.status !== 'true') {
+				throw new Error((j && (j.msg || j.message)) || 'Could not load videos.');
+			}
+			var rows = j && j.data && j.data.videoLectures ? j.data.videoLectures : [];
 			if (!rows.length) {
 				listEl.innerHTML = '<p class="text-muted small px-1 py-3">No videos yet. Add a YouTube URL or upload a file above.</p>';
 				return;
@@ -643,8 +659,8 @@
 			for (var i = 0; i < rows.length; i++) {
 				listEl.appendChild(buildCard(rows[i]));
 			}
-		}).catch(function () {
-			listEl.innerHTML = '<p class="text-danger small px-1">Could not load videos.</p>';
+		}).catch(function (err) {
+			listEl.innerHTML = '<p class="text-danger small px-1">' + esc((err && err.message) || 'Could not load videos.') + '</p>';
 		});
 	}
 

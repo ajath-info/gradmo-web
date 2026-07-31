@@ -2460,6 +2460,10 @@ class Batch extends MY_Controller
 			'cycle_end' => date('Y-m-d H:i:s', strtotime('+1 year')),
 		);
 
+		// CI db_debug=TRUE prints an HTML error page and exits — never throw — so API clients see "<!DOCTYPE".
+		$prev_db_debug = isset($this->db->db_debug) ? $this->db->db_debug : FALSE;
+		$this->db->db_debug = FALSE;
+
 		try {
 			$batch = $this->db_model->select_data('start_date', 'batches', array('id' => (int) $batch_id), 1);
 			$start_date = !empty($batch[0]['start_date']) ? (string) $batch[0]['start_date'] : '';
@@ -2489,7 +2493,7 @@ class Batch extends MY_Controller
 			$bid = (int) $batch_id;
 
 			$video_used = 0;
-			if ($this->db->field_exists('duration_seconds', 'video_lectures')) {
+			if ($this->db->table_exists('video_lectures') && $this->db->field_exists('duration_seconds', 'video_lectures')) {
 				$this->db->select_sum('duration_seconds', 'total');
 				$this->db->from('video_lectures');
 				$this->db->where('status', 1);
@@ -2499,38 +2503,63 @@ class Batch extends MY_Controller
 					$this->db->where('id !=', (int) $exclude_video_id);
 				}
 				$this->apply_text_batch_filter('batch', $batch_id);
-				$row = $this->db->get()->row_array();
-				$video_used = isset($row['total']) ? (int) $row['total'] : 0;
+				$q = $this->db->get();
+				if ($q !== FALSE) {
+					$row = $q->row_array();
+					$video_used = isset($row['total']) ? (int) $row['total'] : 0;
+				} else {
+					log_message('error', 'batch_video_quota video sum: ' . json_encode($this->db->error()));
+				}
 			}
 
 			$recording_used = 0;
 			$recorded_meeting_ids = array();
 			if ($this->db->table_exists('batch_zoom_recordings')) {
+				$has_start = $this->db->field_exists('recording_start', 'batch_zoom_recordings');
+				$has_end = $this->db->field_exists('recording_end', 'batch_zoom_recordings');
 				$has_dur_col = $this->db->field_exists('duration_seconds', 'batch_zoom_recordings');
 				$has_created = $this->db->field_exists('created_at', 'batch_zoom_recordings');
-				$select = $has_dur_col
-					? 'zoom_meeting_id, recording_start, recording_end, duration_seconds'
-					: 'zoom_meeting_id, recording_start, recording_end';
-				$fallback_col = $has_created ? 'created_at' : 'synced_at';
-				$cs_esc = $this->db->escape($cs);
-				$ce_esc = $this->db->escape($ce);
-				$this->db->select($select);
+				$has_synced = $this->db->field_exists('synced_at', 'batch_zoom_recordings');
+				$fallback_col = $has_created ? 'created_at' : ($has_synced ? 'synced_at' : '');
+
+				$cols = array('zoom_meeting_id');
+				if ($has_start) {
+					$cols[] = 'recording_start';
+				}
+				if ($has_end) {
+					$cols[] = 'recording_end';
+				}
+				if ($has_dur_col) {
+					$cols[] = 'duration_seconds';
+				}
+
+				$this->db->select(implode(', ', $cols));
 				$this->db->from('batch_zoom_recordings');
 				$this->db->where('batch_id', $bid);
-				// Simple raw filter — avoids nested group_start SQL issues on some hosts.
-				$this->db->where(
-					'(
-						(recording_start IS NOT NULL AND recording_start != \'0000-00-00 00:00:00\' AND recording_start >= ' . $cs_esc . ' AND recording_start < ' . $ce_esc . ')
-						OR (
-							(recording_start IS NULL OR recording_start = \'0000-00-00 00:00:00\')
-							AND `' . $fallback_col . '` >= ' . $cs_esc . '
-							AND `' . $fallback_col . '` < ' . $ce_esc . '
-						)
-					)',
-					null,
-					false
-				);
-				$rec_rows = $this->db->get()->result_array();
+				if ($has_start && $fallback_col !== '') {
+					$cs_esc = $this->db->escape($cs);
+					$ce_esc = $this->db->escape($ce);
+					$this->db->where(
+						'(
+							(recording_start IS NOT NULL AND recording_start != \'0000-00-00 00:00:00\' AND recording_start >= ' . $cs_esc . ' AND recording_start < ' . $ce_esc . ')
+							OR (
+								(recording_start IS NULL OR recording_start = \'0000-00-00 00:00:00\')
+								AND `' . $fallback_col . '` >= ' . $cs_esc . '
+								AND `' . $fallback_col . '` < ' . $ce_esc . '
+							)
+						)',
+						null,
+						false
+					);
+				} elseif ($fallback_col !== '') {
+					$this->db->where('`' . $fallback_col . '` >=', $cs);
+					$this->db->where('`' . $fallback_col . '` <', $ce);
+				}
+				$q = $this->db->get();
+				$rec_rows = ($q !== FALSE) ? $q->result_array() : array();
+				if ($q === FALSE) {
+					log_message('error', 'batch_video_quota recordings: ' . json_encode($this->db->error()));
+				}
 				if (!empty($rec_rows)) {
 					foreach ($rec_rows as $rr) {
 						$sec = $this->zoom_recording_row_duration_seconds($rr);
@@ -2557,7 +2586,11 @@ class Batch extends MY_Controller
 				if ((int) $exclude_zoom_meeting_row_id > 0) {
 					$this->db->where('id !=', (int) $exclude_zoom_meeting_row_id);
 				}
-				$meetings = $this->db->get()->result_array();
+				$q = $this->db->get();
+				$meetings = ($q !== FALSE) ? $q->result_array() : array();
+				if ($q === FALSE) {
+					log_message('error', 'batch_video_quota meetings: ' . json_encode($this->db->error()));
+				}
 				if (!empty($meetings)) {
 					foreach ($meetings as $m) {
 						$mid = isset($m['zoom_meeting_id']) ? preg_replace('/\D+/', '', (string) $m['zoom_meeting_id']) : '';
@@ -2570,6 +2603,7 @@ class Batch extends MY_Controller
 			}
 
 			$used = $video_used + $recording_used + $meeting_reserve;
+			$this->db->db_debug = $prev_db_debug;
 			return array(
 				'used' => $used,
 				'limit' => $limit,
@@ -2580,6 +2614,11 @@ class Batch extends MY_Controller
 				'cycle_end' => $ce,
 			);
 		} catch (Exception $e) {
+			$this->db->db_debug = $prev_db_debug;
+			log_message('error', 'batch_video_quota failed: ' . $e->getMessage());
+			return $empty;
+		} catch (Error $e) {
+			$this->db->db_debug = $prev_db_debug;
 			log_message('error', 'batch_video_quota failed: ' . $e->getMessage());
 			return $empty;
 		}
@@ -4154,142 +4193,190 @@ class Batch extends MY_Controller
 	 */
 	public function video_lecture_list()
 	{
-		$data = $this->read_request_data();
-		$payload = $this->require_auth_payload(array(), $data);
-		if ($payload === false) {
-			return;
-		}
+		// Never let CI print HTML DB/error pages for this JSON endpoint.
+		$prev_db_debug = isset($this->db->db_debug) ? $this->db->db_debug : FALSE;
+		$this->db->db_debug = FALSE;
 
-		$accessible_batch_ids = $this->video_lecture_accessible_batch_ids($payload, $data);
-		if ($accessible_batch_ids === false) {
-			return;
-		}
-		$batch_id = !empty($data['batch_id']) ? (int) $data['batch_id'] : 0;
-		if ($batch_id > 0 && !in_array($batch_id, $accessible_batch_ids, true)) {
-			echo json_encode(array('status' => 'false', 'msg' => 'You are not allowed to access this batch'));
-			return;
-		}
-		if ($batch_id < 1 && empty($accessible_batch_ids)) {
+		try {
+			$data = $this->read_request_data();
+			$payload = $this->require_auth_payload(array(), $data);
+			if ($payload === false) {
+				$this->db->db_debug = $prev_db_debug;
+				return;
+			}
+
+			$accessible_batch_ids = $this->video_lecture_accessible_batch_ids($payload, $data);
+			if ($accessible_batch_ids === false) {
+				$this->db->db_debug = $prev_db_debug;
+				return;
+			}
+			$batch_id = !empty($data['batch_id']) ? (int) $data['batch_id'] : 0;
+			if ($batch_id > 0 && !in_array($batch_id, $accessible_batch_ids, true)) {
+				$this->db->db_debug = $prev_db_debug;
+				$this->output->set_content_type('application/json');
+				echo json_encode(array('status' => 'false', 'msg' => 'You are not allowed to access this batch'));
+				return;
+			}
+			if ($batch_id < 1 && empty($accessible_batch_ids)) {
+				$this->db->db_debug = $prev_db_debug;
+				$this->output->set_content_type('application/json');
+				echo json_encode(array(
+					'status' => 'true',
+					'message' => 'Success',
+					'data' => array(
+						'batch_id' => 0,
+						'accessibleBatchIds' => array(),
+						'videoLectures' => array(),
+						'pagination' => $this->build_api_list_pagination_meta(1, 100, 0),
+					)
+				), JSON_UNESCAPED_SLASHES);
+				die;
+			}
+
+			$search = isset($data['search']) ? trim($data['search']) : '';
+			$sort_by = isset($data['sort_by']) ? strtolower(trim($data['sort_by'])) : 'added_at';
+			$sort_dir = isset($data['sort_dir']) ? strtolower(trim($data['sort_dir'])) : 'desc';
+			if ($sort_dir !== 'asc' && $sort_dir !== 'desc') {
+				$sort_dir = 'desc';
+			}
+			$order_map = array(
+				'added_at' => 'added_at',
+				'date_added' => 'added_at',
+				'title' => 'title',
+				'topic' => 'topic',
+				'subject' => 'subject'
+			);
+			if (!isset($order_map[$sort_by])) {
+				$sort_by = 'added_at';
+			}
+
+			$pg = $this->parse_api_list_pagination($data);
+			$page = $pg['page'];
+			$limit = $pg['limit'];
+			$offset = $pg['offset'];
+
+			$this->db->from('video_lectures');
+			$this->db->where('status', 1);
+			if ($batch_id > 0) {
+				$this->apply_text_batch_filter('batch', $batch_id);
+			} else {
+				$this->apply_text_batch_ids_filter('batch', $accessible_batch_ids);
+			}
+			if ($search !== '') {
+				$this->db->group_start();
+				$this->db->like('title', $search);
+				$this->db->or_like('topic', $search);
+				$this->db->or_like('subject', $search);
+				$this->db->or_like('description', $search);
+				$this->db->group_end();
+			}
+			$total = (int) $this->db->count_all_results();
+
+			// Only select duration_seconds when the column exists (missing on some prod DBs).
+			$select_cols = 'id,admin_id as adminId,title,batch,topic,subject,description,url,video_type as videoType,preview_type as previewType,added_by as addedBy,added_at as addedAt';
+			if ($this->db->field_exists('duration_seconds', 'video_lectures')) {
+				$select_cols = 'id,admin_id as adminId,title,batch,topic,subject,description,url,duration_seconds as durationSeconds,video_type as videoType,preview_type as previewType,added_by as addedBy,added_at as addedAt';
+			}
+			$this->db->select($select_cols);
+			$this->db->from('video_lectures');
+			$this->db->where('status', 1);
+			if ($batch_id > 0) {
+				$this->apply_text_batch_filter('batch', $batch_id);
+			} else {
+				$this->apply_text_batch_ids_filter('batch', $accessible_batch_ids);
+			}
+			if ($search !== '') {
+				$this->db->group_start();
+				$this->db->like('title', $search);
+				$this->db->or_like('topic', $search);
+				$this->db->or_like('subject', $search);
+				$this->db->or_like('description', $search);
+				$this->db->group_end();
+			}
+			$this->db->order_by($order_map[$sort_by], $sort_dir);
+			$this->db->limit($limit, $offset);
+			$q = $this->db->get();
+			if ($q === FALSE) {
+				log_message('error', 'video_lecture_list query: ' . json_encode($this->db->error()));
+				$this->db->db_debug = $prev_db_debug;
+				$this->output->set_content_type('application/json');
+				echo json_encode(array(
+					'status' => 'false',
+					'msg' => 'Could not load video lectures. Please try again.',
+					'data' => array('videoLectures' => array()),
+				), JSON_UNESCAPED_SLASHES);
+				die;
+			}
+			$list = $q->result_array();
+			if (!is_array($list)) {
+				$list = array();
+			}
+			foreach ($list as &$vl_row) {
+				if (!isset($vl_row['durationSeconds'])) {
+					$vl_row['durationSeconds'] = 0;
+				}
+			}
+			unset($vl_row);
+
+			$quota_used = 0;
+			$quota_limit = 330 * 3600;
+			$quota_video = 0;
+			$quota_recording = 0;
+			$quota_meeting_reserve = 0;
+			if ($batch_id > 0) {
+				try {
+					$quota = $this->batch_video_quota($batch_id);
+					$quota_used = isset($quota['used']) ? (int) $quota['used'] : 0;
+					$quota_limit = isset($quota['limit']) ? (int) $quota['limit'] : $quota_limit;
+					$quota_video = isset($quota['videoUsedSeconds']) ? (int) $quota['videoUsedSeconds'] : 0;
+					$quota_recording = isset($quota['recordingUsedSeconds']) ? (int) $quota['recordingUsedSeconds'] : 0;
+					$quota_meeting_reserve = isset($quota['meetingReserveSeconds']) ? (int) $quota['meetingReserveSeconds'] : 0;
+				} catch (Exception $e) {
+					log_message('error', 'video_lecture_list quota: ' . $e->getMessage());
+				} catch (Error $e) {
+					log_message('error', 'video_lecture_list quota: ' . $e->getMessage());
+				}
+			}
+
+			$this->db->db_debug = $prev_db_debug;
+			$this->output->set_content_type('application/json');
 			echo json_encode(array(
 				'status' => 'true',
 				'message' => 'Success',
 				'data' => array(
-					'batch_id' => 0,
-					'accessibleBatchIds' => array(),
-					'videoLectures' => array(),
-					'pagination' => $this->build_api_list_pagination_meta(1, 100, 0),
+					'batch_id' => $batch_id,
+					'accessibleBatchIds' => $batch_id > 0 ? array($batch_id) : array_values($accessible_batch_ids),
+					'videoLectures' => !empty($list) ? $list : array(),
+					'quotaUsedSeconds' => $quota_used,
+					'quotaLimitSeconds' => $quota_limit,
+					'quotaVideoUsedSeconds' => $quota_video,
+					'quotaRecordingUsedSeconds' => $quota_recording,
+					'quotaMeetingReserveSeconds' => $quota_meeting_reserve,
+					'pagination' => $this->build_api_list_pagination_meta($page, $limit, $total),
 				)
 			), JSON_UNESCAPED_SLASHES);
 			die;
+		} catch (Exception $e) {
+			$this->db->db_debug = $prev_db_debug;
+			log_message('error', 'video_lecture_list: ' . $e->getMessage());
+			$this->output->set_content_type('application/json');
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'Could not load video lectures. Please try again.',
+				'data' => array('videoLectures' => array()),
+			), JSON_UNESCAPED_SLASHES);
+			die;
+		} catch (Error $e) {
+			$this->db->db_debug = $prev_db_debug;
+			log_message('error', 'video_lecture_list: ' . $e->getMessage());
+			$this->output->set_content_type('application/json');
+			echo json_encode(array(
+				'status' => 'false',
+				'msg' => 'Could not load video lectures. Please try again.',
+				'data' => array('videoLectures' => array()),
+			), JSON_UNESCAPED_SLASHES);
+			die;
 		}
-
-		$search = isset($data['search']) ? trim($data['search']) : '';
-		$sort_by = isset($data['sort_by']) ? strtolower(trim($data['sort_by'])) : 'added_at';
-		$sort_dir = isset($data['sort_dir']) ? strtolower(trim($data['sort_dir'])) : 'desc';
-		if ($sort_dir !== 'asc' && $sort_dir !== 'desc') {
-			$sort_dir = 'desc';
-		}
-		$order_map = array(
-			'added_at' => 'added_at',
-			'date_added' => 'added_at',
-			'title' => 'title',
-			'topic' => 'topic',
-			'subject' => 'subject'
-		);
-		if (!isset($order_map[$sort_by])) {
-			$sort_by = 'added_at';
-		}
-
-		$pg = $this->parse_api_list_pagination($data);
-		$page = $pg['page'];
-		$limit = $pg['limit'];
-		$offset = $pg['offset'];
-
-		$this->db->from('video_lectures');
-		$this->db->where('status', 1);
-		if ($batch_id > 0) {
-			$this->apply_text_batch_filter('batch', $batch_id);
-		} else {
-			$this->apply_text_batch_ids_filter('batch', $accessible_batch_ids);
-		}
-		if ($search !== '') {
-			$this->db->group_start();
-			$this->db->like('title', $search);
-			$this->db->or_like('topic', $search);
-			$this->db->or_like('subject', $search);
-			$this->db->or_like('description', $search);
-			$this->db->group_end();
-		}
-		$total = (int) $this->db->count_all_results();
-
-		$select_cols = 'id,admin_id as adminId,title,batch,topic,subject,description,url,video_type as videoType,preview_type as previewType,added_by as addedBy,added_at as addedAt';
-		if ($this->db->field_exists('duration_seconds', 'video_lectures')) {
-			$select_cols = 'id,admin_id as adminId,title,batch,topic,subject,description,url,duration_seconds as durationSeconds,video_type as videoType,preview_type as previewType,added_by as addedBy,added_at as addedAt';
-		}
-		$this->db->select($select_cols);
-		$this->db->from('video_lectures');
-		$this->db->where('status', 1);
-		if ($batch_id > 0) {
-			$this->apply_text_batch_filter('batch', $batch_id);
-		} else {
-			$this->apply_text_batch_ids_filter('batch', $accessible_batch_ids);
-		}
-		if ($search !== '') {
-			$this->db->group_start();
-			$this->db->like('title', $search);
-			$this->db->or_like('topic', $search);
-			$this->db->or_like('subject', $search);
-			$this->db->or_like('description', $search);
-			$this->db->group_end();
-		}
-		$this->db->order_by($order_map[$sort_by], $sort_dir);
-		$this->db->limit($limit, $offset);
-		$list = $this->db->get()->result_array();
-		if (!is_array($list)) {
-			$list = array();
-		}
-		foreach ($list as &$vl_row) {
-			if (!isset($vl_row['durationSeconds'])) {
-				$vl_row['durationSeconds'] = 0;
-			}
-		}
-		unset($vl_row);
-
-		$quota_used = 0;
-		$quota_limit = 330 * 3600;
-		$quota_video = 0;
-		$quota_recording = 0;
-		$quota_meeting_reserve = 0;
-		if ($batch_id > 0) {
-			try {
-				$quota = $this->batch_video_quota($batch_id);
-				$quota_used = isset($quota['used']) ? (int) $quota['used'] : 0;
-				$quota_limit = isset($quota['limit']) ? (int) $quota['limit'] : $quota_limit;
-				$quota_video = isset($quota['videoUsedSeconds']) ? (int) $quota['videoUsedSeconds'] : 0;
-				$quota_recording = isset($quota['recordingUsedSeconds']) ? (int) $quota['recordingUsedSeconds'] : 0;
-				$quota_meeting_reserve = isset($quota['meetingReserveSeconds']) ? (int) $quota['meetingReserveSeconds'] : 0;
-			} catch (Exception $e) {
-				log_message('error', 'video_lecture_list quota: ' . $e->getMessage());
-			}
-		}
-
-		$this->output->set_content_type('application/json');
-		echo json_encode(array(
-			'status' => 'true',
-			'message' => 'Success',
-			'data' => array(
-				'batch_id' => $batch_id,
-				'accessibleBatchIds' => $batch_id > 0 ? array($batch_id) : array_values($accessible_batch_ids),
-				'videoLectures' => !empty($list) ? $list : array(),
-				'quotaUsedSeconds' => $quota_used,
-				'quotaLimitSeconds' => $quota_limit,
-				'quotaVideoUsedSeconds' => $quota_video,
-				'quotaRecordingUsedSeconds' => $quota_recording,
-				'quotaMeetingReserveSeconds' => $quota_meeting_reserve,
-				'pagination' => $this->build_api_list_pagination_meta($page, $limit, $total),
-			)
-		), JSON_UNESCAPED_SLASHES);
-		die;
 	}
 
 	/**

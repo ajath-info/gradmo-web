@@ -409,7 +409,18 @@
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
 			body: JSON.stringify(payload)
-		}).then(function (r) { return r.json(); }).then(function (res) {
+		}).then(function (r) {
+			return r.text().then(function (text) {
+				var res = null;
+				try {
+					res = text ? JSON.parse(text) : null;
+				} catch (e) {
+					throw new Error('Server returned an invalid response while loading videos.');
+				}
+				return { okHttp: r.ok, res: res };
+			});
+		}).then(function (pack) {
+			var res = pack.res;
 			var ok = res && (res.status === true || res.status === 'true');
 			var rows = ok && res.data && Array.isArray(res.data.videoLectures) ? res.data.videoLectures : [];
 			var pagination = ok && res.data && res.data.pagination ? res.data.pagination : {};
