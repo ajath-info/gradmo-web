@@ -258,6 +258,9 @@
 
 	var quotaLimitSeconds = 330 * 3600;
 	var quotaUsedSeconds = 0;
+	var quotaVideoUsedSeconds = 0;
+	var quotaRecordingUsedSeconds = 0;
+	var quotaMeetingReserveSeconds = 0;
 
 	var modalEl = document.getElementById('tvPlayerModal');
 	var playerBodyEl = document.getElementById('tvPlayerBody');
@@ -273,8 +276,12 @@
 		var el = document.getElementById('tv_quota');
 		if (!el) return;
 		var remaining = Math.max(0, quotaLimitSeconds - quotaUsedSeconds);
-		el.textContent = 'Yearly usage: ' + fmtHM(quotaUsedSeconds) + ' / ' + fmtHM(quotaLimitSeconds)
-			+ ' (' + fmtHM(remaining) + ' remaining)';
+		el.innerHTML = 'Yearly usage: ' + fmtHM(quotaUsedSeconds) + ' / ' + fmtHM(quotaLimitSeconds)
+			+ ' (' + fmtHM(remaining) + ' remaining)'
+			+ '<br><span style="font-weight:500;color:#64748b;">Uploads: ' + fmtHM(quotaVideoUsedSeconds)
+			+ ' · Zoom recordings: ' + fmtHM(quotaRecordingUsedSeconds)
+			+ (quotaMeetingReserveSeconds > 0 ? (' · Active Zoom reserve: ' + fmtHM(quotaMeetingReserveSeconds)) : '')
+			+ '</span>';
 		el.style.color = remaining <= 0 ? '#dc2626' : '#475569';
 	}
 	var MAX_VIDEO_SECONDS = 86400; // 24h sanity ceiling for a single lecture
@@ -623,6 +630,9 @@
 			if (j.data && typeof j.data.quotaLimitSeconds !== 'undefined') {
 				quotaLimitSeconds = parseInt(j.data.quotaLimitSeconds, 10) || quotaLimitSeconds;
 				quotaUsedSeconds = parseInt(j.data.quotaUsedSeconds, 10) || 0;
+				quotaVideoUsedSeconds = parseInt(j.data.quotaVideoUsedSeconds, 10) || 0;
+				quotaRecordingUsedSeconds = parseInt(j.data.quotaRecordingUsedSeconds, 10) || 0;
+				quotaMeetingReserveSeconds = parseInt(j.data.quotaMeetingReserveSeconds, 10) || 0;
 				renderQuota();
 			}
 			var rows = j.data && j.data.videoLectures ? j.data.videoLectures : [];

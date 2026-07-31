@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS `batch_zoom_recordings` (
   `topic` varchar(500) NOT NULL DEFAULT '',
   `recording_start` datetime DEFAULT NULL,
   `recording_end` datetime DEFAULT NULL,
+  `duration_seconds` int(11) NOT NULL DEFAULT 0,
   `file_type` varchar(32) NOT NULL DEFAULT '',
   `file_size` bigint(20) NOT NULL DEFAULT 0,
   `play_url` varchar(2048) NOT NULL DEFAULT '',

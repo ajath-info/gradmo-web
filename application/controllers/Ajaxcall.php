@@ -5689,18 +5689,77 @@ function subcategory_table(){
         $row = $this->db->get()->row_array();
         $used = isset($row['total']) ? (int) $row['total'] : 0;
 
-        // Live classes (Zoom meetings) count toward the same 330-hour cap.
-        // batch_zoom_meetings.duration is in MINUTES, so convert to seconds.
+        $cs = $cycle_start->format('Y-m-d H:i:s');
+        $ce = $cycle_end->format('Y-m-d H:i:s');
+        $recorded_meeting_ids = array();
+
+        // Zoom cloud recording actual duration counts toward the same 330-hour cap.
+        if ($this->db->table_exists('batch_zoom_recordings')) {
+            $has_dur_col = $this->db->field_exists('duration_seconds', 'batch_zoom_recordings');
+            $this->db->select($has_dur_col
+                ? 'zoom_meeting_id, recording_start, recording_end, duration_seconds'
+                : 'zoom_meeting_id, recording_start, recording_end');
+            $this->db->from('batch_zoom_recordings');
+            $this->db->where('batch_id', $bid);
+            $this->db->group_start();
+            $this->db->group_start();
+            $this->db->where('recording_start >=', $cs);
+            $this->db->where('recording_start <', $ce);
+            $this->db->group_end();
+            $this->db->or_group_start();
+            $this->db->where('(recording_start IS NULL OR recording_start = \'0000-00-00 00:00:00\')', null, false);
+            if ($this->db->field_exists('created_at', 'batch_zoom_recordings')) {
+                $this->db->where('created_at >=', $cs);
+                $this->db->where('created_at <', $ce);
+            } else {
+                $this->db->where('synced_at >=', $cs);
+                $this->db->where('synced_at <', $ce);
+            }
+            $this->db->group_end();
+            $this->db->group_end();
+            $rec_rows = $this->db->get()->result_array();
+            if (!empty($rec_rows)) {
+                foreach ($rec_rows as $rr) {
+                    $sec = 0;
+                    if ($has_dur_col && !empty($rr['duration_seconds'])) {
+                        $sec = (int) $rr['duration_seconds'];
+                    } else {
+                        $ts0 = !empty($rr['recording_start']) ? strtotime((string) $rr['recording_start']) : 0;
+                        $ts1 = !empty($rr['recording_end']) ? strtotime((string) $rr['recording_end']) : 0;
+                        if ($ts0 && $ts1 && $ts1 > $ts0) {
+                            $sec = (int) ($ts1 - $ts0);
+                        }
+                    }
+                    if ($sec < 1) {
+                        continue;
+                    }
+                    $used += $sec;
+                    $mid = isset($rr['zoom_meeting_id']) ? preg_replace('/\D+/', '', (string) $rr['zoom_meeting_id']) : '';
+                    if ($mid !== '') {
+                        $recorded_meeting_ids[$mid] = true;
+                    }
+                }
+            }
+        }
+
+        // Active Zoom meetings without a synced recording reserve scheduled minutes.
         if ($this->db->table_exists('batch_zoom_meetings')) {
-            $this->db->select_sum('duration', 'total');
+            $this->db->select('zoom_meeting_id, duration');
             $this->db->from('batch_zoom_meetings');
             $this->db->where('batch_id', $bid);
             $this->db->where('status', 1);
-            $this->db->where('created_at >=', $cycle_start->format('Y-m-d H:i:s'));
-            $this->db->where('created_at <', $cycle_end->format('Y-m-d H:i:s'));
-            $mrow = $this->db->get()->row_array();
-            $meeting_minutes = isset($mrow['total']) ? (int) $mrow['total'] : 0;
-            $used += $meeting_minutes * 60;
+            $this->db->where('created_at >=', $cs);
+            $this->db->where('created_at <', $ce);
+            $meetings = $this->db->get()->result_array();
+            if (!empty($meetings)) {
+                foreach ($meetings as $m) {
+                    $mid = isset($m['zoom_meeting_id']) ? preg_replace('/\D+/', '', (string) $m['zoom_meeting_id']) : '';
+                    if ($mid !== '' && isset($recorded_meeting_ids[$mid])) {
+                        continue;
+                    }
+                    $used += max(0, (int) $m['duration']) * 60;
+                }
+            }
         }
 
         return $used;

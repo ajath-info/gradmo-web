@@ -2433,15 +2433,21 @@ class Batch extends MY_Controller
 	}
 
 	/**
-	 * Yearly video upload quota for a batch.
-	 * The "year" is a rolling 12-month cycle anchored on the batch start_date.
-	 * Only uploaded files carry duration_seconds (> 0); URL/YouTube lectures are 0 and uncounted.
+	 * Yearly content quota for a batch (manual video uploads + Zoom cloud recordings).
+	 * Limit: 330 hours per rolling 12-month cycle anchored on batches.start_date.
+	 *
+	 * used = uploaded video duration
+	 *      + Zoom cloud recording duration (actual recording_start → recording_end)
+	 *      + reserved scheduled minutes for active Zoom meetings that have no recording yet
+	 *
+	 * Remaining = max(0, 330h − used). When remaining is 0, uploads and new Zoom meetings are blocked.
 	 *
 	 * @param int $batch_id
-	 * @param int $exclude_video_id  Video lecture id to exclude from the used total (used on edit).
-	 * @return array{used:int,limit:int,cycle_start:string,cycle_end:string}
+	 * @param int $exclude_video_id  Video lecture id to exclude (edit upload).
+	 * @param int $exclude_zoom_meeting_row_id  batch_zoom_meetings.id to exclude from reserve (duration update).
+	 * @return array{used:int,limit:int,videoUsedSeconds:int,recordingUsedSeconds:int,meetingReserveSeconds:int,cycle_start:string,cycle_end:string}
 	 */
-	private function batch_video_quota($batch_id, $exclude_video_id = 0)
+	private function batch_video_quota($batch_id, $exclude_video_id = 0, $exclude_zoom_meeting_row_id = 0)
 	{
 		$limit = 330 * 3600; // 330 hours in seconds
 
@@ -2454,7 +2460,6 @@ class Batch extends MY_Controller
 		} catch (Exception $e) {
 			$anchor = clone $now;
 		}
-		// Walk the anchor forward in 12-month steps until it covers "now".
 		$cycle_start = clone $anchor;
 		if ($cycle_start <= $now) {
 			while (true) {
@@ -2471,6 +2476,7 @@ class Batch extends MY_Controller
 
 		$cs = $cycle_start->format('Y-m-d H:i:s');
 		$ce = $cycle_end->format('Y-m-d H:i:s');
+		$bid = (int) $batch_id;
 
 		$this->db->select_sum('duration_seconds', 'total');
 		$this->db->from('video_lectures');
@@ -2482,23 +2488,108 @@ class Batch extends MY_Controller
 		}
 		$this->apply_text_batch_filter('batch', $batch_id);
 		$row = $this->db->get()->row_array();
-		$used = isset($row['total']) ? (int) $row['total'] : 0;
+		$video_used = isset($row['total']) ? (int) $row['total'] : 0;
 
-		// Live classes (Zoom meetings) count toward the same 330-hour cap.
-		// batch_zoom_meetings.duration is in MINUTES, so convert to seconds.
+		$recording_used = 0;
+		$recorded_meeting_ids = array();
+		if ($this->db->table_exists('batch_zoom_recordings')) {
+			$has_dur_col = $this->db->field_exists('duration_seconds', 'batch_zoom_recordings');
+			$select = $has_dur_col
+				? 'zoom_meeting_id, recording_start, recording_end, duration_seconds'
+				: 'zoom_meeting_id, recording_start, recording_end';
+			$this->db->select($select);
+			$this->db->from('batch_zoom_recordings');
+			$this->db->where('batch_id', $bid);
+			// Prefer recording_start in cycle; fall back to created_at/synced_at when start is empty.
+			$this->db->group_start();
+			$this->db->group_start();
+			$this->db->where('recording_start >=', $cs);
+			$this->db->where('recording_start <', $ce);
+			$this->db->group_end();
+			$this->db->or_group_start();
+			$this->db->where('(recording_start IS NULL OR recording_start = \'0000-00-00 00:00:00\')', null, false);
+			if ($this->db->field_exists('created_at', 'batch_zoom_recordings')) {
+				$this->db->where('created_at >=', $cs);
+				$this->db->where('created_at <', $ce);
+			} else {
+				$this->db->where('synced_at >=', $cs);
+				$this->db->where('synced_at <', $ce);
+			}
+			$this->db->group_end();
+			$this->db->group_end();
+			$rec_rows = $this->db->get()->result_array();
+			if (!empty($rec_rows)) {
+				foreach ($rec_rows as $rr) {
+					$sec = $this->zoom_recording_row_duration_seconds($rr);
+					if ($sec < 1) {
+						continue;
+					}
+					$recording_used += $sec;
+					$mid = isset($rr['zoom_meeting_id']) ? preg_replace('/\D+/', '', (string) $rr['zoom_meeting_id']) : '';
+					if ($mid !== '') {
+						$recorded_meeting_ids[$mid] = true;
+					}
+				}
+			}
+		}
+
+		// Active Zoom meetings with no synced recording yet reserve their scheduled duration.
+		$meeting_reserve = 0;
 		if ($this->db->table_exists('batch_zoom_meetings')) {
-			$this->db->select_sum('duration', 'total');
+			$this->db->select('id, zoom_meeting_id, duration');
 			$this->db->from('batch_zoom_meetings');
-			$this->db->where('batch_id', (int) $batch_id);
+			$this->db->where('batch_id', $bid);
 			$this->db->where('status', 1);
 			$this->db->where('created_at >=', $cs);
 			$this->db->where('created_at <', $ce);
-			$mrow = $this->db->get()->row_array();
-			$meeting_minutes = isset($mrow['total']) ? (int) $mrow['total'] : 0;
-			$used += $meeting_minutes * 60;
+			if ((int) $exclude_zoom_meeting_row_id > 0) {
+				$this->db->where('id !=', (int) $exclude_zoom_meeting_row_id);
+			}
+			$meetings = $this->db->get()->result_array();
+			if (!empty($meetings)) {
+				foreach ($meetings as $m) {
+					$mid = isset($m['zoom_meeting_id']) ? preg_replace('/\D+/', '', (string) $m['zoom_meeting_id']) : '';
+					if ($mid !== '' && isset($recorded_meeting_ids[$mid])) {
+						continue; // already counted via cloud recording
+					}
+					$meeting_reserve += max(0, (int) $m['duration']) * 60;
+				}
+			}
 		}
 
-		return array('used' => $used, 'limit' => $limit, 'cycle_start' => $cs, 'cycle_end' => $ce);
+		$used = $video_used + $recording_used + $meeting_reserve;
+		return array(
+			'used' => $used,
+			'limit' => $limit,
+			'videoUsedSeconds' => $video_used,
+			'recordingUsedSeconds' => $recording_used,
+			'meetingReserveSeconds' => $meeting_reserve,
+			'cycle_start' => $cs,
+			'cycle_end' => $ce,
+		);
+	}
+
+	/**
+	 * Actual Zoom cloud recording length in seconds for a DB row.
+	 *
+	 * @param array<string, mixed> $row
+	 */
+	private function zoom_recording_row_duration_seconds(array $row)
+	{
+		if (isset($row['duration_seconds']) && (int) $row['duration_seconds'] > 0) {
+			return (int) $row['duration_seconds'];
+		}
+		$start = isset($row['recording_start']) ? (string) $row['recording_start'] : '';
+		$end = isset($row['recording_end']) ? (string) $row['recording_end'] : '';
+		if ($start === '' || $end === '' || $start === '0000-00-00 00:00:00' || $end === '0000-00-00 00:00:00') {
+			return 0;
+		}
+		$ts0 = strtotime($start);
+		$ts1 = strtotime($end);
+		if (!$ts0 || !$ts1 || $ts1 <= $ts0) {
+			return 0;
+		}
+		return (int) ($ts1 - $ts0);
 	}
 
 	private function format_hours_minutes($seconds)
@@ -4137,10 +4228,16 @@ class Batch extends MY_Controller
 
 		$quota_used = 0;
 		$quota_limit = 330 * 3600;
+		$quota_video = 0;
+		$quota_recording = 0;
+		$quota_meeting_reserve = 0;
 		if ($batch_id > 0) {
 			$quota = $this->batch_video_quota($batch_id);
 			$quota_used = $quota['used'];
 			$quota_limit = $quota['limit'];
+			$quota_video = isset($quota['videoUsedSeconds']) ? (int) $quota['videoUsedSeconds'] : 0;
+			$quota_recording = isset($quota['recordingUsedSeconds']) ? (int) $quota['recordingUsedSeconds'] : 0;
+			$quota_meeting_reserve = isset($quota['meetingReserveSeconds']) ? (int) $quota['meetingReserveSeconds'] : 0;
 		}
 
 		echo json_encode(array(
@@ -4152,6 +4249,9 @@ class Batch extends MY_Controller
 				'videoLectures' => !empty($list) ? $list : array(),
 				'quotaUsedSeconds' => $quota_used,
 				'quotaLimitSeconds' => $quota_limit,
+				'quotaVideoUsedSeconds' => $quota_video,
+				'quotaRecordingUsedSeconds' => $quota_recording,
+				'quotaMeetingReserveSeconds' => $quota_meeting_reserve,
 				'pagination' => $this->build_api_list_pagination_meta($page, $limit, $total),
 			)
 		), JSON_UNESCAPED_SLASHES);
@@ -6837,10 +6937,19 @@ class Batch extends MY_Controller
 			$this->api_json(false, 'batch_zoom_meetings table is not installed. Run installer/create_batch_zoom_meetings_and_zoom_s2s.sql');
 			return;
 		}
+		$quota = $this->batch_video_quota($batch_id);
+		$quota_out = array(
+			'quotaUsedSeconds' => (int) $quota['used'],
+			'quotaLimitSeconds' => (int) $quota['limit'],
+			'quotaVideoUsedSeconds' => isset($quota['videoUsedSeconds']) ? (int) $quota['videoUsedSeconds'] : 0,
+			'quotaRecordingUsedSeconds' => isset($quota['recordingUsedSeconds']) ? (int) $quota['recordingUsedSeconds'] : 0,
+			'quotaMeetingReserveSeconds' => isset($quota['meetingReserveSeconds']) ? (int) $quota['meetingReserveSeconds'] : 0,
+			'quotaRemainingSeconds' => max(0, (int) $quota['limit'] - (int) $quota['used']),
+		);
 		$row = $this->db_model->select_data('*', 'batch_zoom_meetings', array('batch_id' => $batch_id, 'status' => 1), 1, array('id', 'desc'));
 		if (empty($row)) {
 			// After End Class status becomes 0 — treat as unlinked so UI shows Create Zoom link again.
-			$this->api_json(false, 'No Zoom meeting linked for this batch', array('batchId' => $batch_id));
+			$this->api_json(false, 'No Zoom meeting linked for this batch', array_merge(array('batchId' => $batch_id), $quota_out));
 			return;
 		}
 		$r = $row[0];
@@ -6861,7 +6970,7 @@ class Batch extends MY_Controller
 		if ($ut === 'teacher' || $ut === 'institute') {
 			$out['hostId'] = isset($r['host_id']) ? (string) $r['host_id'] : '';
 		}
-		$this->api_json(true, 'Success', array('zoom' => $out));
+		$this->api_json(true, 'Success', array_merge(array('zoom' => $out), $quota_out));
 	}
 
 	/**
@@ -6903,15 +7012,15 @@ class Batch extends MY_Controller
 		$duration = isset($data['duration']) ? (int) $data['duration'] : 60;
 		$timezone = isset($data['timezone']) ? trim((string) $data['timezone']) : 'UTC';
 
-		// 330-hour rolling-yearly cap is shared by uploaded videos AND live classes.
-		// Check the combined usage before creating anything on Zoom. duration is in minutes.
+		// 330-hour rolling-yearly cap: uploaded videos + Zoom cloud recordings (+ active meeting reserve).
+		// Check combined usage before creating anything on Zoom. duration is in minutes.
 		$meeting_seconds = max(0, $duration) * 60;
 		$quota = $this->batch_video_quota($batch_id);
 		if (($quota['used'] + $meeting_seconds) > $quota['limit']) {
 			$remaining = max(0, $quota['limit'] - $quota['used']);
-			$this->api_json(false, 'This live class exceeds the 330-hour yearly limit for this batch. This class is '
+			$this->api_json(false, 'This Zoom meeting exceeds the 330-hour yearly limit for this batch. This class is '
 				. $this->format_hours_minutes($meeting_seconds) . ', but only '
-				. $this->format_hours_minutes($remaining) . ' remain in the current cycle.');
+				. $this->format_hours_minutes($remaining) . ' remain (uploads + Zoom recordings).');
 			return;
 		}
 
@@ -7142,19 +7251,16 @@ class Batch extends MY_Controller
 			return;
 		}
 
-		// If the live-class duration is being changed, re-check the shared 330-hour cap
-		// (uploaded videos + live classes). Exclude this meeting's current duration so we
-		// compare against the NEW value, not double-count it. duration is in minutes.
+		// If the live-class duration is being changed, re-check the shared 330-hour cap.
+		// Exclude this meeting's current reserved duration so we compare against the NEW value.
 		if (isset($data['duration'])) {
-			$old_seconds = (int) $row[0]['duration'] * 60;
 			$new_seconds = max(0, (int) $data['duration']) * 60;
-			$quota = $this->batch_video_quota($batch_id);
-			$used_without_this = max(0, $quota['used'] - $old_seconds);
-			if (($used_without_this + $new_seconds) > $quota['limit']) {
-				$remaining = max(0, $quota['limit'] - $used_without_this);
-				$this->api_json(false, 'This live class exceeds the 330-hour yearly limit for this batch. This class is '
+			$quota = $this->batch_video_quota($batch_id, 0, (int) $row[0]['id']);
+			if (($quota['used'] + $new_seconds) > $quota['limit']) {
+				$remaining = max(0, $quota['limit'] - $quota['used']);
+				$this->api_json(false, 'This Zoom meeting exceeds the 330-hour yearly limit for this batch. This class is '
 					. $this->format_hours_minutes($new_seconds) . ', but only '
-					. $this->format_hours_minutes($remaining) . ' remain in the current cycle.');
+					. $this->format_hours_minutes($remaining) . ' remain (uploads + Zoom recordings).');
 				return;
 			}
 		}
@@ -7417,6 +7523,17 @@ class Batch extends MY_Controller
 				: 'processing',
 			'synced_at' => $now,
 		);
+		$rec_dur = 0;
+		if (!empty($row['recording_start']) && !empty($row['recording_end'])) {
+			$ts0 = strtotime((string) $row['recording_start']);
+			$ts1 = strtotime((string) $row['recording_end']);
+			if ($ts0 && $ts1 && $ts1 > $ts0) {
+				$rec_dur = (int) ($ts1 - $ts0);
+			}
+		}
+		if ($this->db->field_exists('duration_seconds', 'batch_zoom_recordings')) {
+			$row['duration_seconds'] = $rec_dur;
+		}
 		if ($this->db->field_exists('recording_passcode', 'batch_zoom_recordings')) {
 			$row['recording_passcode'] = $passcode;
 		}

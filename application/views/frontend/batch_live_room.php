@@ -218,6 +218,7 @@ body.lr-zoom-in-meeting > div[id^="menu-"] {
 			<div id="lr_batch_zoom_panel" class="lr-batch-zoom-panel">
 				<h3><i class="fas fa-video" aria-hidden="true"></i> Zoom Meeting (This Batch)</h3>
 				<p id="lr_batch_zoom_status">Checking Zoom link…</p>
+				<p id="lr_batch_zoom_quota" class="inst-muted" style="margin:0 0 12px;font-size:0.86rem;"></p>
 				<div id="lr_alert" role="alert"></div>
 				<div class="lr-batch-zoom-actions">
 					<button type="button" id="lr_batch_zoom_create" class="btn btn-primary btn-sm">Create Zoom link</button>
@@ -334,6 +335,35 @@ body.lr-zoom-in-meeting > div[id^="menu-"] {
 			'Authorization': 'Bearer ' + token
 		};
 	}
+	function fmtQuotaHM(seconds) {
+		var s = Math.max(0, Math.round(seconds || 0));
+		var h = Math.floor(s / 3600);
+		var m = Math.floor((s % 3600) / 60);
+		return h + ' h ' + m + ' m';
+	}
+	function applyBatchQuotaFromZoomDetails(data) {
+		var quotaEl = document.getElementById('lr_batch_zoom_quota');
+		var btnCreate = document.getElementById('lr_batch_zoom_create');
+		if (!data) { return { remaining: null, exhausted: false }; }
+		var used = parseInt(data.quotaUsedSeconds, 10);
+		var limit = parseInt(data.quotaLimitSeconds, 10);
+		var remaining = parseInt(data.quotaRemainingSeconds, 10);
+		if (isNaN(used) || isNaN(limit)) {
+			return { remaining: null, exhausted: false };
+		}
+		if (isNaN(remaining)) {
+			remaining = Math.max(0, limit - used);
+		}
+		var videoUsed = parseInt(data.quotaVideoUsedSeconds, 10) || 0;
+		var recUsed = parseInt(data.quotaRecordingUsedSeconds, 10) || 0;
+		if (quotaEl) {
+			quotaEl.textContent = 'Yearly usage: ' + fmtQuotaHM(used) + ' / ' + fmtQuotaHM(limit)
+				+ ' (' + fmtQuotaHM(remaining) + ' remaining) · Uploads: ' + fmtQuotaHM(videoUsed)
+				+ ' · Zoom recordings: ' + fmtQuotaHM(recUsed);
+			quotaEl.style.color = remaining <= 0 ? '#dc2626' : '#606774';
+		}
+		return { remaining: remaining, exhausted: remaining <= 0 };
+	}
 	function refreshBatchZoomPanel() {
 		if (!pageIsTeacherHost || !token) { return; }
 		var statusEl = document.getElementById('lr_batch_zoom_status');
@@ -348,11 +378,11 @@ body.lr-zoom-in-meeting > div[id^="menu-"] {
 			headers: authHeaders(),
 			body: JSON.stringify({ batch_id: batchId, access_token: token })
 		}).then(function (r) { return r.json(); }).then(function (j) {
+			var quotaInfo = applyBatchQuotaFromZoomDetails(j.data || {});
 			var okz = ok(j.status);
 			var z = (j.data && j.data.zoom) ? j.data.zoom : {};
 			var active = okz && (z.isActive === 1 || z.isActive === '1' || z.meetingStatus === 1 || z.meetingStatus === '1')
 				&& (z.zoomMeetingId || z.joinUrl);
-			// Fallback for older API payloads that only return active meetings.
 			if (!active && okz && (z.zoomMeetingId || z.joinUrl) && z.isActive == null && z.meetingStatus == null) {
 				active = true;
 			}
@@ -362,6 +392,13 @@ body.lr-zoom-in-meeting > div[id^="menu-"] {
 				btnCreate.disabled = true;
 				btnJoin.textContent = 'Join live class';
 				btnJoin.classList.remove('inst-detail-hidden');
+				return;
+			}
+			if (quotaInfo.exhausted) {
+				statusEl.textContent = '330-hour yearly limit reached for this batch. Clear space (or wait for the next cycle) before creating a Zoom meeting or uploading videos.';
+				btnCreate.textContent = 'Quota full';
+				btnCreate.disabled = true;
+				btnJoin.classList.add('inst-detail-hidden');
 				return;
 			}
 			statusEl.textContent = 'No Zoom meeting yet. Create one to generate a join link for this batch (Server-to-Server Zoom must be configured on the server).';

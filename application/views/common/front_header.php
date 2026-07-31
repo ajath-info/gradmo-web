@@ -207,14 +207,14 @@
 								<a href="<?php echo base_url();?>"><img class="front_logo" src="<?php echo html_escape($front_logo_src); ?>" alt="logo" /></a>
 							</div>
 						</div>
-						<div class="col-xl-8 col-lg-8 d-none d-lg-block">
+						<div class="col-xl-6 col-lg-6 d-none d-lg-block">
 							<div class="edu_main_menu main_menu_parent">
 								<div class="edu_nav_items main_menu_wrapper text-left">
 									<?php $this->load->view('common/partials/front_primary_nav_ul'); ?>
 								</div>
 							</div>
 						</div>
-						<div class="col-xl-2 col-lg-2 col-md-8 col-sm-6 col-6">
+						<div class="col-xl-4 col-lg-4 col-md-8 col-sm-6 col-6">
 							<div class="edu_header_info edu_header_info--with-mobile-toggle">
 								<div class="menu_btn_wrap d-lg-none">
 									<a href="javascript:void(0);" class="menu_btn" id="frontMobileNavToggle" aria-label="Open menu" aria-expanded="false" aria-controls="eduFrontMobileNavDrawer"><span></span><span></span><span></span></a>
