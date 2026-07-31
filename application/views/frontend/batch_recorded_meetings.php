@@ -201,17 +201,21 @@
 		return parts.join(' · ');
 	}
 	function card(row) {
-		var play = row.playUrl || row.downloadUrl || '';
+		var stream = row.streamUrl || '';
+		if (stream && token) {
+			stream += (stream.indexOf('?') >= 0 ? '&' : '?') + 'access_token=' + encodeURIComponent(token);
+		}
+		var play = stream || row.playUrl || row.downloadUrl || '';
 		var meta = formatWhen(row);
 		return '<article class="rm-card" role="listitem">' +
 			'<h4>' + esc(row.topic || 'Recorded class') + '</h4>' +
 			(meta ? '<p class="rm-meta">' + esc(meta) + '</p>' : '') +
 			'<div class="rm-actions">' +
 			(play
-				? '<button type="button" class="btn btn-primary btn-sm rm-play" data-play="' + esc(play) + '" data-title="' + esc(row.topic || 'Recording') + '"><i class="fas fa-play"></i> Watch</button>'
+				? '<button type="button" class="btn btn-primary btn-sm rm-play" data-play="' + esc(play) + '" data-stream="' + (stream ? '1' : '0') + '" data-title="' + esc(row.topic || 'Recording') + '"><i class="fas fa-play"></i> Watch</button>'
 				: '<span class="inst-muted small">No playback URL</span>') +
-			(row.downloadUrl
-				? ' <a class="btn btn-outline-secondary btn-sm" href="' + esc(row.downloadUrl) + '" target="_blank" rel="noopener noreferrer"><i class="fas fa-download"></i> Download</a>'
+			((stream || row.downloadUrl)
+				? ' <a class="btn btn-outline-secondary btn-sm" href="' + esc(stream || row.downloadUrl) + '" target="_blank" rel="noopener noreferrer"><i class="fas fa-download"></i> Download</a>'
 				: '') +
 			'</div>' +
 		'</article>';
@@ -232,16 +236,22 @@
 		el.textContent = t || '';
 		el.className = 'text-center py-3 ' + (isError ? 'text-danger' : 'inst-muted');
 	}
-	function openPlayer(url, title) {
+	function openPlayer(url, title, useStream) {
 		var modal = document.getElementById('rmPlayerModal');
 		var body = document.getElementById('rmPlayerBody');
 		document.getElementById('rmPlayerTitle').textContent = title || 'Recording';
 		body.innerHTML = '';
-		if (/\.(mp4|webm|ogg)(\?|$)/i.test(url)) {
+		var asVideo = !!useStream || /\.(mp4|webm|ogg)(\?|$)/i.test(url) || /recorded-meeting-stream/i.test(url);
+		if (asVideo) {
 			var v = document.createElement('video');
 			v.controls = true;
 			v.playsInline = true;
+			v.autoplay = true;
+			v.preload = 'metadata';
 			v.src = url;
+			v.style.width = '100%';
+			v.style.minHeight = '360px';
+			v.style.background = '#000';
 			body.appendChild(v);
 		} else {
 			var iframe = document.createElement('iframe');
@@ -299,7 +309,11 @@
 	document.getElementById('rm_list').addEventListener('click', function (ev) {
 		var btn = ev.target.closest('.rm-play');
 		if (!btn) { return; }
-		openPlayer(btn.getAttribute('data-play') || '', btn.getAttribute('data-title') || 'Recording');
+		openPlayer(
+			btn.getAttribute('data-play') || '',
+			btn.getAttribute('data-title') || 'Recording',
+			btn.getAttribute('data-stream') === '1'
+		);
 	});
 	document.getElementById('rmPlayerClose').addEventListener('click', closePlayer);
 	document.getElementById('rmPlayerModal').addEventListener('click', function (ev) {

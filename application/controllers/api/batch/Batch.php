@@ -7268,13 +7268,10 @@ class Batch extends MY_Controller
 		if ($this->db->field_exists('recording_passcode', 'batch_zoom_recordings') && !empty($row['recording_passcode'])) {
 			$passcode = trim((string) $row['recording_passcode']);
 		}
+		// Keep Zoom's original /rec/play/ URL — rewriting to /rec/share/ breaks links (Zoom 3301).
 		$play_url = $this->zoom_recording_url_with_passcode($play_url, $passcode);
-		// Prefer Zoom share URL — works better with ?pwd= than /rec/play/.
-		if ($play_url !== '' && stripos($play_url, '/rec/play/') !== false) {
-			$play_url = preg_replace('#/rec/play/#i', '/rec/share/', $play_url, 1);
-		}
 		$rec_id = isset($row['id']) ? (int) $row['id'] : 0;
-		// Always expose stream endpoint when any Zoom URL exists — it authenticates via S2S token (no passcode UI).
+		// Authenticated stream/download via our API (S2S token) — preferred for Watch.
 		$stream_url = ($rec_id > 0 && ($download_url !== '' || $play_url !== ''))
 			? site_url('api/batch/recorded-meeting-stream') . '?id=' . $rec_id
 			: '';
@@ -7716,7 +7713,7 @@ class Batch extends MY_Controller
 
 	/**
 	 * GET/POST api/batch/recorded-meeting-stream
-	 * Streams Zoom download_url with Server-to-Server token so browser <video> plays without passcode.
+	 * Proxies Zoom download_url with Server-to-Server token so <video> can play without Zoom passcode UI.
 	 * Required: id (recording row id). Auth: Bearer access_token (query or header).
 	 */
 	public function recorded_meeting_stream()
@@ -7759,9 +7756,7 @@ class Batch extends MY_Controller
 			$passcode = trim((string) $row[0]['recording_passcode']);
 		}
 
-		// Prefer authenticated MP4 download only when URL is a real download path.
-		$is_download = ($download !== '' && stripos($download, '/rec/download/') !== false);
-		if ($is_download) {
+		if ($download !== '') {
 			$this->load->library('zoom_rest_client');
 			$token_res = $this->zoom_rest_client->get_access_token();
 			$zoom_token = '';
@@ -7769,13 +7764,18 @@ class Batch extends MY_Controller
 				$zoom_token = (string) $token_res['access_token'];
 			}
 			if ($zoom_token !== '') {
+				$proxied = $this->proxy_zoom_recording_file($download, $zoom_token);
+				if ($proxied) {
+					return;
+				}
+				// Fallback: redirect browser to Zoom download with access_token query.
 				$sep = (strpos($download, '?') !== false) ? '&' : '?';
 				header('Location: ' . $download . $sep . 'access_token=' . rawurlencode($zoom_token), true, 302);
 				exit;
 			}
 		}
 
-		// Watch fallback: Zoom play page with passcode embedded (no manual passkey).
+		// Last resort: Zoom play page with passcode (do not rewrite to /rec/share/).
 		$redirect = $this->zoom_recording_url_with_passcode($play !== '' ? $play : $download, $passcode);
 		if ($redirect === '') {
 			$this->output->set_status_header(404);
@@ -7783,6 +7783,87 @@ class Batch extends MY_Controller
 			return;
 		}
 		header('Location: ' . $redirect, true, 302);
+		exit;
+	}
+
+	/**
+	 * Stream a Zoom cloud recording through this app (same-origin for <video>).
+	 *
+	 * @return bool true when response was sent
+	 */
+	private function proxy_zoom_recording_file($download_url, $zoom_token)
+	{
+		$download_url = trim((string) $download_url);
+		$zoom_token = trim((string) $zoom_token);
+		if ($download_url === '' || $zoom_token === '' || !function_exists('curl_init')) {
+			return false;
+		}
+		$sep = (strpos($download_url, '?') !== false) ? '&' : '?';
+		$fetch_url = $download_url . $sep . 'access_token=' . rawurlencode($zoom_token);
+
+		$req_headers = array('Authorization: Bearer ' . $zoom_token);
+		if (!empty($_SERVER['HTTP_RANGE'])) {
+			$req_headers[] = 'Range: ' . $_SERVER['HTTP_RANGE'];
+		}
+
+		$response_headers = array();
+		$status = 0;
+		$body = '';
+		$ch = curl_init($fetch_url);
+		curl_setopt($ch, CURLOPT_HTTPHEADER, $req_headers);
+		curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+		curl_setopt($ch, CURLOPT_MAXREDIRS, 5);
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+		curl_setopt($ch, CURLOPT_HEADER, false);
+		curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+		curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 20);
+		curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+		curl_setopt($ch, CURLOPT_USERAGENT, 'GradmoRecordingProxy/1.0');
+		curl_setopt($ch, CURLOPT_HEADERFUNCTION, function ($curl, $header_line) use (&$response_headers, &$status) {
+			$len = strlen($header_line);
+			if (preg_match('/^HTTP\//i', $header_line)) {
+				if (preg_match('/\s(\d{3})\s/', $header_line, $m)) {
+					$status = (int) $m[1];
+				}
+				return $len;
+			}
+			$parts = explode(':', $header_line, 2);
+			if (count($parts) === 2) {
+				$response_headers[strtolower(trim($parts[0]))] = trim($parts[1]);
+			}
+			return $len;
+		});
+		$body = curl_exec($ch);
+		$errno = curl_errno($ch);
+		curl_close($ch);
+
+		if ($errno !== 0 || $body === false || $body === '') {
+			return false;
+		}
+		if ($status >= 400 || $status === 0) {
+			return false;
+		}
+		$ct = isset($response_headers['content-type']) ? $response_headers['content-type'] : '';
+		$sample = ltrim(substr($body, 0, 200));
+		if ($sample !== '' && ($sample[0] === '<' || $sample[0] === '{')) {
+			return false;
+		}
+		if ($ct !== '' && (stripos($ct, 'text/html') !== false || stripos($ct, 'application/json') !== false)) {
+			return false;
+		}
+		if ($ct === '') {
+			$ct = 'video/mp4';
+		}
+
+		$this->output->set_status_header($status === 206 ? 206 : 200);
+		header('Content-Type: ' . $ct);
+		header('Accept-Ranges: bytes');
+		header('Cache-Control: private, max-age=0, no-cache');
+		header('Content-Length: ' . strlen($body));
+		if (isset($response_headers['content-range'])) {
+			header('Content-Range: ' . $response_headers['content-range']);
+		}
+		echo $body;
 		exit;
 	}
 
