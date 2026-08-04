@@ -378,7 +378,7 @@ body.lr-zoom-in-meeting > div[id^="menu-"] {
 			method: 'POST',
 			headers: authHeaders(),
 			body: JSON.stringify({ batch_id: batchId, access_token: token })
-		}).then(function (r) { return r.json(); }).then(function (j) {
+		}).then(parseJsonResponse).then(function (j) {
 			var quotaInfo = applyBatchQuotaFromZoomDetails(j.data || {});
 			var okz = ok(j.status);
 			var z = (j.data && j.data.zoom) ? j.data.zoom : {};
@@ -406,11 +406,12 @@ body.lr-zoom-in-meeting > div[id^="menu-"] {
 			btnCreate.textContent = 'Create Zoom link';
 			btnCreate.disabled = false;
 			btnJoin.classList.add('inst-detail-hidden');
-		}).catch(function () {
-			statusEl.textContent = 'Could not check Zoom status. Try again or verify Zoom API credentials.';
+		}).catch(function (e) {
+			statusEl.textContent = (e && e.message) ? e.message : 'Could not check Zoom status. Try again.';
 			btnCreate.textContent = 'Create Zoom link';
 			btnCreate.disabled = false;
 			btnJoin.classList.add('inst-detail-hidden');
+			showAlert((e && e.message) ? e.message : 'Could not check Zoom status.', true);
 		});
 	}
 	function isJoinReady(m) {
@@ -577,7 +578,7 @@ body.lr-zoom-in-meeting > div[id^="menu-"] {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
 			body: JSON.stringify(body)
-		}).then(function (r) { return r.json(); }).then(function (j) {
+		}).then(parseJsonResponse).then(function (j) {
 			if (ok(j.status)) {
 				recordingActive = false;
 				leaveClass();
@@ -641,7 +642,7 @@ body.lr-zoom-in-meeting > div[id^="menu-"] {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
 			body: JSON.stringify(body)
-		}).then(function (r) { return r.json(); }).then(function (j) {
+		}).then(parseJsonResponse).then(function (j) {
 			if (ok(j.status)) {
 				recordingActive = starting;
 				syncRecordButton();
@@ -667,10 +668,17 @@ body.lr-zoom-in-meeting > div[id^="menu-"] {
 	function parseJsonResponse(r) {
 		return r.text().then(function (text) {
 			var t = (text || '').trim();
-			if (t.indexOf('<') === 0) {
-				throw new Error('Server returned HTML instead of JSON.');
+			if (!t) {
+				throw new Error('Empty response from server. Please try again.');
 			}
-			try { return JSON.parse(t); } catch (e) { throw new Error('Invalid JSON from server'); }
+			if (t.indexOf('<') === 0 || /A Database Error Occurred/i.test(t) || /MySQL server has gone away/i.test(t)) {
+				throw new Error('Server was busy (database connection dropped). Please refresh and try again.');
+			}
+			try {
+				return JSON.parse(t);
+			} catch (e) {
+				throw new Error('Invalid response from server. Please refresh and try again.');
+			}
 		});
 	}
 	function recordingsBody(extra) {
@@ -913,7 +921,7 @@ body.lr-zoom-in-meeting > div[id^="menu-"] {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
 					body: JSON.stringify(notifyBody)
-				}).then(function (r) { return r.json(); }).then(function (j) {
+				}).then(parseJsonResponse).then(function (j) {
 					var data = (j && j.data) ? j.data : {};
 					if (ok(j.status) && (data.recordingStarted === true || data.recordingStarted === 1 || data.recordingStarted === '1' || data.recordingStatus === 'recording')) {
 						recordingActive = true;
@@ -1040,7 +1048,7 @@ body.lr-zoom-in-meeting > div[id^="menu-"] {
 				method: 'POST',
 				headers: authHeaders(),
 				body: JSON.stringify({ batch_id: batchId, topic: topic || 'Live class', access_token: token })
-			}).then(function (r) { return r.json(); }).then(function (j) {
+			}).then(parseJsonResponse).then(function (j) {
 				if (ok(j.status)) {
 					showAlert(j.msg || 'Zoom meeting created', false);
 					refreshBatchZoomPanel();

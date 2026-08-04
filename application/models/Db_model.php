@@ -390,8 +390,37 @@ class Db_model extends CI_Model {
 		die();
 	}
 	function setCode(){
-	    $this->db->query("SET sql_mode='NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'");
-	
+		// Hosting MySQL can drop idle connections (Error 2006 "MySQL server has gone away").
+		// Never let SET sql_mode print an HTML error page — APIs must keep returning JSON.
+		if (!isset($this->db) || !is_object($this->db)) {
+			return;
+		}
+		$prev_debug = isset($this->db->db_debug) ? $this->db->db_debug : FALSE;
+		$this->db->db_debug = FALSE;
+		try {
+			if (method_exists($this->db, 'reconnect')) {
+				@$this->db->reconnect();
+			}
+			@$this->db->query("SET sql_mode='NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'");
+			// One reconnect+retry if the first SET failed after a dropped connection.
+			$error = method_exists($this->db, 'error') ? $this->db->error() : array();
+			$code = isset($error['code']) ? (int) $error['code'] : 0;
+			if ($code === 2006 || $code === 2013) {
+				if (method_exists($this->db, 'close')) {
+					@$this->db->close();
+				}
+				@$this->load->database();
+				if (method_exists($this->db, 'reconnect')) {
+					@$this->db->reconnect();
+				}
+				@$this->db->query("SET sql_mode='NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'");
+			}
+		} catch (Exception $e) {
+			log_message('error', 'Db_model::setCode failed: ' . $e->getMessage());
+		} catch (Error $e) {
+			log_message('error', 'Db_model::setCode failed: ' . $e->getMessage());
+		}
+		$this->db->db_debug = $prev_debug;
 	}
 
 	function get_user_by_mobile($mobile, $user_type) {
