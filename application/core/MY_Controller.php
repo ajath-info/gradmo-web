@@ -570,6 +570,11 @@ class MY_Controller extends CI_Controller
 			'description' => isset($b['description']) ? $b['description'] : '',
 			'enrollment_status' => isset($b['enrollment_status']) ? (int) $b['enrollment_status'] : 0,
 			'enrolled_at' => isset($b['enrolled_at']) && $b['enrolled_at'] !== null ? $b['enrolled_at'] : '',
+			// Lifecycle for the card badge. batch_status is the admin's Active/Inactive switch;
+			// is_expired is derived from end_date/end_time and is never stored (see batch_status_helper).
+			'batch_status' => isset($b['status']) ? (int) $b['status'] : 0,
+			'is_expired' => batch_is_expired($b) ? 1 : 0,
+			'lifecycle_status' => batch_lifecycle_state($b),
 		);
 	}
 
@@ -594,8 +599,11 @@ class MY_Controller extends CI_Controller
 
 	/**
 	 * Count enrolled batches for a student (same filters as {@see fetch_student_enrolled_batches_raw()}).
+	 *
+	 * @param bool $include_inactive Include batches whose status is 0 (expired/ended batches keep
+	 *                               appearing in "my batches" — the student still owns the content).
 	 */
-	protected function count_student_enrolled_batches_raw($student_id, $search = '')
+	protected function count_student_enrolled_batches_raw($student_id, $search = '', $include_inactive = false)
 	{
 		$student_id = (int) $student_id;
 		if ($student_id < 1) {
@@ -606,7 +614,9 @@ class MY_Controller extends CI_Controller
 		$this->db->select('COUNT(DISTINCT batches.id) AS c', false);
 		$this->db->from('batches');
 		$this->db->join('student_batchs', 'student_batchs.batch_id = batches.id');
-		$this->db->where('batches.status', '1');
+		if (!$include_inactive) {
+			$this->db->where('batches.status', '1');
+		}
 		$this->db->where('student_batchs.student_id', $student_id);
 		if ($search !== '') {
 			$this->db->like('batches.batch_name', $search);
@@ -621,9 +631,10 @@ class MY_Controller extends CI_Controller
 	 * @param string $search Optional filter on batches.batch_name
 	 * @param int|null $limit null = no limit; positive = max rows
 	 * @param int $offset SQL offset when $limit is set
+	 * @param bool $include_inactive Include status = 0 batches (see the count helper)
 	 * @return array<int, array>
 	 */
-	protected function fetch_student_enrolled_batches_raw($student_id, $search = '', $limit = null, $offset = 0)
+	protected function fetch_student_enrolled_batches_raw($student_id, $search = '', $limit = null, $offset = 0, $include_inactive = false)
 	{
 		$student_id = (int) $student_id;
 		if ($student_id < 1) {
@@ -635,10 +646,14 @@ class MY_Controller extends CI_Controller
 		if ($limit !== null && (int) $limit > 0) {
 			$db_limit = array((int) $limit, (int) $offset);
 		}
+		$where = array('student_batchs.student_id' => $student_id);
+		if (!$include_inactive) {
+			$where['batches.status'] = '1';
+		}
 		$batches = $this->db_model->select_data(
 			'batches.*, student_batchs.status as enrollment_status, student_batchs.create_at as enrolled_at',
 			'batches use index (id)',
-			array('batches.status' => '1', 'student_batchs.student_id' => $student_id),
+			$where,
 			$db_limit,
 			array('batches.id', 'desc'),
 			$like,
@@ -649,8 +664,11 @@ class MY_Controller extends CI_Controller
 
 	/**
 	 * Count batches assigned to a teacher (same filters as {@see fetch_teacher_assigned_batches_raw()}).
+	 *
+	 * @param bool $include_inactive Include status = 0 batches (expired/ended batches stay visible
+	 *                               to the teacher who teaches them).
 	 */
-	protected function count_teacher_assigned_batches_raw($teacher_id, $search = '')
+	protected function count_teacher_assigned_batches_raw($teacher_id, $search = '', $include_inactive = false)
 	{
 		$teacher_id = (int) $teacher_id;
 		if ($teacher_id < 1) {
@@ -662,7 +680,9 @@ class MY_Controller extends CI_Controller
 		$this->db->from('batch_subjects bs');
 		$this->db->join('batches b', 'b.id = bs.batch_id');
 		$this->db->where('bs.teacher_id', $teacher_id);
-		$this->db->where('b.status', 1);
+		if (!$include_inactive) {
+			$this->db->where('b.status', 1);
+		}
 		if ($search !== '') {
 			$this->db->like('b.batch_name', $search);
 		}
@@ -676,9 +696,10 @@ class MY_Controller extends CI_Controller
 	 * @param string $search Optional filter on batch_name
 	 * @param int|null $limit null = no limit
 	 * @param int $offset SQL offset when $limit is set
+	 * @param bool $include_inactive Include status = 0 batches (see the count helper)
 	 * @return array<int, array>
 	 */
-	protected function fetch_teacher_assigned_batches_raw($teacher_id, $search = '', $limit = null, $offset = 0)
+	protected function fetch_teacher_assigned_batches_raw($teacher_id, $search = '', $limit = null, $offset = 0, $include_inactive = false)
 	{
 		$teacher_id = (int) $teacher_id;
 		if ($teacher_id < 1) {
@@ -691,11 +712,12 @@ class MY_Controller extends CI_Controller
 			$like_sql = ' AND b.batch_name LIKE ? ';
 			$params[] = '%' . $search . '%';
 		}
+		$status_sql = $include_inactive ? '' : ' AND b.status = 1 ';
 		$sql = 'SELECT DISTINCT b.*, 1 AS enrollment_status, NULL AS enrolled_at
 			 FROM batch_subjects bs
 			 JOIN batches b ON b.id = bs.batch_id
 			 WHERE bs.teacher_id = ?
-			   AND b.status = 1
+			   ' . $status_sql . '
 			   ' . $like_sql . '
 			 ORDER BY b.id DESC';
 		if ($limit !== null && (int) $limit > 0) {

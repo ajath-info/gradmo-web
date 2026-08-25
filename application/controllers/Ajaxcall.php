@@ -502,7 +502,12 @@ class Ajaxcall extends CI_Controller{
                     //     $statusDrop = '<div class="admin_tbl_status_wrap">
                     // <a class="tbl_status_btn light_red_bg changeStatusButton" data-id="'.$batch['id'].'" data-table ="batches" data-status ="1" href="javascript:;">'.$this->lang->line('ltr_inactive').'</a></div>';
                     // }
-                    if($_SESSION['admin_id']!=$batch['admin_id']){
+                    if(batch_is_expired($batch)){
+                        // The batch is over: show Expired instead of the Active/Inactive switch.
+                        // batches.status is left untouched so the admin's own choice survives.
+                        $statusDrop = '<div class="admin_tbl_status_wrap disabled button_disbled_cursor">
+                        <a class="tbl_status_btn light_yellow_bg" title="'.html_escape($this->lang->line('ltr_batch_expired_title')).'" href="javascript:;">'.$this->lang->line('ltr_expired').'</a></div>';
+                    }else if($_SESSION['admin_id']!=$batch['admin_id']){
                          if($batch['status'] == 1){
                                 $statusDrop = '<div class="admin_tbl_status_wrap"><a class="tbl_status_btn light_sky_bg changeStatusButton" data-id="'.$batch['id'].'" data-table ="batches" data-status ="0" href="javascript:;">'.$this->lang->line('ltr_active').'</a></div>';
                             }else{

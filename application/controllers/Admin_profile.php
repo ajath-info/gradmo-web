@@ -172,19 +172,10 @@ class Admin_profile extends CI_Controller {
 	
 	function batch_manage(){
 		$header['title']= $this->lang->line('ltr_batch_manager');
-		$this->load->view("common/admin_header",$header); 
-		$dateToDay = date('Y-m-d');
-		$batches = $this->db_model->select_data('*','batches  use index (id)',array('status'=>1,'end_date <='=>$dateToDay),'',array('id','desc'));
-		$toDateTime = strtotime(date('Y-m-d H:i:s'));
-		foreach($batches as $key){
-		    
-		    $endDateTime = strtotime($key['end_date'].' '.$key['end_time']);
-		    if($toDateTime>=$endDateTime){
-		        $data_arr=array('status'=>0);
-		        $this->db_model->update_data_limit('batches',$data_arr,array('id'=>$key['id']),1);
-		    }
-		    
-		}
+		$this->load->view("common/admin_header",$header);
+		// NOTE: expiry is NOT written to batches.status any more. Overwriting status here
+		// silently reverted the admin's own Active/Inactive choice on every page load.
+		// "Expired" is derived from end_date/end_time at render time (see batch_is_expired()).
         $cat_id = $this->input->get('category_id');
         $sub_cat_id = $this->input->get('sub_category_id');
             if($cat_id != null){

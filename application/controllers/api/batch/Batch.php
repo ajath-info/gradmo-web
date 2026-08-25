@@ -637,8 +637,10 @@ class Batch extends MY_Controller
 				return;
 			}
 
-			$total_records = $this->count_student_enrolled_batches_raw($student_id, $search);
-			$batches = $this->fetch_student_enrolled_batches_raw($student_id, $search, $limit, $offset);
+			// "My batches" keeps showing batches that have ended (status 0 / past end_date).
+			// The card carries lifecycle_status so the client can badge them "Expired".
+			$total_records = $this->count_student_enrolled_batches_raw($student_id, $search, true);
+			$batches = $this->fetch_student_enrolled_batches_raw($student_id, $search, $limit, $offset, true);
 		}
 		// TEACHER FLOW: batches assigned via batch_subjects.teacher_id
 		elseif ($payload['ut'] === 'teacher') {
@@ -648,8 +650,9 @@ class Batch extends MY_Controller
 				return;
 			}
 
-			$total_records = $this->count_teacher_assigned_batches_raw($teacher_id, $search);
-			$batches = $this->fetch_teacher_assigned_batches_raw($teacher_id, $search, $limit, $offset);
+			// Same as students: a teacher keeps seeing the batches they teach after they end.
+			$total_records = $this->count_teacher_assigned_batches_raw($teacher_id, $search, true);
+			$batches = $this->fetch_teacher_assigned_batches_raw($teacher_id, $search, $limit, $offset, true);
 		} else {
 			echo json_encode(array(
 				'status' => 'false',

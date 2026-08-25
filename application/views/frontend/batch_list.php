@@ -110,8 +110,20 @@ $intro = $is_my
 			dates = esc(sd && ed ? (sd + ' – ' + ed) : (sd || ed));
 		}
 
+		// Lifecycle badge. is_expired is derived server-side from end_date/end_time; batch_status
+		// is the admin's own Active/Inactive switch. Expired wins — the batch is over either way.
+		var lifecycle = batch.lifecycle_status || '';
+		var isExpired = lifecycle === 'expired' || batch.is_expired === 1 || batch.is_expired === '1' || batch.is_expired === true;
+		var isDisabled = !isExpired && (lifecycle === 'inactive' || batch.batch_status === 0 || batch.batch_status === '0');
+		var statusLabel = '';
+		if (isExpired) {
+			statusLabel = '<span class="batch-badge batch-badge-expired">Expired</span>';
+		} else if (isDisabled) {
+			statusLabel = '<span class="batch-badge batch-badge-inactive">Inactive</span>';
+		}
+
 		var div = document.createElement('div');
-		div.className = 'batch-card';
+		div.className = 'batch-card' + (isExpired ? ' batch-card-expired' : '');
 
 		var actions = '';
 		var ownerLabel = '';
@@ -130,6 +142,7 @@ $intro = $is_my
 			'<div class="batch-card-content">' +
 			'<div class="batch-card-header">' +
 			'<h3 class="batch-card-title">' + esc(name) + '</h3>' +
+			statusLabel +
 			ownerLabel +
 			'</div>' +
 			(dates ? '<p class="batch-card-dates"><i class="far fa-calendar"></i> ' + dates + '</p>' : '') +
@@ -331,6 +344,26 @@ $intro = $is_my
 .batch-badge-assigned {
 	background: #f5f5f5;
 	color: #666;
+}
+
+.batch-badge-expired {
+	background: #fdecea;
+	color: #c62828;
+}
+
+.batch-badge-inactive {
+	background: #f5f5f5;
+	color: #8a8a8a;
+}
+
+/* Ended batches stay clickable (past content is still reachable) but read as archived. */
+.batch-card-expired .batch-card-image {
+	filter: grayscale(0.8);
+	opacity: 0.75;
+}
+
+.batch-card-expired .batch-card-title {
+	color: #6b6b6b;
 }
 
 .batch-card-dates {
