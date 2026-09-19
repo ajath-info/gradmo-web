@@ -2608,8 +2608,16 @@ class Ajaxcall extends CI_Controller{
                     if ($where_sql === '') {
                         $where_sql = '1=0';
                     }
-                    $recordsTotal = $this->db_model->custom_slect_query("COUNT(id) AS `numrows`
-                    FROM (SELECT `student_batchs`.`id` FROM $table LEFT JOIN `students` ON `students`.`id`=`student_batchs`.`student_id` WHERE " . $where_sql . " GROUP BY `students`.`id`) sada")[0]['numrows'];
+                    // COUNT(DISTINCT student_batchs.id) must mirror the row query above, which groups
+                    // by student_batchs.id (one row per enrollment) - not by students.id. The old
+                    // "SELECT student_batchs.id ... GROUP BY students.id" was wrong twice over:
+                    //  - it under-counted (all enrollments of one student collapsed into one row, and
+                    //    every orphan row from the LEFT JOIN collapsed into a single NULL group), so
+                    //    DataTables paginated away rows the list actually returns;
+                    //  - selecting a non-aggregated student_batchs.id while grouping by students.id is
+                    //    rejected outright by MySQL's only_full_group_by (on by default since 5.7).
+                    $recordsTotal = (int) $this->db_model->custom_slect_query("COUNT(DISTINCT `student_batchs`.`id`) AS `numrows`
+                    FROM $table LEFT JOIN `students` ON `students`.`id`=`student_batchs`.`student_id` WHERE " . $where_sql)[0]['numrows'];
                     
                     $output = array(
                         "draw" => $post['draw'],

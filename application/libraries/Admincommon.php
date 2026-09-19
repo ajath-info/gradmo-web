@@ -65,8 +65,13 @@ class Admincommon{
 	    if ($where_in === '') {
 	        $where_in = '1=0';
 	    }
-	    $total_student = $this->CI->db_model->custom_slect_query("COUNT(id) AS `numrows`
-                    FROM (SELECT `student_batchs`.`id` FROM student_batchs LEFT JOIN `students` ON `students`.`id`=`student_batchs`.`student_id` WHERE $where_in  ".($like1 != ''?"AND name LIKE '%".$like1."%' ESCAPE '!'":'')." GROUP BY `students`.`id`) sada")[0]['numrows'];
+	    // This tile is a headcount, so it counts DISTINCT students, not enrollments. Counting
+    // students.id also drops the LEFT JOIN's orphan rows (enrollments whose student was
+    // deleted), which the old GROUP BY students.id silently folded into one bogus NULL group.
+    // The old form also selected a non-aggregated student_batchs.id while grouping by
+    // students.id, which MySQL rejects under only_full_group_by (default since 5.7).
+    $total_student = (int) $this->CI->db_model->custom_slect_query("COUNT(DISTINCT `students`.`id`) AS `numrows`
+                    FROM student_batchs LEFT JOIN `students` ON `students`.`id`=`student_batchs`.`student_id` WHERE $where_in  ".($like1 != ''?"AND name LIKE '%".$like1."%' ESCAPE '!'":''))[0]['numrows'];
                      
 	   //$total_student=$this->CI->db_model->countAll('students use index (id)',$stotal);
 		$total_batch=$this->CI->db_model->countAll('batches use index (id)',$condbt);
