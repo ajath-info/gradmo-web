@@ -6,7 +6,7 @@
 
             <div class="pxn_logo">
 
-                <img src="<?php echo base_url();?>assets/images/logo.png" class="img-fluid">
+                <img style="height: 100px;" src="<?php echo base_url();?>assets/images/logo.png" class="img-fluid">
 
             </div>
 
