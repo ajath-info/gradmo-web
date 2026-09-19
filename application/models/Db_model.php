@@ -371,6 +371,18 @@ class Db_model extends CI_Model {
 			}
 		}
 		if($group != ""){
+			// A grouped count means "how many distinct $group values match", so ask for that
+			// directly instead of grouping. CI's count_all_results() wraps a grouped query as
+			// SELECT COUNT(*) FROM (SELECT * ... GROUP BY $group), and that inner SELECT * is
+			// rejected by MySQL's only_full_group_by (default since 5.7) because the other
+			// columns are neither aggregated nor dependent on $group.
+			// Only used with a single plain column name; anything else falls back to the
+			// original grouped path rather than risk mangling an expression.
+			if(is_string($group) && preg_match('/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/', trim($group))){
+				$this->db->select('COUNT(DISTINCT '.$this->db->protect_identifiers(trim($group)).') AS `numrows`', false);
+				$row = $this->db->get()->row_array();
+				return empty($row['numrows']) ? 0 : (int) $row['numrows'];
+			}
 			$this->db->group_by($group);
 		}
         return $this->db->count_all_results();
