@@ -54,7 +54,7 @@ $intro = $is_my
 	// Owner badges / edit-delete actions / created-vs-assigned split only make sense on the "my" page.
 	var isMy = (listFlag === 'my');
 	var page = 1;
-	var limit = 10;
+	var limit = 12;
 	var totalPages = 1;
 	function ok(s) { return s === true || s === 'true' || s === 1 || s === '1'; }
 	function postJson(url, body) {
