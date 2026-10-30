@@ -1155,6 +1155,7 @@ class Website extends MY_Controller
 			if ($batch_id > 0 && (string) $this->session->userdata('role') === 'student') {
 				$data['application_fee'] = $this->common->compute_application_fee((int) $this->session->userdata('uid'), $batch_id);
 			}
+			$data['gst_percent'] = $this->common->gst_percent();
 			// Free institute (users.paid = 0): no payment — the page shows an Enroll button instead.
 			$data['is_free_institute'] = $batch_id > 0 ? $this->website_batch_institute_is_free($batch_id) : false;
 			$data['batch_free_enroll_url'] = site_url('batch/free-enroll');
@@ -1214,9 +1215,13 @@ class Website extends MY_Controller
 		}
 
 		/**
-		 * POST batch/free-enroll — enroll the logged-in student into a FREE-institute batch without
-		 * payment. Mirrors the paid flow's enrollment (student_batchs + students.batch_id + email)
-		 * but does no Razorpay step. Rejected for non-free institutes (so it can't bypass paid ones).
+		 * POST batch/free-enroll — enroll the logged-in student into a batch without payment when
+		 *   (a) the batch's institute is free (users.paid = '0'), or
+		 *   (b) promo_code is sent and it brings the payable amount to 0 (100% discount).
+		 * Mirrors the paid flow's enrollment (student_batchs + students.batch_id + email) but does
+		 * no Razorpay step. Anything else is rejected, so it can't bypass paid batches.
+		 * In case (b) a Rs 0 student_payment_history row (mode = promo) is recorded and the promo's
+		 * used_count is incremented.
 		 */
 		public function batch_free_enroll()
 		{
@@ -1240,10 +1245,22 @@ class Website extends MY_Controller
 				return;
 			}
 
-			// Security: only allow free enrollment when the institute is actually free.
+			// Security: only allow free enrollment when the institute is actually free, or when a
+			// valid promo code (re-checked here on the server) makes the payable amount 0.
+			$promo_fee = null;
 			if (! $this->website_batch_institute_is_free($batch_id)) {
-				echo json_encode(array('status' => 'false', 'msg' => 'This batch requires payment.'));
-				return;
+				$promo_in = isset($body['promo_code']) ? trim((string) $body['promo_code']) : trim((string) $this->input->post('promo_code'));
+				$promo = $promo_in !== '' ? $this->common->find_valid_promo_code($promo_in) : null;
+				$fee = $promo ? $this->common->compute_application_fee($student_id, $batch_id) : null;
+				if (is_array($fee)) {
+					$fee = $this->common->apply_promo_to_fee($fee, $promo);
+				}
+				if (! is_array($fee) || (float) $fee['total'] > 0) {
+					$msg = ($promo_in !== '' && ! $promo) ? 'Invalid or expired promo code.' : 'This batch requires payment.';
+					echo json_encode(array('status' => 'false', 'msg' => $msg));
+					return;
+				}
+				$promo_fee = $fee;
 			}
 
 			$batch = $this->db_model->select_data('id,batch_name,admin_id,institute_id', 'batches use index (id)', array('id' => $batch_id), 1);
@@ -1256,6 +1273,34 @@ class Website extends MY_Controller
 			// Enrollment must be ACTIVE (batch-details treats student_batchs.status === 1 as enrolled).
 			$exists = $this->db_model->select_data('id,status', 'student_batchs', array('student_id' => $student_id, 'batch_id' => $batch_id), 1);
 			$newly_enrolled = empty($exists);
+			$already_active = ! empty($exists) && (int) $exists[0]['status'] === 1;
+
+			// 100% promo: record a Rs 0 payment row and consume one use of the promo
+			// (skipped when the student is already actively enrolled, so a promo isn't burnt twice).
+			if (is_array($promo_fee) && ! $already_active) {
+				$plan_id = (int) (isset($body['plan_id']) ? $body['plan_id'] : $this->input->post('plan_id'));
+				$hist = array(
+					'student_id' => $student_id,
+					'batch_id' => $batch_id,
+					'plan_id' => $plan_id,
+					'base_amount' => (float) $promo_fee['subtotal'],
+					'batch_fee' => (float) $promo_fee['batch_fee'],
+					'total_amount' => 0.00,
+					'promo_code_id' => (int) $promo_fee['promo_code_id'],
+					'discount_amount' => (float) $promo_fee['discount'],
+					'payment_status' => 'SUCCESS',
+					'payment_date' => date('Y-m-d H:i:s'),
+					'transaction_id' => 'PROMO-' . (int) $promo_fee['promo_code_id'] . '-' . $student_id . '-' . $batch_id . '-' . time(),
+					'mode' => 'promo',
+					'amount' => 0,
+					'admin_id' => $admin_id,
+				);
+				$hist_fields = array_flip($this->db->list_fields('student_payment_history'));
+				$this->db_model->insert_data('student_payment_history', array_intersect_key($hist, $hist_fields));
+				$this->db->set('used_count', 'COALESCE(used_count, 0) + 1', false)
+					->where('promo_code_id', (int) $promo_fee['promo_code_id'])
+					->update('promo_codes');
+			}
 			if (! empty($exists)) {
 				// Re-activate an existing inactive row.
 				if ((int) $exists[0]['status'] !== 1) {

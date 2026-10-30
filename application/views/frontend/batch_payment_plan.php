@@ -19,6 +19,7 @@
 			<div class="bp-row bp-row-mini"><span>(One time in 1 year)</span><span></span></div>
 			<div class="bp-break"></div>
 			<div class="bp-row" id="bp_disc_row" style="display:none"><span>Promo Discount</span><strong id="bp_discount">- Rs 0</strong></div>
+			<div class="bp-row" id="bp_gst_row"><span>GST (<span id="bp_gst_pct">18</span>%)</span><strong id="bp_gst">Rs 0</strong></div>
 			<div class="bp-row bp-grand"><span>Grand Total</span><strong id="bp_grand">Rs 0</strong></div>
 			<div class="bp-row bp-row-mini"><span>(Incl. of all Taxes)</span><span></span></div>
 			<div class="bp-code-wrap">
@@ -56,6 +57,8 @@
 	var monthlyTuition = 0;
 	var lastOrderId = '';
 	// Application-fee breakdown (499/99 rules) from the server; when present it governs the price.
+	// GST % from Common::gst_percent() — applied on the amount after promo discount (same as create-order).
+	var gstPercent = <?php echo json_encode(isset($gst_percent) ? (float) $gst_percent : 18); ?>;
 	var appFee = <?php echo json_encode(isset($application_fee) && is_array($application_fee) ? $application_fee : null); ?>;
 	function ok(s) { return s === true || s === 'true' || s === 1 || s === '1'; }
 	function truthy(v) { return v === true || v === 'true' || v === 1 || v === '1'; }
@@ -83,23 +86,37 @@
 	}
 	function discountAmount(subTotal) {
 		if (!appliedPromo) { return 0; }
-		if (String(appliedPromo.discountType || '').toUpperCase() === 'PERCENT') {
-			return subTotal * Number(appliedPromo.discountValue || 0) / 100;
-		}
-		return Number(appliedPromo.discountValue || 0);
+		var d = (String(appliedPromo.discountType || '').toUpperCase() === 'PERCENT')
+			? subTotal * Number(appliedPromo.discountValue || 0) / 100
+			: Number(appliedPromo.discountValue || 0);
+		// Optional cap (promo_codes.max_discount) — same rule as Common::apply_promo_to_fee().
+		var cap = Number(appliedPromo.maxDiscount || 0);
+		if (cap > 0 && d > cap) { d = cap; }
+		return d;
 	}
+	// Final totals = pre-tax totals + GST on the payable amount (0 stays 0, so 100% promo is still free).
 	function totals() {
+		var t = preTaxTotals();
+		t.taxable = t.pay;
+		t.gst = Math.round(t.taxable * gstPercent) / 100;
+		t.pay = Math.round((t.taxable + t.gst) * 100) / 100;
+		return t;
+	}
+	function preTaxTotals() {
 		// Application-fee rules take priority over plan/tuition pricing when available.
 		// Promo discount is taken off the total; the server re-applies the same rule in create-order.
 		if (appFee && Number(appFee.total) > 0) {
 			var feeTotal = Number(appFee.total);
 			var feeDisc = Math.round(discountAmount(feeTotal) * 100) / 100;
-			feeDisc = Math.max(0, Math.min(feeDisc, feeTotal - 1));
+			feeDisc = Math.max(0, Math.min(feeDisc, feeTotal));
+			var feePay = Math.round((feeTotal - feeDisc) * 100) / 100;
+			// Below Rs 1 is treated as free (100% promo) — enrolled directly, no Razorpay.
+			if (feePay < 1) { feePay = 0; feeDisc = feeTotal; }
 			return {
 				enrollment: Number(appFee.application_fee || 0), // application fee (499 / 99)
 				tuition: Number(appFee.batch_fee || 0),          // batch fee (0 for first time)
 				disc: feeDisc,
-				pay: Math.round((feeTotal - feeDisc) * 100) / 100,
+				pay: feePay,
 				months: 1
 			};
 		}
@@ -120,9 +137,11 @@
 		document.getElementById('bp_enrollment_fee').textContent = money(t.enrollment);
 		document.getElementById('bp_disc_row').style.display = t.disc > 0 ? '' : 'none';
 		document.getElementById('bp_discount').textContent = '- ' + money(t.disc);
+		document.getElementById('bp_gst_pct').textContent = String(gstPercent);
+		document.getElementById('bp_gst').textContent = money(t.gst);
 		document.getElementById('bp_grand').textContent = money(t.pay);
 		document.getElementById('bp_payfor').textContent = money(t.pay);
-		document.getElementById('bp_pay').textContent = 'Make Payment';
+		document.getElementById('bp_pay').textContent = (appliedPromo && t.pay <= 0) ? 'Enroll Now' : 'Make Payment';
 		document.getElementById('bp_pay').disabled = !selected;
 	}
 	function renderPlans(list) {
@@ -181,6 +200,11 @@
 		if (!selected) { return; }
 		var t = totals();
 		document.getElementById('bp_msg').textContent = '';
+		// 100% promo: nothing to pay — enroll directly (server re-validates the promo).
+		if (appliedPromo && t.pay <= 0) {
+			freeEnroll();
+			return;
+		}
 		post(orderUrl, {
 			amount_in_rupees: t.pay,
 			promo_code: appliedPromo ? String(appliedPromo.code || '') : '',
@@ -226,7 +250,11 @@
 		var btn = document.getElementById('bp_pay');
 		btn.disabled = true;
 		btn.textContent = 'Enrolling...';
-		post(freeEnrollUrl, { batch_id: batchId }).then(function (v) {
+		post(freeEnrollUrl, {
+			batch_id: batchId,
+			promo_code: appliedPromo ? String(appliedPromo.code || '') : '',
+			plan_id: selected && selected.planId ? String(selected.planId) : ''
+		}).then(function (v) {
 			if (!ok(v.status)) {
 				document.getElementById('bp_msg').textContent = v.msg || 'Could not enroll.';
 				btn.disabled = false;
@@ -248,6 +276,7 @@
 		document.getElementById('bp_monthly_fee').textContent = 'Rs 0.00/mo';
 		document.getElementById('bp_subtotal_multi').textContent = money(0);
 		document.getElementById('bp_enrollment_fee').textContent = money(0);
+		document.getElementById('bp_gst_row').style.display = 'none';
 		document.getElementById('bp_grand').textContent = money(0);
 		document.getElementById('bp_payfor').textContent = money(0);
 		document.getElementById('bp_msg').textContent = 'This institute is free — no payment required.';

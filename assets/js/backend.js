@@ -1238,6 +1238,7 @@ $(document).on('click','.genrateMeetingId',function (){
         $('#promoDiscountType').val('PERCENT');
         $('#promoDiscountValue').val('').removeClass('error');
         $('#promoMaxUse').val('');
+        $('#promoMaxDiscount').val('').removeClass('error');
         $('#promoValidFrom').val('');
         $('#promoValidTo').val('');
         $('#promoPopupTitle').text(ltr_add_promo_code);
@@ -1252,6 +1253,7 @@ $(document).on('click','.genrateMeetingId',function (){
         $('#promoDiscountType').val($(this).attr('data-discount_type'));
         $('#promoDiscountValue').val($(this).attr('data-discount_value')).removeClass('error');
         $('#promoMaxUse').val($(this).attr('data-max_use'));
+        $('#promoMaxDiscount').val($(this).attr('data-max_discount') || '').removeClass('error');
         $('#promoValidFrom').val($(this).attr('data-valid_from'));
         $('#promoValidTo').val($(this).attr('data-valid_to'));
         $('#promoPopupTitle').text(ltr_edit ? ltr_edit : ltr_add_promo_code);
@@ -1267,6 +1269,7 @@ $(document).on('click','.genrateMeetingId',function (){
         var validFrom = $('#promoValidFrom').val();
         var validTo = $('#promoValidTo').val();
         var maxUse = $('#promoMaxUse').val().trim();
+        var maxDiscount = $('#promoMaxDiscount').val().trim();
 
         if (code == '') {
             toastr.error(ltr_all_field_required_msg);
@@ -1287,6 +1290,11 @@ $(document).on('click','.genrateMeetingId',function (){
             toastr.error(ltr_promo_invalid_dates);
             return false;
         }
+        if (maxDiscount != '' && (isNaN(maxDiscount) || parseFloat(maxDiscount) <= 0)) {
+            toastr.error(ltr_promo_invalid_max_discount);
+            $('#promoMaxDiscount').addClass('error').focus();
+            return false;
+        }
 
         $('.edu_preloader').css('background-color', 'rgba(255,255,255,0.80)').css('display', 'block');
         $.ajax({
@@ -1299,7 +1307,8 @@ $(document).on('click','.genrateMeetingId',function (){
                 'discount_value': dvalue,
                 'valid_from': validFrom,
                 'valid_to': validTo,
-                'max_use': maxUse
+                'max_use': maxUse,
+                'max_discount': maxDiscount
             },
             success: function(resp) {
                 resp = $.parseJSON(resp);

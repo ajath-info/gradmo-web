@@ -722,11 +722,45 @@ public function email_already_sent(
 			$value = isset($promo['discount_value']) ? (float) $promo['discount_value'] : 0.0;
 			$type = strtoupper(trim((string) (isset($promo['discount_type']) ? $promo['discount_type'] : '')));
 			$disc = ($type === 'PERCENT') ? round($subtotal * $value / 100, 2) : $value;
-			$disc = max(0.0, min($disc, $subtotal - 1.0));
+			// Optional cap: promo_codes.max_discount (rupees). NULL / 0 = no cap.
+			$cap = isset($promo['max_discount']) ? (float) $promo['max_discount'] : 0.0;
+			if ($cap > 0 && $disc > $cap) {
+				$disc = $cap;
+			}
+			$disc = max(0.0, min($disc, $subtotal));
+			$total = round($subtotal - $disc, 2);
+			// Razorpay cannot take an order below Rs 1, so a remainder under Rs 1 is treated as free.
+			if ($total < 1) {
+				$total = 0.0;
+				$disc = $subtotal;
+			}
 			$fee['discount'] = $disc;
-			$fee['total'] = round($subtotal - $disc, 2);
+			$fee['total'] = $total;
 			$fee['promo_code_id'] = (int) $promo['promo_code_id'];
 			$fee['promo_code'] = (string) $promo['code'];
+			return $fee;
+		}
+
+		/** GST rate (%) charged on batch payments. Change here if it ever differs. */
+		public function gst_percent()
+		{
+			return 18.0;
+		}
+
+		/**
+		 * Add GST on the payable amount (after any promo discount). Call AFTER apply_promo_to_fee().
+		 * Adds: taxable_amount, gst_percent, gst; total becomes taxable_amount + gst.
+		 * A 0 total (free institute / 100% promo) stays 0.
+		 */
+		public function apply_gst_to_fee(array $fee)
+		{
+			$taxable = isset($fee['total']) ? max(0.0, (float) $fee['total']) : 0.0;
+			$rate = $this->gst_percent();
+			$gst = round($taxable * $rate / 100, 2);
+			$fee['taxable_amount'] = $taxable;
+			$fee['gst_percent'] = $rate;
+			$fee['gst'] = $gst;
+			$fee['total'] = round($taxable + $gst, 2);
 			return $fee;
 		}
 

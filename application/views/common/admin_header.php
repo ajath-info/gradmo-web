@@ -235,6 +235,7 @@
         var ltr_save  ="<?php echo html_escape($this->common->languageTranslator('ltr_save')); ?>";
         var ltr_add_promo_code  ="<?php echo html_escape($this->common->languageTranslator('ltr_add_promo_code')); ?>";
         var ltr_all_field_required_msg  ="<?php echo html_escape($this->common->languageTranslator('ltr_all_field_required_msg')); ?>";
+        var ltr_promo_invalid_max_discount = "Please enter a valid max discount amount.";
         var ltr_promo_invalid_value  ="<?php echo html_escape($this->common->languageTranslator('ltr_promo_invalid_value')); ?>";
         var ltr_promo_invalid_dates  ="<?php echo html_escape($this->common->languageTranslator('ltr_promo_invalid_dates')); ?>";
         var ltr_promo_code_exists  ="<?php echo html_escape($this->common->languageTranslator('ltr_promo_code_exists')); ?>";

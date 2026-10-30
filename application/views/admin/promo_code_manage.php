@@ -84,6 +84,12 @@
 					</div>
 					<div class="col-lg-6 col-md-6 col-sm-12 col-12">
 						<div class="form-group">
+							<label><?php echo html_escape($this->common->languageTranslator('ltr_max_discount'));?></label>
+							<input type="number" step="0.01" min="0" id="promoMaxDiscount" class="form-control" placeholder="No limit" />
+						</div>
+					</div>
+					<div class="col-lg-6 col-md-6 col-sm-12 col-12">
+						<div class="form-group">
 							<label><?php echo html_escape($this->common->languageTranslator('ltr_max_use'));?></label>
 							<input type="number" min="0" id="promoMaxUse" class="form-control" placeholder="<?php echo html_escape($this->common->languageTranslator('ltr_max_use'));?>" />
 						</div>

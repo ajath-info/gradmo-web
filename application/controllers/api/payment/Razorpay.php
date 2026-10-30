@@ -472,9 +472,11 @@ class Razorpay extends MY_Controller
 					}
 					$fee_breakdown = $this->common->apply_promo_to_fee($fee_breakdown, $promo);
 				}
+				// 18% GST on the amount after discount.
+				$fee_breakdown = $this->common->apply_gst_to_fee($fee_breakdown);
 				$amount_paise = (int) round($fee_breakdown['total'] * 100);
 			}
-			// Free institute (fee 0): no order needed — tell the client to enroll directly.
+			// Fee 0 (free institute or 100% promo): no order needed — client enrolls via batch/free-enroll.
 			if (is_array($fee_breakdown) && $fee_breakdown['total'] <= 0) {
 				echo json_encode(array(
 					'status' => 'true',
@@ -508,6 +510,10 @@ class Razorpay extends MY_Controller
 			$notes['promo_code_id'] = (string) (int) $fee_breakdown['promo_code_id'];
 			$notes['discount'] = (string) $fee_breakdown['discount'];
 			$notes['subtotal'] = (string) $fee_breakdown['subtotal'];
+		}
+		if (is_array($fee_breakdown) && isset($fee_breakdown['gst'])) {
+			$notes['gst_percent'] = (string) $fee_breakdown['gst_percent'];
+			$notes['gst'] = (string) $fee_breakdown['gst'];
 		}
 
 		$resp = $this->razorpay_api->create_order($amount_paise, $currency, $receipt, $notes);

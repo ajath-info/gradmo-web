@@ -3457,6 +3457,10 @@ class Ajaxcall extends CI_Controller{
                 foreach($promo_data as $promo){
                     $type_label = ($promo['discount_type'] == 'PERCENT') ? $this->common->languageTranslator('ltr_percent') : $this->common->languageTranslator('ltr_flat');
                     $value_label = ($promo['discount_type'] == 'PERCENT') ? ($promo['discount_value'].' %') : $promo['discount_value'];
+                    $max_disc = isset($promo['max_discount']) ? trim((string)$promo['max_discount']) : '';
+                    if($max_disc !== '' && (float)$max_disc > 0){
+                        $value_label .= ' (max Rs '.$max_disc.')';
+                    }
                     $usage = (int)$promo['used_count'].' / '.((trim((string)$promo['max_use']) === '') ? '&#8734;' : (int)$promo['max_use']);
 
                     if($promo['status'] == 1){
@@ -3472,7 +3476,8 @@ class Ajaxcall extends CI_Controller{
                         .'data-discount_value="'.html_escape($promo['discount_value']).'" '
                         .'data-valid_from="'.html_escape($promo['valid_from']).'" '
                         .'data-valid_to="'.html_escape($promo['valid_to']).'" '
-                        .'data-max_use="'.html_escape($promo['max_use']).'"><i class="fa fa-edit"></i></a>'
+                        .'data-max_use="'.html_escape($promo['max_use']).'" '
+                        .'data-max_discount="'.html_escape($max_disc).'"><i class="fa fa-edit"></i></a>'
                         .'<a class="deletePromoCode btn_delete" title="Delete" data-id="'.$promo['promo_code_id'].'"><i class="fa fa-trash"></i></a></p>';
 
                     $dataarray[] = array(
@@ -3516,6 +3521,7 @@ class Ajaxcall extends CI_Controller{
             $valid_from    = trim((string)$this->input->post('valid_from',TRUE));
             $valid_to      = trim((string)$this->input->post('valid_to',TRUE));
             $max_use       = trim((string)$this->input->post('max_use',TRUE));
+            $max_discount  = trim((string)$this->input->post('max_discount',TRUE));
 
             // Server-side validation (the JS validates too; this is the authoritative guard).
             if($code === '' || $discount_type === '' || $discount_val === ''){
@@ -3529,6 +3535,9 @@ class Ajaxcall extends CI_Controller{
             }
             if($discount_type === 'PERCENT' && (float)$discount_val > 100){
                 echo json_encode(array('status'=>'0','msg'=>$this->common->languageTranslator('ltr_promo_invalid_value')),JSON_UNESCAPED_SLASHES); return;
+            }
+            if($max_discount !== '' && (!is_numeric($max_discount) || (float)$max_discount <= 0)){
+                echo json_encode(array('status'=>'0','msg'=>'Please enter a valid max discount amount.'),JSON_UNESCAPED_SLASHES); return;
             }
             if($valid_from !== '' && $valid_to !== '' && strtotime($valid_to) < strtotime($valid_from)){
                 echo json_encode(array('status'=>'0','msg'=>$this->common->languageTranslator('ltr_promo_invalid_dates')),JSON_UNESCAPED_SLASHES); return;
@@ -3548,6 +3557,10 @@ class Ajaxcall extends CI_Controller{
                 'valid_to'       => ($valid_to !== '') ? $valid_to : null,
                 'max_use'        => ($max_use !== '') ? (int)$max_use : null,
             );
+            // Max discount cap in rupees (column added by installer/alter_promo_codes_add_max_discount.sql).
+            if($this->db->field_exists('max_discount','promo_codes')){
+                $data_arr['max_discount'] = ($max_discount !== '') ? round((float)$max_discount, 2) : null;
+            }
             $data_arr = $this->security->xss_clean($data_arr);
 
             if($id !== ''){

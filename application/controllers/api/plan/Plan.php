@@ -39,6 +39,7 @@ class Plan extends MY_Controller
 			'discountValue' => isset($row['discount_value']) ? (float) $row['discount_value'] : 0.0,
 			'validFrom' => isset($row['valid_from']) ? $row['valid_from'] : '',
 			'validTo' => isset($row['valid_to']) ? $row['valid_to'] : '',
+			'maxDiscount' => (isset($row['max_discount']) && $row['max_discount'] !== '' && (float) $row['max_discount'] > 0) ? (float) $row['max_discount'] : null,
 			'maxUse' => array_key_exists('max_use', $row) && $row['max_use'] !== null && $row['max_use'] !== '' ? (int) $row['max_use'] : null,
 			'usedCount' => isset($row['used_count']) ? (int) $row['used_count'] : 0,
 			'status' => isset($row['status']) ? (int) $row['status'] : 0,
