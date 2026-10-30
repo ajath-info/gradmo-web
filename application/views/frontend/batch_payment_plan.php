@@ -306,6 +306,12 @@
 					bd = res[2].batch_details;
 				}
 			}
+			if (bd && truthy(bd.enrollmentClosed)) {
+				document.getElementById('bp_msg').textContent = 'This batch has expired. Enrollment is closed.';
+				document.getElementById('bp_pay').disabled = true;
+				document.getElementById('bp_pay').textContent = 'Batch Expired';
+				return;
+			}
 			if (bd && Object.prototype.hasOwnProperty.call(bd, 'canEnroll') && !truthy(bd.canEnroll)) {
 				document.getElementById('bp_msg').textContent = 'This batch is already paid/enrolled. You cannot pay again.';
 				document.getElementById('bp_pay').disabled = true;

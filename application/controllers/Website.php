@@ -1245,6 +1245,13 @@ class Website extends MY_Controller
 				return;
 			}
 
+			// Expired batch: enrollment is closed (free or promo alike).
+			$exp_row = $this->db_model->select_data('id,end_date,end_time', 'batches use index (id)', array('id' => $batch_id), 1);
+			if (! empty($exp_row[0]) && batch_is_expired($exp_row[0])) {
+				echo json_encode(array('status' => 'false', 'msg' => 'This batch has expired. Enrollment is closed.'));
+				return;
+			}
+
 			// Security: only allow free enrollment when the institute is actually free, or when a
 			// valid promo code (re-checked here on the server) makes the payable amount 0.
 			$promo_fee = null;

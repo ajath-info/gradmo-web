@@ -452,6 +452,14 @@ class Razorpay extends MY_Controller
 			$req_batch_id = (int) $data['notes']['batch_id']; // website sends batch_id inside notes
 		}
 		if ($ut === 'student' && $req_batch_id > 0) {
+			$exp_row = $this->db_model->select_data('id,end_date,end_time', 'batches use index (id)', array('id' => $req_batch_id), 1);
+			if (!empty($exp_row[0]) && batch_is_expired($exp_row[0])) {
+				echo json_encode(array(
+					'status' => 'false',
+					'msg' => 'This batch has expired. Enrollment is closed.',
+				), JSON_UNESCAPED_SLASHES);
+				return;
+			}
 			$fee_breakdown = $this->common->compute_application_fee((int) $payload['uid'], $req_batch_id);
 			if (is_array($fee_breakdown) && $fee_breakdown['total'] > 0) {
 				// Optional promo code (promo_code / promoCode) — validated and applied on the server.

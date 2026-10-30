@@ -270,9 +270,19 @@
 			canEnrollForBatch = canEnroll;
 			// Free institute (requiresPayment === false): enroll without paying.
 			var freeInstitute = (b.requiresPayment === false) || truthy(b.isFreeInstitute);
-			document.getElementById('bd_next_btn').textContent = canEnroll ? (freeInstitute ? 'Enroll Now' : 'Pay Now') : 'Continue';
-			document.getElementById('bd_body').classList.toggle('bd-locked', canEnroll);
-			document.getElementById('bd_lock_hint').classList.toggle('inst-detail-hidden', !canEnroll);
+			// Expired batch the student hasn't joined: keep it locked, no Pay Now.
+			var enrollmentClosed = truthy(b.enrollmentClosed);
+			var nextBtn = document.getElementById('bd_next_btn');
+			var lockHint = document.getElementById('bd_lock_hint');
+			nextBtn.textContent = enrollmentClosed ? 'Batch Expired' : (canEnroll ? (freeInstitute ? 'Enroll Now' : 'Pay Now') : 'Continue');
+			nextBtn.disabled = enrollmentClosed;
+			nextBtn.style.opacity = enrollmentClosed ? '0.6' : '';
+			nextBtn.style.cursor = enrollmentClosed ? 'not-allowed' : '';
+			document.getElementById('bd_body').classList.toggle('bd-locked', canEnroll || enrollmentClosed);
+			lockHint.textContent = enrollmentClosed
+				? 'This batch has expired. Enrollment is closed.'
+				: 'Preview is locked. Complete payment to unlock batch details.';
+			lockHint.classList.toggle('inst-detail-hidden', !(canEnroll || enrollmentClosed));
 			if (canManageBatchZoom) {
 				refreshZoomPanel();
 			}
@@ -313,6 +323,7 @@
 			});
 		}
 		document.getElementById('bd_next_btn').addEventListener('click', function () {
+			if (this.disabled) { return; }
 			if (canEnrollForBatch) {
 				window.location.href = paymentPlanUrl + '?batch_id=' + encodeURIComponent(batchId);
 				return;

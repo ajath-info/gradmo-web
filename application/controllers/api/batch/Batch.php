@@ -893,6 +893,15 @@ class Batch extends MY_Controller
 				$can_enroll = ((int) $enrollment[0]['status'] !== 1);
 			}
 		}
+		// Expired batch (end_date + end_time passed): nobody new can pay / enroll.
+		// enrollmentClosed = the student is not enrolled AND can't enroll because of expiry,
+		// so clients keep the preview locked and show "Batch Expired" instead of Pay Now.
+		$is_expired = batch_is_expired($b);
+		$enrollment_closed = false;
+		if ($is_expired && $can_enroll) {
+			$can_enroll = false;
+			$enrollment_closed = true;
+		}
 
 		$data = array(
 			'batch_id' => $batch_id,
@@ -923,6 +932,8 @@ class Batch extends MY_Controller
 				'added_by' => isset($enrollment[0]['added_by']) ? $enrollment[0]['added_by'] : ''
 			),
 			'canEnroll' => $can_enroll,
+			'isExpired' => $is_expired,
+			'enrollmentClosed' => $enrollment_closed,
 			'requiresPayment' => $requires_payment,
 			'isFreeInstitute' => $free_institute,
 			'modules' => array(
