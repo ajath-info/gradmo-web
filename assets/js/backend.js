@@ -585,6 +585,13 @@ $(document).on('click','.genrateMeetingId',function (){
                 toastr.error(ltr_batch_price_msg);
                 return false;
             }
+            // Offer price is the final selling price, so it must be lower than the batch price.
+            if (batchType == 2 && batchOfferPrice != '' && batchOfferPrice != undefined
+                && parseFloat(batchOfferPrice) >= parseFloat(batchPrice)) {
+                $('#batchOfferPrice').addClass('error').focus();
+                toastr.error(ltr_offer_price_msg);
+                return false;
+            }
 
             if (batchPrice != '' && batchPrice != undefined) {
                 var amount = batchPrice;

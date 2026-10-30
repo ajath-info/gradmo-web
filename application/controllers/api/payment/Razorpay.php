@@ -454,6 +454,24 @@ class Razorpay extends MY_Controller
 		if ($ut === 'student' && $req_batch_id > 0) {
 			$fee_breakdown = $this->common->compute_application_fee((int) $payload['uid'], $req_batch_id);
 			if (is_array($fee_breakdown) && $fee_breakdown['total'] > 0) {
+				// Optional promo code (promo_code / promoCode) — validated and applied on the server.
+				$promo_in = '';
+				if (isset($data['promo_code'])) {
+					$promo_in = trim((string) $data['promo_code']);
+				} elseif (isset($data['promoCode'])) {
+					$promo_in = trim((string) $data['promoCode']);
+				}
+				if ($promo_in !== '') {
+					$promo = $this->common->find_valid_promo_code($promo_in);
+					if (!$promo) {
+						echo json_encode(array(
+							'status' => 'false',
+							'msg' => 'Invalid or expired promo code.',
+						), JSON_UNESCAPED_SLASHES);
+						return;
+					}
+					$fee_breakdown = $this->common->apply_promo_to_fee($fee_breakdown, $promo);
+				}
 				$amount_paise = (int) round($fee_breakdown['total'] * 100);
 			}
 			// Free institute (fee 0): no order needed — tell the client to enroll directly.
@@ -485,6 +503,12 @@ class Razorpay extends MY_Controller
 		}
 		$notes['uid'] = (string) $payload['uid'];
 		$notes['ut'] = (string) $payload['ut'];
+		if (is_array($fee_breakdown) && !empty($fee_breakdown['promo_code_id'])) {
+			// Read back in verify_payment (via fetch_order) to record the promo on the payment row.
+			$notes['promo_code_id'] = (string) (int) $fee_breakdown['promo_code_id'];
+			$notes['discount'] = (string) $fee_breakdown['discount'];
+			$notes['subtotal'] = (string) $fee_breakdown['subtotal'];
+		}
 
 		$resp = $this->razorpay_api->create_order($amount_paise, $currency, $receipt, $notes);
 		if (!$resp['ok'] || !is_array($resp['body'])) {
@@ -642,9 +666,30 @@ class Razorpay extends MY_Controller
 								'admin_id' => $admin_id,
 							);
 						}
+						// Promo applied at create-order time is carried in the order notes.
+						$promo_id = 0;
+						$ord = $this->razorpay_api->fetch_order($order_id);
+						if ($ord['ok'] && is_array($ord['body']) && !empty($ord['body']['notes']['promo_code_id'])) {
+							$on = $ord['body']['notes'];
+							$promo_id = (int) $on['promo_code_id'];
+							if (array_key_exists('promo_code_id', $hist_row)) {
+								$hist_row['promo_code_id'] = $promo_id;
+							}
+							if (array_key_exists('discount_amount', $hist_row) && isset($on['discount'])) {
+								$hist_row['discount_amount'] = (float) $on['discount'];
+							}
+							if (array_key_exists('base_amount', $hist_row) && isset($on['subtotal'])) {
+								$hist_row['base_amount'] = (float) $on['subtotal'];
+							}
+						}
 						$hist_row = $this->security->xss_clean($hist_row);
 						$new_hist_id = (int) $this->db_model->insert_data('student_payment_history', $hist_row);
 						$recorded = ($new_hist_id > 0);
+						if ($recorded && $promo_id > 0 && $this->db->table_exists('promo_codes')) {
+							$this->db->set('used_count', 'COALESCE(used_count, 0) + 1', false)
+								->where('promo_code_id', $promo_id)
+								->update('promo_codes');
+						}
 					}
 				}
 				if ($recorded || $history_dup) {

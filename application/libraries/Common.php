@@ -625,8 +625,10 @@ public function email_already_sent(
 			$institute_id = isset($batch[0]['institute_id']) ? (int) $batch[0]['institute_id'] : 0;
 			$offer = isset($batch[0]['batch_offer_price']) ? (float) $batch[0]['batch_offer_price'] : 0.0;
 			$price = isset($batch[0]['batch_price']) ? (float) $batch[0]['batch_price'] : 0.0;
-			// Batch fee = batch_price - batch_offer_price (offer price is a discount off the regular price).
-			$batch_fee = max(0.0, $price - $offer);
+			// Batch fee = offer price (final selling price) when set and below the regular price,
+			// otherwise the regular batch price.
+			$batch_fee = ($offer > 0 && ($price <= 0 || $offer < $price)) ? $offer : $price;
+			$batch_fee = max(0.0, $batch_fee);
 
 			// Free institute (users.paid = '0'): batch fee AND application/subscription fee are 0.
 			if ($institute_id > 0 && $this->CI->db->field_exists('paid', 'users')) {
@@ -664,6 +666,68 @@ public function email_already_sent(
 				return array('scenario' => 'same_institute', 'application_fee' => $FEE_SAME_INSTITUTE, 'batch_fee' => $batch_fee, 'total' => $FEE_SAME_INSTITUTE + $batch_fee, 'institute_id' => $institute_id);
 			}
 			return array('scenario' => 'new_institute', 'application_fee' => $FEE_NEW_INSTITUTE, 'batch_fee' => $batch_fee, 'total' => $FEE_NEW_INSTITUTE + $batch_fee, 'institute_id' => $institute_id);
+		}
+
+		/**
+		 * Normalise a promo code for comparison: uppercase, all whitespace removed
+		 * ("October 2" and "OCTOBER2" match the same code).
+		 */
+		public function normalize_promo_code($code)
+		{
+			return strtoupper(preg_replace('/\s+/', '', (string) $code));
+		}
+
+		/**
+		 * Find a currently usable promo code (status = 1, within valid_from..valid_to, used_count < max_use).
+		 *
+		 * @return array|null promo_codes row
+		 */
+		public function find_valid_promo_code($code)
+		{
+			$norm = $this->normalize_promo_code($code);
+			if ($norm === '' || !$this->CI->db->table_exists('promo_codes')) {
+				return null;
+			}
+			$today = date('Y-m-d');
+			$this->CI->db->reset_query();
+			$this->CI->db->from('promo_codes')
+				->where('status', 1)
+				->where('valid_from <=', $today)
+				->where('valid_to >=', $today)
+				->where("UPPER(REPLACE(REPLACE(code, ' ', ''), '\t', '')) = " . $this->CI->db->escape($norm), null, false)
+				->group_start()
+					->where('max_use IS NULL', null, false)
+					->or_where('used_count < max_use', null, false)
+				->group_end()
+				->limit(1);
+			$row = $this->CI->db->get()->row_array();
+			return !empty($row) ? $row : null;
+		}
+
+		/**
+		 * Apply a promo row to a compute_application_fee() breakdown. The discount is taken off the
+		 * total (application fee + batch fee); the payable amount never drops below Rs 1.
+		 * Adds: subtotal, discount, promo_code_id, promo_code.
+		 */
+		public function apply_promo_to_fee(array $fee, $promo)
+		{
+			$subtotal = isset($fee['total']) ? (float) $fee['total'] : 0.0;
+			$fee['subtotal'] = $subtotal;
+			$fee['discount'] = 0.0;
+			$fee['promo_code_id'] = 0;
+			$fee['promo_code'] = '';
+			if (!is_array($promo) || $subtotal <= 0) {
+				return $fee;
+			}
+			$value = isset($promo['discount_value']) ? (float) $promo['discount_value'] : 0.0;
+			$type = strtoupper(trim((string) (isset($promo['discount_type']) ? $promo['discount_type'] : '')));
+			$disc = ($type === 'PERCENT') ? round($subtotal * $value / 100, 2) : $value;
+			$disc = max(0.0, min($disc, $subtotal - 1.0));
+			$fee['discount'] = $disc;
+			$fee['total'] = round($subtotal - $disc, 2);
+			$fee['promo_code_id'] = (int) $promo['promo_code_id'];
+			$fee['promo_code'] = (string) $promo['code'];
+			return $fee;
 		}
 
 	

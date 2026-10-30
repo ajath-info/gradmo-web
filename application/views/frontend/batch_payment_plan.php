@@ -18,6 +18,7 @@
 			<div class="bp-row"><span>Batch Enrollment Fee</span><strong id="bp_enrollment_fee">Rs 499</strong></div>
 			<div class="bp-row bp-row-mini"><span>(One time in 1 year)</span><span></span></div>
 			<div class="bp-break"></div>
+			<div class="bp-row" id="bp_disc_row" style="display:none"><span>Promo Discount</span><strong id="bp_discount">- Rs 0</strong></div>
 			<div class="bp-row bp-grand"><span>Grand Total</span><strong id="bp_grand">Rs 0</strong></div>
 			<div class="bp-row bp-row-mini"><span>(Incl. of all Taxes)</span><span></span></div>
 			<div class="bp-code-wrap">
@@ -89,12 +90,16 @@
 	}
 	function totals() {
 		// Application-fee rules take priority over plan/tuition pricing when available.
+		// Promo discount is taken off the total; the server re-applies the same rule in create-order.
 		if (appFee && Number(appFee.total) > 0) {
+			var feeTotal = Number(appFee.total);
+			var feeDisc = Math.round(discountAmount(feeTotal) * 100) / 100;
+			feeDisc = Math.max(0, Math.min(feeDisc, feeTotal - 1));
 			return {
 				enrollment: Number(appFee.application_fee || 0), // application fee (499 / 99)
 				tuition: Number(appFee.batch_fee || 0),          // batch fee (0 for first time)
-				disc: 0,
-				pay: Number(appFee.total),
+				disc: feeDisc,
+				pay: Math.round((feeTotal - feeDisc) * 100) / 100,
 				months: 1
 			};
 		}
@@ -113,6 +118,8 @@
 		document.getElementById('bp_months').textContent = t.months;
 		document.getElementById('bp_subtotal_multi').textContent = money(t.tuition);
 		document.getElementById('bp_enrollment_fee').textContent = money(t.enrollment);
+		document.getElementById('bp_disc_row').style.display = t.disc > 0 ? '' : 'none';
+		document.getElementById('bp_discount').textContent = '- ' + money(t.disc);
 		document.getElementById('bp_grand').textContent = money(t.pay);
 		document.getElementById('bp_payfor').textContent = money(t.pay);
 		document.getElementById('bp_pay').textContent = 'Make Payment';
@@ -153,10 +160,12 @@
 		return { chosen: chosen || null, requiredType: requiredType };
 	}
 	function applyPromo() {
-		var code = (document.getElementById('bp_code').value || '').trim().toUpperCase();
+		// Compare without spaces / case so "October 2" and "OCTOBER2" both match.
+		function norm(s) { return String(s || '').replace(/\s+/g, '').toUpperCase(); }
+		var code = norm(document.getElementById('bp_code').value);
 		appliedPromo = null;
 		if (code) {
-			appliedPromo = promos.find(function (x) { return String(x.code || '').toUpperCase() === code; }) || null;
+			appliedPromo = promos.find(function (x) { return norm(x.code) === code; }) || null;
 			if (!appliedPromo) {
 				document.getElementById('bp_msg').textContent = 'Invalid promo code.';
 				paintSummary();
@@ -174,6 +183,7 @@
 		document.getElementById('bp_msg').textContent = '';
 		post(orderUrl, {
 			amount_in_rupees: t.pay,
+			promo_code: appliedPromo ? String(appliedPromo.code || '') : '',
 			currency: 'INR',
 			notes: { batch_id: String(batchId), plan_id: String(selected.planId || '') }
 		}).then(function (j) {
@@ -201,7 +211,7 @@
 						batch_id: batchId
 					}).then(function (v) {
 						if (!ok(v.status)) { document.getElementById('bp_msg').textContent = v.msg || 'Verification failed.'; return; }
-						window.location.href = successUrl + '?batch_id=' + encodeURIComponent(batchId) + '&payment_id=' + encodeURIComponent(resp.razorpay_payment_id) + '&order_id=' + encodeURIComponent(resp.razorpay_order_id) + '&amount=' + encodeURIComponent(t.pay.toFixed(2));
+						window.location.href = successUrl + '?batch_id=' + encodeURIComponent(batchId) + '&payment_id=' + encodeURIComponent(resp.razorpay_payment_id) + '&order_id=' + encodeURIComponent(resp.razorpay_order_id) + '&amount=' + encodeURIComponent(((Number(order.amount) || t.pay * 100) / 100).toFixed(2));
 					}).catch(function () { document.getElementById('bp_msg').textContent = 'Verification network error.'; });
 				}
 			});
@@ -275,8 +285,9 @@
 			}
 			var offer = Number(bd.batch_offer_price || 0);
 			var regular = Number(bd.batch_price || 0);
-			// Batch fee = batch_price - batch_offer_price (offer price is a discount off the regular price).
-			monthlyTuition = Math.max(0, regular - offer);
+			// Batch fee = offer price (final selling price) when set and below the regular price,
+			// otherwise the regular batch price. Same rule as Common::compute_application_fee().
+			monthlyTuition = Math.max(0, (offer > 0 && (regular <= 0 || offer < regular)) ? offer : regular);
 			var plans = (res[0].data && res[0].data.plans) ? res[0].data.plans : [];
 			var payRows = (ok(res[3].status) && res[3].paymentData) ? res[3].paymentData : [];
 			var decision = choosePlanByHistory(plans, payRows);
