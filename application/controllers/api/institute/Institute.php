@@ -619,6 +619,13 @@ class Institute extends MY_Controller
 			$review_data = $this->fetch_institute_approved_reviews_for_api($id, array('reviews_limit' => $reviews_limit));
 		}
 
+		// batch_image comes from the DB as a bare filename; return the full URL (same as other batch APIs).
+		foreach ($batches as $bi => $brow) {
+			if (is_array($brow) && array_key_exists('batch_image', $brow)) {
+				$batches[$bi]['batch_image'] = batch_image_url($brow['batch_image']);
+			}
+		}
+
 		echo json_encode(array(
 			'status' => 'true',
 			'institute' => $base,
