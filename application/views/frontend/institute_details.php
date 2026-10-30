@@ -93,8 +93,17 @@
 		var batchListBase = '<?php echo rtrim(base_url(), '/'); ?>/batch';
 		var href = bid ? (batchListBase + '/details?batch_id=' + encodeURIComponent(bid)) : (batchListBase + '/list');
 		var cls = 'inst-batch-card' + (extraHidden ? ' inst-b-extra inst-detail-hidden' : '');
+		// batch_image is a full URL from api/institute/details; fall back to the icon if missing or broken.
+		var imgUrl = String(b.batchImage || b.batch_image || '').trim();
+		var iconStyle = 'padding:12px;color:#f5a623;' + (imgUrl ? 'display:none;' : '');
+		var icon = '<i class="fas fa-layer-group" style="' + iconStyle + '"></i>';
+		// esc() does not escape quotes, so encode them for the src/alt attributes.
+		var attr = function (s) { return esc(s).replace(/"/g, '&quot;'); };
+		var media = imgUrl
+			? '<img src="' + attr(imgUrl) + '" alt="' + attr(title) + '" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'\';">' + icon
+			: icon;
 		return '<a class="' + cls + '" href="' + esc(href) + '">' +
-			'<div class="inst-mini-logo"><i class="fas fa-layer-group" style="padding:12px;color:#f5a623;"></i></div>' +
+			'<div class="inst-mini-logo">' + media + '</div>' +
 			'<div class="inst-card-body">' +
 			'<p class="inst-card-title-sm">' + esc(title) + '</p>' +
 			(sub ? '<p class="inst-card-sub">' + esc(sub) + '</p>' : '') +
