@@ -513,11 +513,15 @@ class Razorpay extends MY_Controller
 		}
 		$notes['uid'] = (string) $payload['uid'];
 		$notes['ut'] = (string) $payload['ut'];
-		if (is_array($fee_breakdown) && !empty($fee_breakdown['promo_code_id'])) {
-			// Read back in verify_payment (via fetch_order) to record the promo on the payment row.
-			$notes['promo_code_id'] = (string) (int) $fee_breakdown['promo_code_id'];
-			$notes['discount'] = (string) $fee_breakdown['discount'];
-			$notes['subtotal'] = (string) $fee_breakdown['subtotal'];
+		if (is_array($fee_breakdown)) {
+			// Read back in verify_payment (via fetch_order) to record the breakdown on the payment row
+			// (used by the invoice: batch fee + application fee, discount, promo).
+			$notes['subtotal'] = (string) (isset($fee_breakdown['subtotal']) ? $fee_breakdown['subtotal'] : (isset($fee_breakdown['taxable_amount']) ? $fee_breakdown['taxable_amount'] : $fee_breakdown['total']));
+			$notes['batch_fee'] = (string) (isset($fee_breakdown['batch_fee']) ? $fee_breakdown['batch_fee'] : 0);
+			$notes['discount'] = (string) (isset($fee_breakdown['discount']) ? $fee_breakdown['discount'] : 0);
+			if (!empty($fee_breakdown['promo_code_id'])) {
+				$notes['promo_code_id'] = (string) (int) $fee_breakdown['promo_code_id'];
+			}
 		}
 		if (is_array($fee_breakdown) && isset($fee_breakdown['gst'])) {
 			$notes['gst_percent'] = (string) $fee_breakdown['gst_percent'];
@@ -680,21 +684,28 @@ class Razorpay extends MY_Controller
 								'admin_id' => $admin_id,
 							);
 						}
-						// Promo applied at create-order time is carried in the order notes.
+						// Exact amount paid incl. GST (the int `amount` column drops paise).
+						if (array_key_exists('total_amount', $hist_row) && $amount_paise > 0) {
+							$hist_row['total_amount'] = round($amount_paise / 100, 2);
+						}
+						// Fee breakdown / promo applied at create-order time is carried in the order notes.
 						$promo_id = 0;
 						$ord = $this->razorpay_api->fetch_order($order_id);
-						if ($ord['ok'] && is_array($ord['body']) && !empty($ord['body']['notes']['promo_code_id'])) {
-							$on = $ord['body']['notes'];
+						$on = ($ord['ok'] && is_array($ord['body']) && !empty($ord['body']['notes']) && is_array($ord['body']['notes'])) ? $ord['body']['notes'] : array();
+						if (!empty($on['promo_code_id'])) {
 							$promo_id = (int) $on['promo_code_id'];
 							if (array_key_exists('promo_code_id', $hist_row)) {
 								$hist_row['promo_code_id'] = $promo_id;
 							}
-							if (array_key_exists('discount_amount', $hist_row) && isset($on['discount'])) {
-								$hist_row['discount_amount'] = (float) $on['discount'];
-							}
-							if (array_key_exists('base_amount', $hist_row) && isset($on['subtotal'])) {
-								$hist_row['base_amount'] = (float) $on['subtotal'];
-							}
+						}
+						if (array_key_exists('discount_amount', $hist_row) && isset($on['discount'])) {
+							$hist_row['discount_amount'] = (float) $on['discount'];
+						}
+						if (array_key_exists('base_amount', $hist_row) && isset($on['subtotal'])) {
+							$hist_row['base_amount'] = (float) $on['subtotal'];
+						}
+						if (array_key_exists('batch_fee', $hist_row) && isset($on['batch_fee'])) {
+							$hist_row['batch_fee'] = (float) $on['batch_fee'];
 						}
 						$hist_row = $this->security->xss_clean($hist_row);
 						$new_hist_id = (int) $this->db_model->insert_data('student_payment_history', $hist_row);

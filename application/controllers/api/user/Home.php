@@ -3844,6 +3844,14 @@ public function otherBatchData($data){
 				$batchData = $this->db_model->select_data('*', 'batches use index (id)', array('id' => $value['batchId']), 1);
 
 				$payData[$key]['batchName'] = !empty($batchData) ? $batchData[0]['batch_name'] : '';
+				// Invoice: number + PDF endpoint (api/user/payment-invoice, send payment_id = id with the token).
+				$inv_pid = isset($value['id']) ? (int) $value['id'] : 0;
+				if ($inv_pid > 0) {
+					$this->load->library('payment_invoice');
+					$inv_row = array('id' => $inv_pid, 'create_at' => isset($value['createAt']) ? $value['createAt'] : '');
+					$payData[$key]['invoiceNo'] = $this->payment_invoice->invoice_number($inv_row);
+					$payData[$key]['invoiceApi'] = site_url('api/user/payment-invoice') . '?payment_id=' . $inv_pid;
+				}
 				$payData[$key]['startDate'] = !empty($batchData) ? $batchData[0]['start_date'] : '';
 				$payData[$key]['endDate'] = !empty($batchData) ? $batchData[0]['end_date'] : '';
 				$payData[$key]['startTime'] = !empty($batchData) ? $batchData[0]['start_time'] : '';
@@ -3893,6 +3901,37 @@ public function otherBatchData($data){
 	function paymentHistory()
 	{
 		$this->get_payment_history();
+	}
+
+	/**
+	 * GET/POST api/user/payment-invoice  (student token: Authorization header or access_token param)
+	 * Params: payment_id (student_payment_history.id from payment-history), optional download=1.
+	 * Returns the invoice as an HTML page with a "Download PDF" button (open it in a browser /
+	 * WebView); download=1 saves the PDF automatically on load. JSON error when not found.
+	 */
+	function paymentInvoice()
+	{
+		$from_body = json_decode(file_get_contents('php://input'), true);
+		if (!is_array($from_body)) {
+			$from_body = array();
+		}
+		$data = array_merge($_REQUEST, $from_body);
+		$payload = $this->require_auth_payload(array('student'), $from_body);
+		if ($payload === false) {
+			return;
+		}
+		$payment_id = isset($data['payment_id']) ? (int) $data['payment_id'] : (isset($data['paymentId']) ? (int) $data['paymentId'] : (isset($data['id']) ? (int) $data['id'] : 0));
+		$this->load->library('payment_invoice');
+		$inv = $payment_id > 0 ? $this->payment_invoice->load($payment_id, (int) $payload['uid']) : null;
+		if (!$inv) {
+			echo json_encode(array('status' => 'false', 'msg' => 'Invoice not found.'), JSON_UNESCAPED_SLASHES);
+			return;
+		}
+		header('Content-Type: text/html; charset=UTF-8');
+		echo $this->payment_invoice->html($inv, false, array(
+			'download' => true,
+			'autodownload' => !empty($data['download']),
+		));
 	}
     
     function convertCurrency($amount,$from_currency,$to_currency){

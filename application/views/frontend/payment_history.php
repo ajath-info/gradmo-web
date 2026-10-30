@@ -22,6 +22,7 @@
 								<th>Transaction</th>
 								<th>Amount</th>
 								<th>Date</th>
+								<th>Invoice</th>
 							</tr>
 						</thead>
 						<tbody id="pay_hist_rows"></tbody>
@@ -31,10 +32,17 @@
 		</div>
 	</div>
 </section>
+<style>
+	.pay-inv-btn { display: inline-block; padding: 4px 10px; margin: 2px 4px 2px 0; border: 1px solid #2350ff; border-radius: 6px; color: #2350ff; font-size: 12px; font-weight: 600; text-decoration: none; }
+	.pay-inv-btn:hover { background: #eef2ff; color: #2350ff; text-decoration: none; }
+	.pay-inv-btn--dl { background: #2350ff; color: #fff; }
+	.pay-inv-btn--dl:hover { background: #1a3fd6; color: #fff; }
+</style>
 <script>
 (function () {
 	var url = <?php echo json_encode(isset($payment_history_data_url) ? $payment_history_data_url : ''); ?>;
 	var accessToken = <?php echo json_encode(isset($api_access_token) ? $api_access_token : ''); ?>;
+	var invoiceBase = <?php echo json_encode(site_url('payment-history/invoice')); ?>;
 	function ok(s) { return s === true || s === 'true' || s === 1 || s === '1'; }
 	function esc(s) {
 		var d = document.createElement('div');
@@ -60,7 +68,7 @@
 			var rows = j.paymentData || [];
 			if (!rows.length) {
 				var emptyText = ok(j.status) ? (j.msg || 'No records.') : (j.msg || 'Could not load payments.');
-				tb.innerHTML = '<tr><td colspan="4" class="text-muted">' + esc(emptyText) + '</td></tr>';
+				tb.innerHTML = '<tr><td colspan="5" class="text-muted">' + esc(emptyText) + '</td></tr>';
 				return;
 			}
 			rows.forEach(function (p) {
@@ -69,7 +77,11 @@
 					'<td>' + esc(p.batchName || ('#' + (p.batchId || p.batch_id || ''))) + '</td>' +
 					'<td>' + esc(p.transactionId || p.transaction_id || '') + '</td>' +
 					'<td>' + esc(p.amount != null ? String(p.amount) : '') + '</td>' +
-					'<td>' + esc((p.createAt || p.create_at || '').toString().slice(0, 19)) + '</td>';
+					'<td>' + esc((p.createAt || p.create_at || '').toString().slice(0, 19)) + '</td>' +
+					'<td class="text-nowrap">' + (p.id
+						? '<a class="pay-inv-btn" href="' + esc(invoiceBase + '/' + encodeURIComponent(p.id)) + '" target="_blank" rel="noopener"><i class="fas fa-file-invoice"></i> View</a>' +
+						  '<a class="pay-inv-btn pay-inv-btn--dl" href="' + esc(invoiceBase + '/' + encodeURIComponent(p.id) + '/download') + '" target="_blank" rel="noopener"><i class="fas fa-download"></i> PDF</a>'
+						: '') + '</td>';
 				tb.appendChild(tr);
 			});
 		}).catch(function () {

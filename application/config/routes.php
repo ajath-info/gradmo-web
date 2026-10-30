@@ -252,6 +252,8 @@ $route['change-password-submit'] = 'website/change_password_submit';
 $route['delete-account-submit'] = 'website/delete_account_submit';
 $route['payment-history'] = 'website/payment_history';
 $route['payment-history-data'] = 'website/payment_history_data';
+$route['payment-history/invoice/(:num)'] = 'website/payment_invoice/$1';
+$route['payment-history/invoice/(:num)/download'] = 'website/payment_invoice_download/$1';
 $route['batch/list'] = 'website/batch_list';
 $route['batch/list-data'] = 'website/batch_list_data';
 $route['batch/mylist'] = 'website/batch_list';
@@ -347,6 +349,7 @@ $route['api/user/update-password'] = 'api/user/home/update_password';
 $route['api/user/change-password'] = 'api/user/home/change_password';
 $route['api/user/delete-account'] = 'api/user/home/deleteAccount';
 $route['api/user/payment-history'] = 'api/user/home/paymentHistory';
+$route['api/user/payment-invoice'] = 'api/user/home/paymentInvoice';
 
 
 

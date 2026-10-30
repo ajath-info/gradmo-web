@@ -380,6 +380,56 @@ class Website extends MY_Controller
 			$this->render_frontend_layout('frontend/payment_history', $data);
 		}
 
+		/** Logged-in student's id, or 0 when the session is not a student. */
+		private function website_invoice_student_id()
+		{
+			if (! isset($this->session->userdata['role']) || $this->website_session_access_token() === '') {
+				return 0;
+			}
+			return (string) $this->session->userdata('role') === 'student' ? (int) $this->session->userdata('uid') : 0;
+		}
+
+		/** GET payment-history/invoice/{id} — on-screen invoice with Print / Download PDF. */
+		public function payment_invoice($payment_id = 0)
+		{
+			$student_id = $this->website_invoice_student_id();
+			if ($student_id < 1) {
+				redirect(base_url('login'));
+				return;
+			}
+			$this->load->library('payment_invoice');
+			$inv = $this->payment_invoice->load((int) $payment_id, $student_id);
+			if (! $inv) {
+				show_404();
+				return;
+			}
+			$this->output->set_output($this->payment_invoice->html($inv, false, array(
+				'back' => site_url('payment-history'),
+				'download' => true,
+			)));
+		}
+
+		/** GET payment-history/invoice/{id}/download — same page, saves the PDF automatically on load. */
+		public function payment_invoice_download($payment_id = 0)
+		{
+			$student_id = $this->website_invoice_student_id();
+			if ($student_id < 1) {
+				redirect(base_url('login'));
+				return;
+			}
+			$this->load->library('payment_invoice');
+			$inv = $this->payment_invoice->load((int) $payment_id, $student_id);
+			if (! $inv) {
+				show_404();
+				return;
+			}
+			$this->output->set_output($this->payment_invoice->html($inv, false, array(
+				'back' => site_url('payment-history'),
+				'download' => true,
+				'autodownload' => true,
+			)));
+		}
+
 		public function payment_history_data()
 		{
 			$in = $this->website_require_ajax_json();
