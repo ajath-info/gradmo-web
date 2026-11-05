@@ -114,10 +114,10 @@
 			if (feePay < 1) { feePay = 0; feeDisc = feeTotal; }
 			return {
 				enrollment: Number(appFee.application_fee || 0), // application fee (499 / 99)
-				tuition: Number(appFee.batch_fee || 0),          // batch fee (0 for first time)
+				tuition: Number(appFee.batch_fee || 0),          // monthly fee x months (0 for first time)
 				disc: feeDisc,
 				pay: feePay,
-				months: 1
+				months: Number(appFee.months || 1)                // plan months from the server (Yearly = 12)
 			};
 		}
 		var months = planMonths();
@@ -131,7 +131,8 @@
 	}
 	function paintSummary() {
 		var t = totals();
-		document.getElementById('bp_monthly_fee').textContent = money(monthlyTuition) + '/mo';
+		var monthly = (appFee && appFee.monthly_fee != null) ? Number(appFee.monthly_fee) : monthlyTuition;
+		document.getElementById('bp_monthly_fee').textContent = money(monthly) + '/mo';
 		document.getElementById('bp_months').textContent = t.months;
 		document.getElementById('bp_subtotal_multi').textContent = money(t.tuition);
 		document.getElementById('bp_enrollment_fee').textContent = money(t.enrollment);

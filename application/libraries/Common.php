@@ -609,7 +609,9 @@ public function email_already_sent(
 		 * "institute" = batches.institute_id; "already enrolled" = any student_batchs row at that
 		 * institute (paid online, admin-added, or free) for a batch OTHER than the one being bought.
 		 *
-		 * @return array{scenario:string,application_fee:float,batch_fee:float,total:float,institute_id:int}|null
+		 * The batch price is MONTHLY: batch_fee = monthly fee x plan months (Yearly Plan 365 days = 12).
+		 *
+		 * @return array{scenario:string,application_fee:float,batch_fee:float,total:float,institute_id:int,monthly_fee:float,months:int,plan_id:int}|null
 		 */
 		public function compute_application_fee($student_id, $batch_id)
 		{
@@ -629,6 +631,10 @@ public function email_already_sent(
 			// otherwise the regular batch price.
 			$batch_fee = ($offer > 0 && ($price <= 0 || $offer < $price)) ? $offer : $price;
 			$batch_fee = max(0.0, $batch_fee);
+			// Batch price is per month; charge it for the plan's duration (e.g. Yearly Plan = 12 months).
+			$plan = $this->batch_payment_plan($student_id, $batch_id);
+			$monthly_fee = $batch_fee;
+			$batch_fee = round($monthly_fee * $plan['months'], 2);
 
 			// Free institute (users.paid = '0'): batch fee AND application/subscription fee are 0.
 			if ($institute_id > 0 && $this->CI->db->field_exists('paid', 'users')) {
@@ -638,10 +644,11 @@ public function email_already_sent(
 				}
 			}
 
-			// Fee amounts (rupees). Change here if they ever differ.
-			$FEE_FIRST = 499.0;          // first ever enrollment — flat, first batch fee free
-			$FEE_NEW_INSTITUTE = 499.0;  // first batch at an institute the student hasn't joined
-			$FEE_SAME_INSTITUTE = 99.0;  // additional batch at an institute already joined
+			// Batch Enrollment Fee amounts (rupees) — managed in Admin → Payment Settings.
+			$fees = $this->enrollment_fee_settings();
+			$FEE_FIRST = $fees['first'];                   // first ever enrollment — first batch fee free
+			$FEE_NEW_INSTITUTE = $fees['new_institute'];   // first batch at an institute the student hasn't joined
+			$FEE_SAME_INSTITUTE = $fees['same_institute']; // additional batch at an institute already joined
 
 			// Institutes the student has already ENROLLED at (any student_batchs row), excluding the
 			// batch currently being purchased.
@@ -659,13 +666,67 @@ public function email_already_sent(
 				$joined_institutes[(int) $r['institute_id']] = true;
 			}
 
+			$plan_info = array('monthly_fee' => $monthly_fee, 'months' => (int) $plan['months'], 'plan_id' => (int) $plan['plan_id']);
 			if (!$has_prior) {
-				return array('scenario' => 'first_time', 'application_fee' => $FEE_FIRST, 'batch_fee' => 0.0, 'total' => $FEE_FIRST, 'institute_id' => $institute_id);
+				return array('scenario' => 'first_time', 'application_fee' => $FEE_FIRST, 'batch_fee' => 0.0, 'total' => $FEE_FIRST, 'institute_id' => $institute_id) + $plan_info;
 			}
 			if ($institute_id > 0 && isset($joined_institutes[$institute_id])) {
-				return array('scenario' => 'same_institute', 'application_fee' => $FEE_SAME_INSTITUTE, 'batch_fee' => $batch_fee, 'total' => $FEE_SAME_INSTITUTE + $batch_fee, 'institute_id' => $institute_id);
+				return array('scenario' => 'same_institute', 'application_fee' => $FEE_SAME_INSTITUTE, 'batch_fee' => $batch_fee, 'total' => $FEE_SAME_INSTITUTE + $batch_fee, 'institute_id' => $institute_id) + $plan_info;
 			}
-			return array('scenario' => 'new_institute', 'application_fee' => $FEE_NEW_INSTITUTE, 'batch_fee' => $batch_fee, 'total' => $FEE_NEW_INSTITUTE + $batch_fee, 'institute_id' => $institute_id);
+			return array('scenario' => 'new_institute', 'application_fee' => $FEE_NEW_INSTITUTE, 'batch_fee' => $batch_fee, 'total' => $FEE_NEW_INSTITUTE + $batch_fee, 'institute_id' => $institute_id) + $plan_info;
+		}
+
+		/**
+		 * Batch Enrollment Fee settings (general_settings, edited in Admin → Payment Settings).
+		 * Empty / missing / invalid values fall back to the original 499 / 499 / 99.
+		 *
+		 * @return array{first:float,new_institute:float,same_institute:float}
+		 */
+		public function enrollment_fee_settings()
+		{
+			$defaults = array(
+				'first' => array('enrollment_fee_first', 499.0),
+				'new_institute' => array('enrollment_fee_new_institute', 499.0),
+				'same_institute' => array('enrollment_fee_same_institute', 99.0),
+			);
+			$out = array();
+			foreach ($defaults as $k => $d) {
+				$v = trim((string) $this->general_settings($d[0]));
+				$out[$k] = ($v !== '' && is_numeric($v) && (float) $v >= 0) ? round((float) $v, 2) : $d[1];
+			}
+			return $out;
+		}
+
+		/**
+		 * Plan a student pays for on a batch — same rule as the payment page:
+		 * a payment for this batch in the last 365 days => RENEWAL plan, otherwise FIRST_PAYMENT.
+		 * months = plans.validity_days / 30 (365 => 12). Defaults to 12 months when no plan exists.
+		 *
+		 * @return array{plan_id:int,months:int,plan_type:string}
+		 */
+		public function batch_payment_plan($student_id, $batch_id)
+		{
+			$out = array('plan_id' => 0, 'months' => 12, 'plan_type' => 'FIRST_PAYMENT');
+			$recent = $this->CI->db_model->select_data('id', 'student_payment_history', array(
+				'student_id' => (int) $student_id,
+				'batch_id' => (int) $batch_id,
+				'create_at >=' => date('Y-m-d H:i:s', strtotime('-365 days')),
+			), 1);
+			$type = !empty($recent) ? 'RENEWAL' : 'FIRST_PAYMENT';
+			$out['plan_type'] = $type;
+			if (!$this->CI->db->table_exists('plans')) {
+				return $out;
+			}
+			$plan = $this->CI->db_model->select_data('plan_id,validity_days', 'plans', array('plan_type' => $type, 'status' => 1), 1, array('plan_id', 'asc'));
+			if (empty($plan[0])) {
+				$plan = $this->CI->db_model->select_data('plan_id,validity_days', 'plans', array('status' => 1), 1, array('plan_id', 'asc'));
+			}
+			if (!empty($plan[0])) {
+				$days = (int) $plan[0]['validity_days'];
+				$out['plan_id'] = (int) $plan[0]['plan_id'];
+				$out['months'] = $days > 0 ? max(1, (int) round($days / 30)) : 12;
+			}
+			return $out;
 		}
 
 		/**

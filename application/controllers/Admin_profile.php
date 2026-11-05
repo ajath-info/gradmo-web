@@ -1253,6 +1253,7 @@ class Admin_profile extends CI_Controller {
 		$data['currency_converter_api'] = $this->general_settings('currency_converter_api');
 		$data['sandbox_accounts'] = $this->general_settings('sandbox_accounts');
 		$data['currency_code'] = $this->general_settings('currency_code');
+		$data['enrollment_fees'] = $this->common->enrollment_fee_settings();
 		$this->load->view("common/admin_header",$header);
 		$this->load->view("admin/front/payment_settings",$data); 
 		$this->load->view("common/admin_footer");

@@ -520,6 +520,11 @@ function change_student_status(){
 	
 	function payment_settings(){
         if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest')){
+            // Payment keys / fees: super admin only (this endpoint had no login check before).
+            if (empty($_SESSION['super_admin']) || (string) $_SESSION['super_admin'] !== '1') {
+                echo json_encode(array('status' => '0', 'msg' => $this->lang->line('ltr_not_allowed_msg')), JSON_UNESCAPED_SLASHES);
+                return;
+            }
             if(!empty($this->input->post('payment_type',false))){
                 $data_arr = html_escape(html_purify($this->input->post(NULL, false)));
                 $currency_sym = array(
@@ -732,6 +737,30 @@ function change_student_status(){
 					$data_arrpsc['velue_text'] = trim($_POST['sandbox_accounts']);
 					$data_arr = $this->security->xss_clean($data_arrpsc);
 				    $this->db_model->update_data_limit('general_settings',$data_arr,array('key_text'=>'sandbox_accounts'),1);
+				}
+				// Batch Enrollment Fee (used by Common::compute_application_fee). Upsert: rows may not exist yet.
+				$enroll_fee_keys = array(
+					'enrollment_fee_first' => 'Enrollment fee - first enrollment',
+					'enrollment_fee_new_institute' => 'Enrollment fee - new institute',
+					'enrollment_fee_same_institute' => 'Enrollment fee - same institute',
+				);
+				foreach ($enroll_fee_keys as $fee_key => $fee_title) {
+					if (!isset($_POST[$fee_key])) {
+						continue;
+					}
+					$fee_val = trim((string) $_POST[$fee_key]);
+					if ($fee_val === '' || !is_numeric($fee_val) || (float) $fee_val < 0) {
+						echo json_encode(array('status' => '0', 'msg' => 'Please enter a valid Batch Enrollment Fee (0 or more).'), JSON_UNESCAPED_SLASHES);
+						return;
+					}
+					$fee_val = (string) round((float) $fee_val, 2);
+					$fee_row = $this->db_model->select_data('id', 'general_settings', array('key_text' => $fee_key), 1);
+					if (!empty($fee_row)) {
+						$this->db_model->update_data_limit('general_settings', array('velue_text' => $fee_val), array('key_text' => $fee_key), 1);
+					} else {
+						$this->db_model->insert_data('general_settings', array('title' => $fee_title, 'key_text' => $fee_key, 'velue_text' => $fee_val));
+					}
+					$ins = true;
 				}
                 
                 if($ins){

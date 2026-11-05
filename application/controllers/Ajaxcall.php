@@ -3458,10 +3458,16 @@ class Ajaxcall extends CI_Controller{
                     $type_label = ($promo['discount_type'] == 'PERCENT') ? $this->common->languageTranslator('ltr_percent') : $this->common->languageTranslator('ltr_flat');
                     $value_label = ($promo['discount_type'] == 'PERCENT') ? ($promo['discount_value'].' %') : $promo['discount_value'];
                     $max_disc = isset($promo['max_discount']) ? trim((string)$promo['max_discount']) : '';
-                    if($max_disc !== '' && (float)$max_disc > 0){
-                        $value_label .= ' (max Rs '.$max_disc.')';
-                    }
-                    $usage = (int)$promo['used_count'].' / '.((trim((string)$promo['max_use']) === '') ? '&#8734;' : (int)$promo['max_use']);
+                    $no_limit = $this->common->languageTranslator('ltr_no_limit') ?: 'No limit';
+                    $max_disc_label = ($max_disc !== '' && (float)$max_disc > 0) ? 'Rs '.$max_disc : $no_limit;
+                    $max_use_label = (trim((string)$promo['max_use']) === '' || (int)$promo['max_use'] <= 0) ? $no_limit : (int)$promo['max_use'];
+                    $used_label = (int)$promo['used_count'];
+                    $fmt_date = function($d){
+                        $d = trim((string)$d);
+                        if($d === '' || strpos($d, '0000-00-00') === 0){ return '-'; }
+                        $t = strtotime($d);
+                        return $t ? date('d-m-Y', $t) : html_escape($d);
+                    };
 
                     if($promo['status'] == 1){
                         $statusDrop = '<div class="admin_tbl_status_wrap"><a class="tbl_status_btn light_sky_bg promoStatusBtn" data-id="'.$promo['promo_code_id'].'" data-status="0" href="javascript:;">'.$this->lang->line('ltr_active').'</a></div>';
@@ -3486,9 +3492,11 @@ class Ajaxcall extends CI_Controller{
                         html_escape($promo['code']),
                         $type_label,
                         $value_label,
-                        $promo['valid_from'],
-                        $promo['valid_to'],
-                        $usage,
+                        $max_disc_label,
+                        $max_use_label,
+                        $used_label,
+                        $fmt_date($promo['valid_from']),
+                        $fmt_date($promo['valid_to']),
                         $statusDrop,
                         $action
                     );

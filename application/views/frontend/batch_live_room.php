@@ -843,6 +843,8 @@ body.lr-zoom-in-meeting > div[id^="menu-"] {
 			password: m.password || '',
 			userName: m.displayName || (pageIsTeacherHost ? 'Teacher' : 'Student')
 		};
+		// Host (role 1) join needs the host's ZAK; without it Zoom reports "Signature is invalid".
+		if (m.zak) { joinOpts.zak = m.zak; }
 		return zoomClient.join(joinOpts);
 	}
 	function joinEmbeddedZoom() {

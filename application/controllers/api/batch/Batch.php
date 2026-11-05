@@ -3509,12 +3509,26 @@ class Batch extends MY_Controller
 			'zak' => '',
 		);
 		if ($join_ready && $role === 1 && $this->db->table_exists('batch_zoom_meetings')) {
+			$zak_error = 'Zoom REST (Server-to-Server) is not configured.';
 			$this->load->library('zoom_rest_client');
 			if ($this->zoom_rest_client->is_configured()) {
 				$zak_res = $this->zoom_rest_client->get_user_zak();
 				if (!empty($zak_res['ok']) && !empty($zak_res['token'])) {
 					$row['meeting']['zak'] = (string) $zak_res['token'];
+				} else {
+					$zak_error = isset($zak_res['error']) ? (string) $zak_res['error'] : 'Could not get host ZAK token.';
 				}
+			}
+			// A host (role 1) signature is rejected by Zoom ("Signature is invalid") without the host's
+			// ZAK. If no ZAK, join as a participant (role 0) instead of failing the join.
+			if ($row['meeting']['zak'] === '') {
+				$role = 0;
+				$signature = $this->zoom_signature($sdk_key, $sdk_secret, $meeting_number, 0, $sig_mode);
+				$row['meeting']['role'] = 0;
+				$row['meeting']['signature'] = $signature;
+				$row['meeting']['hostJoinFallback'] = 1;
+				$row['meeting']['zakError'] = $zak_error;
+				error_log('[ZoomJoin] batch=' . $batch_id . ' host ZAK unavailable, joining as participant: ' . $zak_error);
 			}
 		}
 		if ($join_ready && $sig_mode === 'jwt') {

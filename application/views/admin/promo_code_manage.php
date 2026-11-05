@@ -28,9 +28,11 @@
 								<th><?php echo html_escape($this->common->languageTranslator('ltr_promo_code'));?></th>
 								<th><?php echo html_escape($this->common->languageTranslator('ltr_discount_type'));?></th>
 								<th><?php echo html_escape($this->common->languageTranslator('ltr_discount_value'));?></th>
+								<th><?php echo html_escape($this->common->languageTranslator('ltr_max_discount') ?: 'Max Discount (Rs)');?></th>
+								<th><?php echo html_escape($this->common->languageTranslator('ltr_max_use') ?: 'Max Use');?></th>
+								<th><?php echo html_escape($this->common->languageTranslator('ltr_used_count') ?: 'Used');?></th>
 								<th><?php echo html_escape($this->common->languageTranslator('ltr_valid_from'));?></th>
 								<th><?php echo html_escape($this->common->languageTranslator('ltr_valid_to'));?></th>
-								<th><?php echo html_escape($this->common->languageTranslator('ltr_usage'));?></th>
 								<th><?php echo html_escape($this->common->languageTranslator('ltr_status'));?></th>
 								<th class="no-sort"><?php echo html_escape($this->common->languageTranslator('ltr_actions'));?></th>
 							</tr>

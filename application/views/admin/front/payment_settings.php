@@ -176,6 +176,33 @@
 							<!--	</div>-->
 							<!--</div>-->
 							
+							<?php $ef = isset($enrollment_fees) && is_array($enrollment_fees) ? $enrollment_fees : array('first' => 499, 'new_institute' => 499, 'same_institute' => 99); ?>
+							<div class="col-lg-12 col-md-12 col-sm-12 col-12 edu_bottom_20">
+								<h5 style="margin:10px 0 4px; font-weight:600;">Batch Enrollment Fee</h5>
+								<p class="text-muted" style="margin:0 0 8px; font-size:13px;">Charged to students when they pay for a batch (GST is added on top). Use 0 for no fee.</p>
+							</div>
+							<div class="col-lg-4 col-md-4 col-sm-12 col-12 edu_bottom_20">
+								<div class="form-group">
+									<label>First Enrollment (Rs)</label>
+									<input type="number" step="0.01" min="0" class="form-control" name="enrollment_fee_first" value="<?php echo html_escape($ef['first']); ?>" placeholder="499">
+									<small class="text-muted">Student's first ever batch. The batch fee itself is free.</small>
+								</div>
+							</div>
+							<div class="col-lg-4 col-md-4 col-sm-12 col-12 edu_bottom_20">
+								<div class="form-group">
+									<label>New Institute (Rs)</label>
+									<input type="number" step="0.01" min="0" class="form-control" name="enrollment_fee_new_institute" value="<?php echo html_escape($ef['new_institute']); ?>" placeholder="499">
+									<small class="text-muted">Enrolled before, but first batch at this institute.</small>
+								</div>
+							</div>
+							<div class="col-lg-4 col-md-4 col-sm-12 col-12 edu_bottom_20">
+								<div class="form-group">
+									<label>Same Institute (Rs)</label>
+									<input type="number" step="0.01" min="0" class="form-control" name="enrollment_fee_same_institute" value="<?php echo html_escape($ef['same_institute']); ?>" placeholder="99">
+									<small class="text-muted">Another batch at an institute already joined.</small>
+								</div>
+							</div>
+
 							<div class="edu_btn_wrapper">
 								<div class="col-lg-12 col-md-12 col-sm-12 col-12"> 
 									<button type="button" class="btn btn-primary updatePayment"><?php echo html_escape($this->common->languageTranslator('ltr_save'));?></button>
