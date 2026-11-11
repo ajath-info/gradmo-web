@@ -29,10 +29,12 @@ if (!empty($home_batches)) {
 		$p_batch = $home_batches[$i];
 		$p_name = isset($p_batch['batch_name']) ? trim((string) $p_batch['batch_name']) : ('Batch ' . ($i + 1));
 		$p_img = $home_resolve_batch_image(isset($p_batch['batch_image']) ? $p_batch['batch_image'] : '');
+		$p_bid = isset($p_batch['id']) ? (int) $p_batch['id'] : 0;
 		$home_promos[] = array(
 			'title' => ($p_name !== '') ? $p_name : ('Batch ' . ($i + 1)),
 			'subtitle' => 'Enroll now',
 			'image' => $p_img,
+			'url' => $p_bid > 0 ? base_url('batch/details?batch_id=' . $p_bid) : '',
 		);
 	}
 }
@@ -170,6 +172,28 @@ $home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
 	color: rgba(255, 255, 255, 0.94);
 	line-height: 1.45;
 	text-shadow: 0 1px 10px rgba(0, 0, 0, 0.4);
+}
+.edu-home-hero-slide__cta {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 4px;
+	padding: 9px 20px;
+	border-radius: 999px;
+	background: #fff;
+	color: #1d4ed8;
+	font-size: clamp(0.85rem, 1.4vw, 1rem);
+	font-weight: 700;
+	text-decoration: none;
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+	transition: transform .15s ease, background .15s ease;
+}
+.edu-home-hero-slide__cta:hover,
+.edu-home-hero-slide__cta:focus {
+	background: #eef2ff;
+	color: #1d4ed8;
+	text-decoration: none;
+	transform: translateY(-1px);
 }
 .edu-home-slider-nav {
 	position: absolute;
@@ -633,7 +657,9 @@ $home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
 					'<div class="edu-home-hero-slide__overlay" aria-hidden="true"></div>' +
 					'<div class="edu-home-hero-slide__content">' +
 					'<div class="edu-home-hero-slide__title">' + esc(item.title) + '</div>' +
-					'<p class="edu-home-hero-slide__subtitle">' + esc(item.subtitle) + '</p>' +
+					(item.url
+						? '<a class="edu-home-hero-slide__cta" href="' + esc(item.url) + '">' + esc(item.subtitle) + ' <i class="fa fa-arrow-right" aria-hidden="true"></i></a>'
+						: '<p class="edu-home-hero-slide__subtitle">' + esc(item.subtitle) + '</p>') +
 					'</div>';
 				var img = card.querySelector('img');
 				if (img) {

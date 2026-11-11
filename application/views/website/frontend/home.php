@@ -41,7 +41,7 @@
               alt="Rectangle180061236"
               class="desktop5-thq-rectangle18006-elm"
             />
-            <span class="desktop5-thq-text-elm105">Enroll Now</span>
+            <span class="desktop5-thq-text-elm105">Enroll Now as</span>
             <img
               src="<?php echo base_url('assets/images/'); ?>rectangle179961225-49su-200h.png"
               alt="Rectangle179961225"
