@@ -600,12 +600,17 @@ $home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
 			}
 			return list.map(function (it, i) {
 				var title = (it.heading || '').trim() || ('Banner ' + (i + 1));
-				var subtitle = (it.subheading || '').trim() || 'Enroll now';
+				var subtitle = (it.subheading || '').trim();
 				var image = (it.image_url || '').trim() || defaultImage;
 				if (!it.subheading && it.description) {
 					subtitle = String(it.description).trim();
 				}
-				return { title: title, subtitle: subtitle, image: image };
+				var url = String(it.redirect_url || '').trim();
+				if (url && !/^https?:\/\//i.test(url) && url.charAt(0) !== '/') { url = ''; }
+				if (url && !subtitle) {
+					subtitle = String(it.cta_text || '').trim() || 'Enroll now';
+				}
+				return { title: title, subtitle: subtitle, image: image, url: url };
 			});
 		}
 		var PROMO_AUTOPLAY_MS = 7000;
@@ -659,7 +664,7 @@ $home_default_card_image = 'data:image/svg+xml;utf8,' . rawurlencode(
 					'<div class="edu-home-hero-slide__title">' + esc(item.title) + '</div>' +
 					(item.url
 						? '<a class="edu-home-hero-slide__cta" href="' + esc(item.url) + '">' + esc(item.subtitle) + ' <i class="fa fa-arrow-right" aria-hidden="true"></i></a>'
-						: '<p class="edu-home-hero-slide__subtitle">' + esc(item.subtitle) + '</p>') +
+						: (item.subtitle ? '<p class="edu-home-hero-slide__subtitle">' + esc(item.subtitle) + '</p>' : '')) +
 					'</div>';
 				var img = card.querySelector('img');
 				if (img) {

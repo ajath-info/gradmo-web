@@ -95,6 +95,18 @@
 								</select>
 							</div>
 						</div>
+						<div class="col-lg-12 col-md-12 col-sm-12 col-12 edu_bottom_20">
+							<div class="form-group">
+								<label>Link to Batch (optional)</label>
+								<select name="batch_id" id="gallery_batch_id" class="form-control edu_selectbox_with_search" data-placeholder="No link">
+									<option value="">No link</option>
+									<?php if (!empty($gallery_batches)) { foreach ($gallery_batches as $gb) { ?>
+									<option value="<?php echo (int) $gb['id']; ?>"><?php echo html_escape($gb['batch_name']); ?> (#<?php echo (int) $gb['id']; ?>)</option>
+									<?php } } ?>
+								</select>
+								<small class="text-muted">Home slider "Enroll now" opens this batch's details.</small>
+							</div>
+						</div>
 						<div class="col-lg-12 col-md-12 col-sm-12 col-12 edu_bottom_20 galleryImgFld">
 						<div class="form-group">
 							<label><?php echo html_escape($this->common->languageTranslator('ltr_image'));?><sup>*</sup></label>

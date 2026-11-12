@@ -690,6 +690,7 @@ class Admin_profile extends CI_Controller {
 		$data['all_user'] = $this->db_model->select_data('id,name,role,super_admin','users use index (id)',array('admin_id'=>1 , 'role'=>1));
 		$this->load->view("common/admin_header",$header);
 		$data['gallery'] = $this->db_model->select_data('id','gallery use index (id)');
+		$data['gallery_batches'] = $this->db_model->select_data('id,batch_name','batches use index (id)',array('status'=>'1'),'',array('batch_name','asc'));
 		$this->load->view("admin/gallery_manage",$data); 
 		$this->load->view("common/admin_footer");
 	}

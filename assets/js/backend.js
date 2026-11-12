@@ -3685,6 +3685,7 @@ $(document).on('click','.genrateMeetingId',function (){
             parentDiv.find('.addVideoImgGalry').val('add');
             parentDiv.find('#gallery_id').val('');
              parentDiv.find('.fileNameShow').html('');
+            parentDiv.find('[name="batch_id"]').val('').trigger('change');
             
         } else {
  
@@ -3696,6 +3697,7 @@ $(document).on('click','.genrateMeetingId',function (){
             var type = $(this).attr('data-type');
             parentDiv.find('.galleryType').val($(this).attr('data-type')).trigger('change');
             parentDiv.find('[name="purpose"]').val($(this).attr('data-purpose') || 'Banner').trigger('change');
+            parentDiv.find('[name="batch_id"]').val($(this).attr('data-batch_id') || '').trigger('change');
             parentDiv.find('.video').removeClass('require');
             if (type == 'Image') {
                 parentDiv.find('.Image').removeClass('require');

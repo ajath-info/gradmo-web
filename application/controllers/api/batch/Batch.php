@@ -31,13 +31,15 @@ class Batch extends MY_Controller
 	{
 		// 1) Gallery images (admin-managed) from the gallery table.
 		$gallery_images = array();
-		$rows = $this->db_model->select_data('id, image, title', 'gallery use index (id)', array('status' => 1, 'type' => 'Image','purpose' => 'Banner'), '', array('id', 'desc'));
+		$gal_fields = 'id, image, title' . ($this->db->field_exists('batch_id', 'gallery') ? ', batch_id' : '');
+		$rows = $this->db_model->select_data($gal_fields, 'gallery use index (id)', array('status' => 1, 'type' => 'Image','purpose' => 'Banner'), '', array('id', 'desc'));
 		if (!empty($rows)) {
 			foreach ($rows as $r) {
 				$img = isset($r['image']) ? trim((string) $r['image']) : '';
 				if ($img === '') {
 					continue;
 				}
+				$gal_batch_id = !empty($r['batch_id']) ? (int) $r['batch_id'] : 0;
 				$gallery_images[] = array(
 					'id' => isset($r['id']) ? (int) $r['id'] : 0,
 					'type' => 'gallery',
@@ -45,6 +47,11 @@ class Batch extends MY_Controller
 					'heading' => isset($r['title']) ? (string) $r['title'] : '',
 					'subheading' => '',
 					'description' => '',
+					// Where the banner's button goes (batch details when a batch is linked).
+					'batch_id' => $gal_batch_id,
+					'redirect_type' => $gal_batch_id > 0 ? 'batch' : '',
+					'redirect_url' => $gal_batch_id > 0 ? base_url('batch/details?batch_id=' . $gal_batch_id) : '',
+					'cta_text' => $gal_batch_id > 0 ? 'Enroll now' : '',
 				);
 			}
 		}
@@ -69,13 +76,18 @@ class Batch extends MY_Controller
 					if ($banner === '') {
 						continue;
 					}
+					$inst_id = isset($row['id']) ? (int) $row['id'] : 0;
 					$institute_banners[] = array(
-						'id' => isset($row['id']) ? (int) $row['id'] : 0,
+						'id' => $inst_id,
 						'type' => 'institute_banner',
 						'image_url' => base_url('uploads/users/') . $banner,
 						'heading' => isset($row['name']) ? (string) $row['name'] : '',
 						'subheading' => '',
 						'description' => '',
+						'batch_id' => 0,
+						'redirect_type' => $inst_id > 0 ? 'institute' : '',
+						'redirect_url' => $inst_id > 0 ? base_url('institute/details?institute_id=' . $inst_id) : '',
+						'cta_text' => $inst_id > 0 ? 'View Institute' : '',
 					);
 				}
 			}

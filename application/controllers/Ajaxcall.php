@@ -9056,7 +9056,7 @@ function result_table($type){
                         $viewIcn = '<a class="viewVideo btn_view" title="View" data-id="'.$gal['id'].'" data-url="'.base_url().'uploads/video/'.$gal['video'].'"><i class="fa fa-eye"></i></a>';
                         $deleteIcn = '<a class="deleteData btn_delete" title="Delete" data-id="'.$gal['id'].'" data-table="gallery" data-file="uploads/video/'.$gal['video'].'"><i class="fa fa-trash"></i></a></p>';
                     }else{
-                         $editIcn = '<p class="actions_wrap"><a class="editVideoImgGalry btn_edit" title="Edit" data-id="'.$gal['id'].'" data-type="'.$gal['type'].'" data-purpose="'.(isset($gal['purpose']) ? $gal['purpose'] : 'Banner').'" data-img="'.$gal['image'].'"><i class="fa fa-edit"></i></a>';
+                         $editIcn = '<p class="actions_wrap"><a class="editVideoImgGalry btn_edit" title="Edit" data-id="'.$gal['id'].'" data-type="'.$gal['type'].'" data-purpose="'.(isset($gal['purpose']) ? $gal['purpose'] : 'Banner').'" data-batch_id="'.(!empty($gal['batch_id']) ? (int) $gal['batch_id'] : '').'" data-img="'.$gal['image'].'"><i class="fa fa-edit"></i></a>';
                         $viewIcn = '<a class="viewImage btn_view" title="View" data-id="'.$gal['id'].'" data-img="uploads/gallery/'.$gal['image'].'"><i class="fa fa-eye"></i></a>';
                         $deleteIcn = '<a class="deleteData btn_delete" title="Delete" data-id="'.$gal['id'].'" data-table="gallery" data-file="uploads/gallery/'.$gal['image'].'"><i class="fa fa-trash"></i></a></p>';
 
@@ -9126,6 +9126,13 @@ function result_table($type){
             if(!empty($this->input->post('title',TRUE))){
                 $data_arr = $this->input->post(NULL,TRUE);
                  $id = $this->input->post('id',TRUE);
+                // Optional batch link (installer/alter_gallery_add_batch_id.sql).
+                if($this->db->field_exists('batch_id','gallery')){
+                    $gal_batch = isset($data_arr['batch_id']) ? (int) $data_arr['batch_id'] : 0;
+                    $data_arr['batch_id'] = $gal_batch > 0 ? $gal_batch : NULL;
+                }else{
+                    unset($data_arr['batch_id']);
+                }
                 if(!empty($id)){
                 if($this->input->post('type',TRUE) == 'Image'){
                     if(isset($_FILES['image']) && !empty($_FILES['image']['name'])){
